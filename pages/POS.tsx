@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale } from '../types';
@@ -64,16 +63,19 @@ const POS: React.FC = () => {
 
     const updateCartQuantity = (productId: string, newQuantity: number) => {
         const product = inventory.find(p => p.id === productId);
-        if(product && newQuantity > product.quantity) {
-            toast.error(`Only ${product.quantity} of ${product.name} in stock.`);
+        
+        if (newQuantity <= 0) {
+            setCart(cart.filter(item => item.id !== productId));
             return;
         }
 
-        if (newQuantity <= 0) {
-            setCart(cart.filter(item => item.id !== productId));
-        } else {
-            setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
+        if(product && newQuantity > product.quantity) {
+            toast.error(`Only ${product.quantity} of ${product.name} in stock.`);
+            setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: product.quantity } : item));
+            return;
         }
+
+        setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
     };
 
     const cartTotal = useMemo(() => cart.reduce((total, item) => total + item.salePrice * item.cartQuantity, 0), [cart]);
@@ -155,7 +157,7 @@ const POS: React.FC = () => {
                             <option key={cat.id} value={cat.id}>{cat.name}</option>
                         ))}
                     </select>
-                     <Button onClick={() => setScannerOpen(true)} className="flex items-center gap-2">
+                     <Button onClick={() => setScannerOpen(true)} className="flex items-center justify-center gap-2">
                         <ScanLine className="w-5 h-5" /> Scan
                     </Button>
                 </div>
@@ -169,28 +171,28 @@ const POS: React.FC = () => {
             {/* Cart Section */}
             <div className="lg:w-1/3 flex flex-col bg-white p-4 rounded-lg shadow-md">
                 <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2"><ShoppingCart /> Cart</h2>
-                <div className="flex-grow overflow-y-auto border-t border-b py-2">
+                <div className="flex-grow overflow-y-auto border-t">
                     {cart.length === 0 ? (
                         <p className="text-gray-500 text-center mt-8">Your cart is empty.</p>
                     ) : (
-                        <div className="space-y-3">
+                        <div className="divide-y divide-gray-200">
                             {cart.map(item => (
-                                <div key={item.id} className="flex items-center justify-between">
-                                    <div>
+                                <div key={item.id} className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <div className="flex-grow">
                                         <p className="font-semibold text-sm">{item.name}</p>
                                         <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center justify-between sm:justify-end gap-2">
                                         <input
                                             type="number"
                                             value={item.cartQuantity}
-                                            onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value, 10))}
+                                            onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value, 10) || 1)}
                                             className="w-16 p-1 border rounded-md text-center"
                                             min="1"
                                             max={item.quantity}
                                         />
-                                        <p className="w-20 text-right font-medium">{formatCurrency(item.salePrice * item.cartQuantity)}</p>
-                                        <button onClick={() => updateCartQuantity(item.id, 0)} className="text-red-500 hover:text-red-700">
+                                        <p className="w-24 text-right font-semibold">{formatCurrency(item.salePrice * item.cartQuantity)}</p>
+                                        <button onClick={() => updateCartQuantity(item.id, 0)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100">
                                             <X size={18} />
                                         </button>
                                     </div>
@@ -199,12 +201,12 @@ const POS: React.FC = () => {
                         </div>
                     )}
                 </div>
-                <div className="mt-4">
+                <div className="mt-auto pt-4 border-t">
                     <div className="flex justify-between text-xl font-bold mb-4">
                         <span>Total:</span>
                         <span>{formatCurrency(cartTotal)}</span>
                     </div>
-                    <Button onClick={handleCheckout} disabled={cart.length === 0} className="w-full text-lg">
+                    <Button onClick={handleCheckout} disabled={cart.length === 0} className="w-full text-lg justify-center">
                         Checkout
                     </Button>
                 </div>
@@ -216,10 +218,10 @@ const POS: React.FC = () => {
             
             <Modal isOpen={!!completedSale} onClose={() => setCompletedSale(null)} title="Sale Complete">
                 {completedSale && <Receipt sale={completedSale} ref={receiptRef} />}
-                <div className="flex justify-end gap-2 mt-4">
+                <div className="flex justify-end gap-2 mt-4 flex-wrap">
                     <Button variant="secondary" onClick={() => setCompletedSale(null)}>Close</Button>
                     <Button onClick={handlePrintReceipt} className="flex items-center gap-2"><Printer size={18}/> Print</Button>
-                    <Button onClick={handleSaveReceiptAsImage} className="flex items-center gap-2"><ImageDown size={18}/> Save as Image</Button>
+                    <Button onClick={handleSaveReceiptAsImage} className="flex items-center gap-2"><ImageDown size={18}/> Save</Button>
                 </div>
             </Modal>
         </div>

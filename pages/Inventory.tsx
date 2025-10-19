@@ -94,14 +94,14 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                     <Input label="Manufacturer" name="manufacturer" value={formData.manufacturer} onChange={handleChange} required />
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                        <select name="categoryId" value={formData.categoryId} onChange={handleChange} required className="w-full p-2 border rounded-md">
+                        <select name="categoryId" value={formData.categoryId} onChange={handleChange} required className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500">
                             <option value="">Select Category</option>
                             {mainCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Sub-Category</label>
-                        <select name="subCategoryId" value={formData.subCategoryId || ''} onChange={handleChange} className="w-full p-2 border rounded-md" disabled={subCategories.length === 0}>
+                        <select name="subCategoryId" value={formData.subCategoryId || ''} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500" disabled={subCategories.length === 0}>
                             <option value="">Select Sub-Category (Optional)</option>
                             {subCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
@@ -114,7 +114,7 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                              <div className="flex-grow">
                                 <Input name="barcode" value={formData.barcode} onChange={handleChange} />
                             </div>
-                            <Button type="button" variant="secondary" onClick={() => setScannerOpenForForm(true)} className="shrink-0 px-3 py-2" aria-label="Scan barcode">
+                            <Button type="button" variant="secondary" onClick={() => setScannerOpenForForm(true)} className="shrink-0 px-3" aria-label="Scan barcode">
                                 <ScanLine className="w-5 h-5"/>
                             </Button>
                         </div>
@@ -124,20 +124,22 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                     <Input label="Purchase Price (Rs.)" name="purchasePrice" type="number" value={formData.purchasePrice} onChange={handleChange} required min="0"/>
                     <Input label="Sale Price (Rs.)" name="salePrice" type="number" value={formData.salePrice} onChange={handleChange} required min="0"/>
                     
-                    <div>
+                    <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Product Image</label>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <input
-                                type="file"
-                                accept="image/*"
-                                onChange={handleImageChange}
-                                className="flex-grow w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 border border-gray-200 rounded-lg cursor-pointer"
-                            />
+                        <div className="flex flex-col sm:flex-row gap-2 items-center">
+                             <div className="flex-grow w-full">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleImageChange}
+                                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 border border-gray-300 rounded-lg cursor-pointer"
+                                />
+                             </div>
                             <Button
                                 type="button"
                                 variant="secondary"
                                 onClick={() => setCameraOpen(true)}
-                                className="flex items-center justify-center gap-2"
+                                className="flex w-full sm:w-auto items-center justify-center gap-2"
                             >
                                 <Camera size={18} /> Take Photo
                             </Button>
@@ -204,7 +206,6 @@ const Inventory: React.FC = () => {
     };
     
     const handleScanSuccess = (decodedText: string) => {
-        // Here we just populate the form for a new product with the scanned barcode
         setEditingProduct({ barcode: decodedText } as Product); // Partial product
         setScannerOpen(false);
         setModalOpen(true);
@@ -223,6 +224,7 @@ const Inventory: React.FC = () => {
                 importFromExcel(json);
             };
             reader.readAsArrayBuffer(file);
+            event.target.value = '';
         }
     };
 
@@ -248,8 +250,10 @@ const Inventory: React.FC = () => {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h1 className="text-3xl font-bold text-gray-800">Inventory</h1>
-                <div className="flex items-center gap-2 flex-wrap">
-                    <Input placeholder="Search inventory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} icon={<Search className="w-5 h-5 text-gray-400" />} />
+                <div className="flex items-center gap-2 flex-wrap justify-center">
+                    <div className="w-full sm:w-auto">
+                      <Input placeholder="Search inventory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} icon={<Search className="w-5 h-5 text-gray-400" />} />
+                    </div>
                     <Button onClick={() => setScannerOpen(true)} variant="secondary" className='gap-2'><ScanLine size={18}/> Scan</Button>
                     <input type="file" ref={fileInputRef} onChange={handleExcelUpload} accept=".xlsx, .xls" className="hidden" />
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className='gap-2'><Upload size={18}/> Import</Button>
@@ -257,8 +261,8 @@ const Inventory: React.FC = () => {
                 </div>
             </div>
              <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-blue-50 p-3 rounded-md">
-                <p className="text-sm text-blue-700">Need help with bulk import? Download our sample Excel template.</p>
-                <Button onClick={downloadSampleExcel} variant="ghost" size="sm" className="flex items-center gap-2"><Download size={16}/> Download Template</Button>
+                <p className="text-sm text-blue-700 text-center md:text-left">Need help with bulk import? Download our sample Excel template.</p>
+                <Button onClick={downloadSampleExcel} variant="ghost" size="sm" className="flex items-center gap-2 shrink-0"><Download size={16}/> Download Template</Button>
              </div>
              {inventory.length === 0 && (
                 <div className="text-center py-10 bg-white rounded-lg shadow">
@@ -266,7 +270,9 @@ const Inventory: React.FC = () => {
                     <Button onClick={addSampleData}>Add Sample Data</Button>
                 </div>
             )}
-            <div className="bg-white rounded-lg shadow-md overflow-x-auto">
+
+            {/* Table for medium screens and up */}
+            <div className="hidden md:block bg-white rounded-lg shadow-md overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500">
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                         <tr>
@@ -308,8 +314,41 @@ const Inventory: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+            
+            {/* Cards for small screens */}
+            <div className="md:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {filteredInventory.map(product => (
+                     <div key={product.id} className="bg-white rounded-lg shadow-md p-4 flex flex-col">
+                        <div className="flex items-center gap-3 mb-3">
+                            <img src={product.imageUrl || 'https://picsum.photos/200'} alt={product.name} className="w-16 h-16 object-cover rounded-md"/>
+                            <div className="flex-grow">
+                                <span className="font-medium text-gray-900 leading-tight">{product.name}</span>
+                                <p className="text-sm text-gray-500">{product.manufacturer}</p>
+                            </div>
+                        </div>
+                        <div className="text-sm space-y-2 flex-grow">
+                            <div>
+                                <strong className="text-gray-600">Category: </strong> 
+                                {categoryMap.get(product.categoryId) || product.categoryId}
+                                {product.subCategoryId && categoryMap.get(product.subCategoryId) && (
+                                    <span className="block text-xs text-gray-500 ml-2">↳ {categoryMap.get(product.subCategoryId)}</span>
+                                )}
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span><strong className="text-gray-600">Stock: </strong><span className={`font-semibold ${product.quantity <= 5 ? 'text-red-500' : 'text-green-600'}`}>{product.quantity}</span></span>
+                                <span><strong className="text-gray-600">Price: </strong><span className="font-semibold">{formatCurrency(product.salePrice)}</span></span>
+                            </div>
+                        </div>
+                        <div className="flex justify-end space-x-2 border-t mt-3 pt-3">
+                             <Button onClick={() => handleEdit(product)} variant="ghost" size="sm" className="flex items-center gap-1"><Edit size={16}/> Edit</Button>
+                             <Button onClick={() => handleDelete(product.id)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Delete</Button>
+                        </div>
+                    </div>
+                ))}
+            </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setEditingProduct(undefined); }} title={editingProduct?.id ? 'Edit Product' : 'Add New Product'}>
+
+            <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setEditingProduct(undefined); }} title={editingProduct?.id ? 'Edit Product' : 'Add New Product'} size="2xl">
                 <ProductForm product={editingProduct} onSave={handleSaveProduct} onCancel={() => { setModalOpen(false); setEditingProduct(undefined); }} />
             </Modal>
             

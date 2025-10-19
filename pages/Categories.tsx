@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Category } from '../types';
@@ -72,17 +71,19 @@ const Categories: React.FC = () => {
 
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold mb-4">{editingCategory ? `Editing "${editingCategory.name}"` : 'Add New Category'}</h2>
-                <div className="flex items-center gap-4">
-                    <Input
-                        placeholder="Category Name"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                    />
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                    <div className="flex-grow">
+                        <Input
+                            placeholder="Category Name"
+                            value={newCategoryName}
+                            onChange={(e) => setNewCategoryName(e.target.value)}
+                        />
+                    </div>
                      {editingCategory && (
                         <select
                             value={editingCategory.parentId || ''}
                             onChange={(e) => setEditingCategory({...editingCategory, parentId: e.target.value || null})}
-                            className="p-2 border rounded-md"
+                            className="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 w-full sm:w-auto"
                         >
                             <option value="">(Main Category)</option>
                             {mainCategories.filter(c => c.id !== editingCategory.id).map(cat => (
@@ -91,12 +92,12 @@ const Categories: React.FC = () => {
                         </select>
                     )}
                     {editingCategory ? (
-                        <>
-                         <Button onClick={handleUpdateCategory}>Save</Button>
-                         <Button variant="secondary" onClick={cancelEditing}>Cancel</Button>
-                        </>
+                        <div className="flex gap-2">
+                         <Button onClick={handleUpdateCategory} className="flex-grow sm:flex-grow-0">Save</Button>
+                         <Button variant="secondary" onClick={cancelEditing} className="flex-grow sm:flex-grow-0">Cancel</Button>
+                        </div>
                     ) : (
-                        <Button onClick={() => handleAddCategory(null)} className="gap-2"><Plus size={18} /> Add Main</Button>
+                        <Button onClick={() => handleAddCategory(null)} className="gap-2 shrink-0"><Plus size={18} /> Add Main</Button>
                     )}
                 </div>
             </div>
@@ -111,17 +112,17 @@ const Categories: React.FC = () => {
                                 <button onClick={() => handleDelete(mainCat.id)} className="text-red-600 hover:text-red-800"><Trash2 size={18} /></button>
                             </div>
                         </div>
-                        <div className="pl-6 space-y-2">
+                        <div className="pl-0 sm:pl-6 space-y-2">
                              {categories.filter(c => c.parentId === mainCat.id).map(subCat => (
                                 <CategoryItem key={subCat.id} category={subCat} onEdit={startEditing} onDelete={handleDelete} />
                              ))}
                              <div className="flex items-center gap-2 pt-2">
                                 <Input
-                                    placeholder="Add sub-category..."
+                                    placeholder={`Add sub-category to ${mainCat.name}...`}
                                     onKeyDown={(e) => { if(e.key === 'Enter') handleAddCategory(mainCat.id) }}
                                     onChange={(e) => setNewCategoryName(e.target.value)}
                                 />
-                                <Button size="sm" onClick={() => handleAddCategory(mainCat.id)}><Plus size={16} /></Button>
+                                <Button size="sm" onClick={() => handleAddCategory(mainCat.id)} className="shrink-0"><Plus size={16} /></Button>
                             </div>
                         </div>
                     </div>

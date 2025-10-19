@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { User, LogOut } from 'lucide-react';
@@ -16,7 +15,7 @@ const Header: React.FC<{ onToggleSidebar: () => void }> = ({ onToggleSidebar }) 
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                         </svg>
                     </button>
-                    <h1 className="text-xl font-bold tracking-wider">{shopInfo?.name || 'ShopSync POS'}</h1>
+                    <h1 className="text-lg sm:text-xl font-bold tracking-wider truncate">{shopInfo?.name || 'ShopSync POS'}</h1>
                 </div>
 
                 <div className="flex items-center space-x-4">
