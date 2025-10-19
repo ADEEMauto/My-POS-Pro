@@ -165,7 +165,7 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
 
 
 const Inventory: React.FC = () => {
-    const { inventory, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel } = useAppContext();
+    const { inventory, categories, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel } = useAppContext();
     const [isModalOpen, setModalOpen] = useState(false);
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
@@ -173,6 +173,14 @@ const Inventory: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isMaster = currentUser?.role === 'master';
+
+    const categoryMap = useMemo(() => {
+        const map = new Map<string, string>();
+        categories.forEach(cat => {
+            map.set(cat.id, cat.name);
+        });
+        return map;
+    }, [categories]);
 
     const handleSaveProduct = (productData: Omit<Product, 'id'> | Product) => {
         if ('id' in productData) {
@@ -279,7 +287,14 @@ const Inventory: React.FC = () => {
                                         <p className="text-xs text-gray-400">{product.manufacturer}</p>
                                     </div>
                                 </td>
-                                <td className="px-6 py-4">{product.categoryId}</td>
+                                <td className="px-6 py-4">
+                                    {categoryMap.get(product.categoryId) || product.categoryId}
+                                    {product.subCategoryId && categoryMap.get(product.subCategoryId) && (
+                                        <span className="block text-xs text-gray-500">
+                                            ↳ {categoryMap.get(product.subCategoryId)}
+                                        </span>
+                                    )}
+                                </td>
                                 <td className={`px-6 py-4 font-semibold ${product.quantity <= 5 ? 'text-red-500' : 'text-green-600'}`}>{product.quantity}</td>
                                 <td className="px-6 py-4">{formatCurrency(product.salePrice)}</td>
                                 <td className="px-6 py-4">
