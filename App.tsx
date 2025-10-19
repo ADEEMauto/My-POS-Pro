@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useAppContext } from './contexts/AppContext';
@@ -14,6 +13,7 @@ import Users from './pages/Users';
 import Reports from './pages/Reports';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import Sales from './pages/Sales';
 
 const AppRoutes: React.FC = () => {
     const { shopInfo, currentUser, loading } = useAppContext();
@@ -49,6 +49,7 @@ const AppRoutes: React.FC = () => {
             <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/pos" element={<POS />} />
+                <Route path="/sales" element={<Sales />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/users" element={<Users />} />

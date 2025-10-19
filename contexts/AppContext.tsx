@@ -44,6 +44,7 @@ interface AppContextType {
 
     sales: Sale[];
     createSale: (cartItems: { product: Product; quantity: number }[]) => Sale | null;
+    reverseSale: (saleId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -266,6 +267,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return newSale;
     };
 
+    const reverseSale = (saleId: string) => {
+        const saleToReverse = sales.find(s => s.id === saleId);
+        if (!saleToReverse) {
+            toast.error("Sale not found.");
+            return;
+        }
+
+        const updatedInventory = [...inventory];
+
+        for (const item of saleToReverse.items) {
+            const productIndex = updatedInventory.findIndex(p => p.id === item.productId);
+            if (productIndex > -1) {
+                updatedInventory[productIndex].quantity += item.quantity;
+            } else {
+                // This can happen if a product was deleted after the sale
+                // For simplicity, we'll log a warning. A more robust solution
+                // might re-create a product stub or add to an "unlinked" list.
+                console.warn(`Product with ID ${item.productId} not found during sale reversal. It may have been deleted.`);
+            }
+        }
+        
+        setInventory(updatedInventory);
+        setSales(sales.filter(s => s.id !== saleId));
+        toast.success("Sale reversed. Items returned to inventory.");
+    };
+
 
     const value = {
         loading,
@@ -292,6 +319,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteCategory,
         sales,
         createSale,
+        reverseSale,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

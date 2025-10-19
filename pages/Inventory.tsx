@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
 import { formatCurrency, downloadFile, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -15,7 +15,7 @@ import { SAMPLE_XLSX_BASE64 } from '../constants';
 declare const XLSX: any;
 
 const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product, 'id'> | Product) => void; onCancel: () => void }> = ({ product, onSave, onCancel }) => {
-    const { categories } = useAppContext();
+    const { categories, inventory } = useAppContext();
     const [formData, setFormData] = useState({
         name: product?.name || '',
         categoryId: product?.categoryId || '',
@@ -86,6 +86,34 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
         toast.success('Photo captured and added!');
     };
 
+    const generateBarcode = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        
+        const generate = () => {
+            let result = '';
+            for (let i = 0; i < 3; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        let newBarcode;
+        let attempt = 0;
+        const maxAttempts = 100;
+
+        do {
+            newBarcode = generate();
+            attempt++;
+            if(attempt >= maxAttempts) {
+                toast.error("Could not generate a unique 3-letter barcode. Please enter one manually.");
+                return;
+            }
+        } while (inventory.some(p => p.barcode === newBarcode && p.id !== product?.id));
+        
+        setFormData(prev => ({ ...prev, barcode: newBarcode }));
+        toast.success(`Generated barcode: ${newBarcode}`);
+    };
+
     return (
         <>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -111,10 +139,11 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>
                         <div className="flex items-center gap-2">
-                             <div className="flex-grow">
-                                <Input name="barcode" value={formData.barcode} onChange={handleChange} />
-                            </div>
-                            <Button type="button" variant="secondary" onClick={() => setScannerOpenForForm(true)} className="shrink-0 px-3" aria-label="Scan barcode">
+                            <Input name="barcode" value={formData.barcode} onChange={handleChange} className="flex-grow" />
+                            <Button type="button" variant="secondary" size="sm" onClick={generateBarcode} className="shrink-0" title="Generate Barcode">
+                                <RefreshCw className="w-4 h-4" />
+                            </Button>
+                            <Button type="button" variant="secondary" size="sm" onClick={() => setScannerOpenForForm(true)} className="shrink-0 px-2" aria-label="Scan barcode" title="Scan Barcode">
                                 <ScanLine className="w-5 h-5"/>
                             </Button>
                         </div>

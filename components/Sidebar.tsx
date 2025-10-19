@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
-import { LayoutDashboard, ShoppingCart, Archive, Layers, Users, BarChart2, User, Settings, X } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Archive, Layers, Users, BarChart2, User, Settings, X, Receipt } from 'lucide-react';
 
 const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onClick: () => void; }> = ({ to, icon, label, onClick }) => (
     <NavLink
@@ -26,6 +25,7 @@ const Sidebar: React.FC<{ isOpen: boolean, onToggle: () => void }> = ({ isOpen, 
     const masterLinks = [
         { to: "/", icon: <LayoutDashboard className="w-5 h-5" />, label: "Dashboard" },
         { to: "/pos", icon: <ShoppingCart className="w-5 h-5" />, label: "POS" },
+        { to: "/sales", icon: <Receipt className="w-5 h-5" />, label: "Sales" },
         { to: "/inventory", icon: <Archive className="w-5 h-5" />, label: "Inventory" },
         { to: "/categories", icon: <Layers className="w-5 h-5" />, label: "Categories" },
         { to: "/users", icon: <Users className="w-5 h-5" />, label: "Manage Users" },
