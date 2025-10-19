@@ -1,0 +1,7 @@
+{
+  "name": "My POS",
+  "description": "A comprehensive Point of Sale (POS) and inventory management web application designed for small to medium-sized shops. It features master and sub-account management, inventory tracking with images, barcode/QR code scanning, sales reporting, and data backup/restore capabilities.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
