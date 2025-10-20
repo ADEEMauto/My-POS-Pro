@@ -95,8 +95,6 @@ const Dashboard: React.FC = () => {
                         ${product.subCategoryId && categoryMap.get(product.subCategoryId) ? `<br><small style="color: #555;">↳ ${categoryMap.get(product.subCategoryId)}</small>` : ''}
                     </td>
                     <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${product.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.purchasePrice)}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.salePrice)}</td>
                     <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.location || 'N/A'}</td>
                     <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
                 </tr>
@@ -116,8 +114,6 @@ const Dashboard: React.FC = () => {
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Product</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qty</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Purchase Price</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Sale Price</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Location</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Barcode</th>
                             </tr>
@@ -200,8 +196,6 @@ const Dashboard: React.FC = () => {
                         ${product.subCategoryId && categoryMap.get(product.subCategoryId) ? `<br><small style="color: #555;">↳ ${categoryMap.get(product.subCategoryId)}</small>` : ''}
                     </td>
                     <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${product.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.purchasePrice)}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.salePrice)}</td>
                     <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.location || 'N/A'}</td>
                     <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
                 </tr>
@@ -221,8 +215,6 @@ const Dashboard: React.FC = () => {
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Product</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qty</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Purchase Price</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Sale Price</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Location</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Barcode</th>
                             </tr>
