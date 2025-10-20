@@ -251,6 +251,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 name: item.product.name,
                 quantity: item.quantity,
                 price: salePrice,
+                purchasePrice: item.product.purchasePrice,
             });
         }
         

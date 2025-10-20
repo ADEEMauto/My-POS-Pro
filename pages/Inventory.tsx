@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
 import { formatCurrency, downloadFile, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -10,6 +10,10 @@ import BarcodeScanner from '../components/BarcodeScanner';
 import CameraCapture from '../components/CameraCapture';
 import toast from 'react-hot-toast';
 import { SAMPLE_XLSX_BASE64 } from '../constants';
+// @ts-ignore
+import jsPDF from 'jspdf';
+// @ts-ignore
+import html2canvas from 'html2canvas';
 
 // Declare XLSX for typescript
 declare const XLSX: any;
@@ -196,7 +200,7 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
 
 
 const Inventory: React.FC = () => {
-    const { inventory, categories, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel } = useAppContext();
+    const { inventory, categories, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel, shopInfo } = useAppContext();
     const [isModalOpen, setModalOpen] = useState(false);
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
@@ -257,6 +261,140 @@ const Inventory: React.FC = () => {
         }
     };
 
+    const handleDownloadInventory = () => {
+        if (inventory.length === 0) {
+            toast.error("Inventory is empty. Nothing to download.");
+            return;
+        }
+
+        const dataForSheet = inventory.map(product => ({
+            'Name': product.name,
+            'Manufacturer': product.manufacturer,
+            'Category': categoryMap.get(product.categoryId) || product.categoryId,
+            'Sub Category': product.subCategoryId ? (categoryMap.get(product.subCategoryId) || '') : '',
+            'Location': product.location,
+            'Barcode': product.barcode || '',
+            'Quantity': product.quantity,
+            'Purchase Price': product.purchasePrice,
+            'Sale Price': product.salePrice,
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(dataForSheet);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory');
+
+        const filename = `inventory_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(workbook, filename);
+        toast.success("Inventory downloaded successfully!");
+    };
+
+    const handleDownloadPdf = async () => {
+        if (inventory.length === 0) {
+            toast.error("Inventory is empty. Nothing to download.");
+            return;
+        }
+
+        const toastId = toast.loading("Generating PDF...", { duration: Infinity });
+
+        try {
+            // We will create an off-screen element to render our table for PDF generation
+            const pdfContainer = document.createElement('div');
+            pdfContainer.style.position = 'absolute';
+            pdfContainer.style.left = '-9999px';
+            pdfContainer.style.width = '1000px'; // Fixed width for consistent rendering
+            pdfContainer.style.padding = '20px';
+            pdfContainer.style.fontFamily = 'Arial, sans-serif';
+            pdfContainer.style.background = 'white';
+            pdfContainer.style.color = 'black';
+
+            const tableRows = inventory.map(product => `
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">
+                        <strong>${product.name}</strong><br>
+                        <small style="color: #555;">${product.manufacturer}</small>
+                    </td>
+                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">
+                        ${categoryMap.get(product.categoryId) || product.categoryId}
+                        ${product.subCategoryId && categoryMap.get(product.subCategoryId) ? `<br><small style="color: #555;">↳ ${categoryMap.get(product.subCategoryId)}</small>` : ''}
+                    </td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${product.quantity}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.purchasePrice)}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.salePrice)}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.location || 'N/A'}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
+                </tr>
+            `).join('');
+
+            pdfContainer.innerHTML = `
+                <div>
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h1 style="font-size: 24px; margin: 0;">${shopInfo?.name || 'Inventory'}</h1>
+                        <p style="font-size: 12px; margin: 0;">${shopInfo?.address || ''}</p>
+                    </div>
+                    <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Inventory Report</h2>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                        <thead>
+                            <tr style="background-color: #f2f2f2;">
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Product</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qty</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Purchase Price</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Sale Price</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Location</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Barcode</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            document.body.appendChild(pdfContainer);
+
+            const canvas = await html2canvas(pdfContainer, { scale: 2, useCORS: true });
+            
+            document.body.removeChild(pdfContainer);
+
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            let heightLeft = pdfHeight;
+            let position = 0;
+            const margin = 10;
+            const pageHeightWithMargin = pdf.internal.pageSize.getHeight() - (2 * margin);
+
+            pdf.addImage(imgData, 'PNG', margin, margin, pdfWidth - (2 * margin), pdfHeight);
+            heightLeft -= pageHeightWithMargin;
+
+            while (heightLeft > 0) {
+                position -= pageHeightWithMargin;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', margin, position + margin, pdfWidth - (2*margin), pdfHeight);
+                heightLeft -= pageHeightWithMargin;
+            }
+
+            const filename = `inventory_report_${new Date().toISOString().split('T')[0]}.pdf`;
+            pdf.save(filename);
+            
+            toast.success("PDF downloaded successfully!", { id: toastId });
+        } catch (error) {
+            console.error("Failed to generate PDF:", error);
+            toast.error("Failed to generate PDF.", { id: toastId });
+        }
+    };
+
+
     const filteredInventory = useMemo(() => {
         return inventory.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
     }, [inventory, searchTerm]);
@@ -286,6 +424,8 @@ const Inventory: React.FC = () => {
                     <Button onClick={() => setScannerOpen(true)} variant="secondary" className='gap-2'><ScanLine size={18}/> Scan</Button>
                     <input type="file" ref={fileInputRef} onChange={handleExcelUpload} accept=".xlsx, .xls" className="hidden" />
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className='gap-2'><Upload size={18}/> Import</Button>
+                    <Button onClick={handleDownloadInventory} variant="secondary" className='gap-2'><Download size={18}/> Export Excel</Button>
+                    <Button onClick={handleDownloadPdf} variant="secondary" className='gap-2'><FileText size={18}/> Download PDF</Button>
                     <Button onClick={() => { setEditingProduct(undefined); setModalOpen(true); }} className='gap-2'><Plus size={18}/> Add Product</Button>
                 </div>
             </div>

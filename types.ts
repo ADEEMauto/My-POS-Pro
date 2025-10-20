@@ -1,4 +1,3 @@
-
 export interface ShopInfo {
     name: string;
     address: string;
@@ -42,6 +41,7 @@ export interface SaleItem {
     name: string;
     quantity: number;
     price: number; // Sale price per item
+    purchasePrice: number; // Purchase price per item at time of sale
 }
 
 export interface Sale {

@@ -7,12 +7,21 @@ import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 
 const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale, onClose }) => {
+    
+    const estimatedProfit = sale.items.reduce((acc, item) => {
+        const cost = item.purchasePrice || 0; // Handle old sales data without purchasePrice
+        return acc + (item.price - cost) * item.quantity;
+    }, 0);
+
     return (
         <Modal isOpen={true} onClose={onClose} title={`Sale Details - ID: ...${sale.id.slice(-6)}`} size="lg">
             <div className="space-y-4">
                 <div>
                     <p><strong>Date:</strong> {formatDate(sale.date)}</p>
-                    <p><strong>Total Amount:</strong> <span className="font-bold text-lg text-primary-600">{formatCurrency(sale.total)}</span></p>
+                    <div className="flex justify-between items-baseline mt-2">
+                        <p><strong>Total Amount:</strong> <span className="font-bold text-lg text-primary-600">{formatCurrency(sale.total)}</span></p>
+                        <p><strong>Est. Profit:</strong> <span className="font-bold text-base text-green-600">{formatCurrency(estimatedProfit)}</span></p>
+                    </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto pr-2">
                     <table className="w-full text-sm text-left">

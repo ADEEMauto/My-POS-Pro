@@ -1,5 +1,7 @@
+
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+// FIX: Changed react-router-dom import to use namespace import to resolve module export errors.
+import * as ReactRouterDOM from 'react-router-dom';
 import { AppProvider, useAppContext } from './contexts/AppContext';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
@@ -28,36 +30,36 @@ const AppRoutes: React.FC = () => {
 
     if (!shopInfo) {
         return (
-            <Routes>
-                <Route path="/setup" element={<Setup />} />
-                <Route path="*" element={<Navigate to="/setup" />} />
-            </Routes>
+            <ReactRouterDOM.Routes>
+                <ReactRouterDOM.Route path="/setup" element={<Setup />} />
+                <ReactRouterDOM.Route path="*" element={<ReactRouterDOM.Navigate to="/setup" />} />
+            </ReactRouterDOM.Routes>
         );
     }
     
     if (!currentUser) {
         return (
-            <Routes>
-                <Route path="/auth" element={<Auth />} />
-                <Route path="*" element={<Navigate to="/auth" />} />
-            </Routes>
+            <ReactRouterDOM.Routes>
+                <ReactRouterDOM.Route path="/auth" element={<Auth />} />
+                <ReactRouterDOM.Route path="*" element={<ReactRouterDOM.Navigate to="/auth" />} />
+            </ReactRouterDOM.Routes>
         );
     }
 
     return (
         <Layout>
-            <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/pos" element={<POS />} />
-                <Route path="/sales" element={<Sales />} />
-                <Route path="/inventory" element={<Inventory />} />
-                <Route path="/categories" element={<Categories />} />
-                <Route path="/users" element={<Users />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
+            <ReactRouterDOM.Routes>
+                <ReactRouterDOM.Route path="/" element={<Dashboard />} />
+                <ReactRouterDOM.Route path="/pos" element={<POS />} />
+                <ReactRouterDOM.Route path="/sales" element={<Sales />} />
+                <ReactRouterDOM.Route path="/inventory" element={<Inventory />} />
+                <ReactRouterDOM.Route path="/categories" element={<Categories />} />
+                <ReactRouterDOM.Route path="/users" element={<Users />} />
+                <ReactRouterDOM.Route path="/reports" element={<Reports />} />
+                <ReactRouterDOM.Route path="/profile" element={<Profile />} />
+                <ReactRouterDOM.Route path="/settings" element={<Settings />} />
+                <ReactRouterDOM.Route path="*" element={<ReactRouterDOM.Navigate to="/" />} />
+            </ReactRouterDOM.Routes>
         </Layout>
     );
 };
@@ -66,9 +68,9 @@ const AppRoutes: React.FC = () => {
 const App: React.FC = () => {
     return (
         <AppProvider>
-            <HashRouter>
+            <ReactRouterDOM.HashRouter>
                 <AppRoutes />
-            </HashRouter>
+            </ReactRouterDOM.HashRouter>
             <Toaster position="top-right" toastOptions={{
                 className: 'bg-white text-gray-900 shadow-lg rounded-lg p-4',
                 success: {

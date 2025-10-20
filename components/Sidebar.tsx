@@ -1,10 +1,11 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+// FIX: Changed react-router-dom import to use namespace import to resolve module export error.
+import * as ReactRouterDOM from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
 import { LayoutDashboard, ShoppingCart, Archive, Layers, Users, BarChart2, User, Settings, X, Receipt } from 'lucide-react';
 
 const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onClick: () => void; }> = ({ to, icon, label, onClick }) => (
-    <NavLink
+    <ReactRouterDOM.NavLink
         to={to}
         onClick={onClick}
         className={({ isActive }) =>
@@ -15,7 +16,7 @@ const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onCl
     >
         {icon}
         <span className="ml-3">{label}</span>
-    </NavLink>
+    </ReactRouterDOM.NavLink>
 );
 
 const Sidebar: React.FC<{ isOpen: boolean, onToggle: () => void }> = ({ isOpen, onToggle }) => {
@@ -36,6 +37,7 @@ const Sidebar: React.FC<{ isOpen: boolean, onToggle: () => void }> = ({ isOpen, 
     const subLinks = [
         { to: "/", icon: <LayoutDashboard className="w-5 h-5" />, label: "Dashboard" },
         { to: "/pos", icon: <ShoppingCart className="w-5 h-5" />, label: "POS" },
+        { to: "/settings", icon: <Settings className="w-5 h-5" />, label: "Settings" },
     ];
     
     const links = isMaster ? masterLinks : subLinks;
