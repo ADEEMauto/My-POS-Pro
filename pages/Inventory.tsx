@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
 import { formatCurrency, downloadFile, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -200,14 +200,25 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
 
 
 const Inventory: React.FC = () => {
-    const { inventory, categories, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel, shopInfo } = useAppContext();
+    const { inventory, categories, sales, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel, shopInfo } = useAppContext();
     const [isModalOpen, setModalOpen] = useState(false);
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
     const [searchTerm, setSearchTerm] = useState('');
+    const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isMaster = currentUser?.role === 'master';
+
+    const soldProductIds = useMemo(() => {
+        const ids = new Set<string>();
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                ids.add(item.productId);
+            });
+        });
+        return ids;
+    }, [sales]);
 
     const categoryMap = useMemo(() => {
         const map = new Map<string, string>();
@@ -232,9 +243,14 @@ const Inventory: React.FC = () => {
         setModalOpen(true);
     };
     
-    const handleDelete = (productId: string) => {
-        if(window.confirm("Are you sure you want to delete this product?")) {
-            deleteProduct(productId);
+    const handleDelete = (product: Product) => {
+        setProductToDelete(product);
+    };
+
+    const handleConfirmDelete = () => {
+        if (productToDelete) {
+            deleteProduct(productToDelete.id);
+            setProductToDelete(null);
         }
     };
     
@@ -470,12 +486,16 @@ const Inventory: React.FC = () => {
                                         </span>
                                     )}
                                 </td>
-                                <td className={`px-6 py-4 font-semibold ${product.quantity <= 5 ? 'text-red-500' : 'text-green-600'}`}>{product.quantity}</td>
+                                <td className={`px-6 py-4 font-semibold ${
+                                    (product.quantity <= 5 && product.quantity !== 1) || (product.quantity === 1 && soldProductIds.has(product.id))
+                                    ? 'text-red-500'
+                                    : 'text-green-600'
+                                }`}>{product.quantity}</td>
                                 <td className="px-6 py-4">{formatCurrency(product.salePrice)}</td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
                                         <button onClick={() => handleEdit(product)} className="text-blue-600 hover:text-blue-800"><Edit size={18}/></button>
-                                        <button onClick={() => handleDelete(product.id)} className="text-red-600 hover:text-red-800"><Trash2 size={18}/></button>
+                                        <button onClick={() => handleDelete(product)} className="text-red-600 hover:text-red-800"><Trash2 size={18}/></button>
                                     </div>
                                 </td>
                             </tr>
@@ -504,13 +524,17 @@ const Inventory: React.FC = () => {
                                 )}
                             </div>
                             <div className="flex justify-between items-center">
-                                <span><strong className="text-gray-600">Stock: </strong><span className={`font-semibold ${product.quantity <= 5 ? 'text-red-500' : 'text-green-600'}`}>{product.quantity}</span></span>
+                                <span><strong className="text-gray-600">Stock: </strong><span className={`font-semibold ${
+                                    (product.quantity <= 5 && product.quantity !== 1) || (product.quantity === 1 && soldProductIds.has(product.id))
+                                    ? 'text-red-500'
+                                    : 'text-green-600'
+                                }`}>{product.quantity}</span></span>
                                 <span><strong className="text-gray-600">Price: </strong><span className="font-semibold">{formatCurrency(product.salePrice)}</span></span>
                             </div>
                         </div>
                         <div className="flex justify-end space-x-2 border-t mt-3 pt-3">
                              <Button onClick={() => handleEdit(product)} variant="ghost" size="sm" className="flex items-center gap-1"><Edit size={16}/> Edit</Button>
-                             <Button onClick={() => handleDelete(product.id)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Delete</Button>
+                             <Button onClick={() => handleDelete(product)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Delete</Button>
                         </div>
                     </div>
                 ))}
@@ -524,6 +548,23 @@ const Inventory: React.FC = () => {
             <Modal isOpen={isScannerOpen} onClose={() => setScannerOpen(false)} title="Scan Barcode to Add Product">
                 <p className="text-center text-gray-600 mb-4">Scan a product's barcode. It will be added to a new product form.</p>
                 <BarcodeScanner onScanSuccess={handleScanSuccess} />
+            </Modal>
+
+            <Modal
+                isOpen={!!productToDelete}
+                onClose={() => setProductToDelete(null)}
+                title="Confirm Product Deletion"
+                size="md"
+            >
+                <div className="text-center">
+                    <XCircle className="mx-auto h-12 w-12 text-red-500" />
+                    <p className="mt-4 text-gray-700">Are you sure you want to delete this product: <br/><strong className="text-gray-900">{productToDelete?.name}</strong>?</p>
+                    <p className="text-sm text-gray-500">This action will permanently remove the product from your inventory and cannot be undone.</p>
+                </div>
+                <div className="flex justify-center gap-4 mt-6">
+                    <Button variant="secondary" onClick={() => setProductToDelete(null)}>Cancel</Button>
+                    <Button variant="danger" onClick={handleConfirmDelete}>Yes, Delete</Button>
+                </div>
             </Modal>
         </div>
     );

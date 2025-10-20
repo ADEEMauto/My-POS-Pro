@@ -327,7 +327,12 @@ const Dashboard: React.FC = () => {
                             <p className="font-bold">Out of Stock Items</p>
                             <p>You have {outOfStockProducts.length} item(s) that are currently out of stock.</p>
                         </div>
-                        <Button onClick={() => setOutOfStockModalOpen(true)} variant="secondary" size="sm" className="self-start sm:self-center">View Details</Button>
+                        <div className="flex items-center gap-2 self-start sm:self-center">
+                            <Button onClick={() => setOutOfStockModalOpen(true)} variant="secondary" size="sm">View Details</Button>
+                            <Button onClick={handleDownloadOutOfStockPdf} variant="secondary" size="sm" className="flex items-center gap-1">
+                                <FileText size={16}/> Download PDF
+                            </Button>
+                        </div>
                     </div>
                 )}
             </div>
