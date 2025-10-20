@@ -65,9 +65,9 @@ const Settings: React.FC = () => {
     
     return (
         <div className="space-y-8 max-w-3xl mx-auto">
-            <h1 className="text-3xl font-bold text-gray-800">Settings</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Settings</h1>
 
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                 <div className="flex items-center gap-3 mb-4">
                     <Server className="w-6 h-6 text-primary-600" />
                     <h2 className="text-xl font-semibold text-gray-800">Data Backup & Restore</h2>

@@ -14,7 +14,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; color: string }> = ({ title, value, icon, color }) => (
-    <div className="bg-white p-6 rounded-lg shadow-md flex items-center space-x-4">
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md flex items-center space-x-4">
         <div className={`p-3 rounded-full ${color}`}>
             {icon}
         </div>
@@ -26,7 +26,7 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
 );
 
 const QuickLink: React.FC<{ to: string; label: string; icon: React.ReactNode }> = ({ to, label, icon }) => (
-    <ReactRouterDOM.Link to={to} className="flex flex-col items-center justify-center bg-white p-6 rounded-lg shadow-md hover:shadow-lg hover:bg-primary-50 transition-all text-center">
+    <ReactRouterDOM.Link to={to} className="flex flex-col items-center justify-center bg-white p-4 sm:p-6 rounded-lg shadow-md hover:shadow-lg hover:bg-primary-50 transition-all text-center">
         <div className="mb-2 text-primary-600">{icon}</div>
         <span className="font-semibold text-gray-700">{label}</span>
     </ReactRouterDOM.Link>
@@ -282,7 +282,7 @@ const Dashboard: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800">Welcome, {currentUser?.username}!</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Welcome, {currentUser?.username}!</h1>
 
             {isMaster && (
                 <>
@@ -296,7 +296,7 @@ const Dashboard: React.FC = () => {
             )}
 
             <div>
-                <h2 className="text-2xl font-semibold text-gray-700 mb-4">Quick Actions</h2>
+                <h2 className="text-xl sm:text-2xl font-semibold text-gray-700 mb-4">Quick Actions</h2>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
                     <QuickLink to="/pos" label="Start Selling" icon={<ShoppingCart size={32} />} />
                     {isMaster && (

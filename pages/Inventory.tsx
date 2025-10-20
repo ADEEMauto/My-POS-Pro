@@ -432,7 +432,7 @@ const Inventory: React.FC = () => {
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h1 className="text-3xl font-bold text-gray-800">Inventory</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Inventory</h1>
                 <div className="flex items-center gap-2 flex-wrap justify-center">
                     <div className="w-full sm:w-auto">
                       <Input placeholder="Search inventory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} icon={<Search className="w-5 h-5 text-gray-400" />} />

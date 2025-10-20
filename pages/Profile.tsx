@@ -51,9 +51,9 @@ const Profile: React.FC = () => {
 
     return (
         <div className="space-y-8 max-w-2xl mx-auto">
-            <h1 className="text-3xl font-bold text-gray-800">My Profile</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">My Profile</h1>
 
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold mb-4">Update Username</h2>
                 <form onSubmit={handleProfileUpdate} className="space-y-4">
                     <Input
@@ -68,7 +68,7 @@ const Profile: React.FC = () => {
                 </form>
             </div>
             
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold mb-4">Change Password</h2>
                 <form onSubmit={handlePasswordChange} className="space-y-4">
                      <Input

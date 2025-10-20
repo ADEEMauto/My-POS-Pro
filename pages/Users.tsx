@@ -43,7 +43,7 @@ const Users: React.FC = () => {
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold text-gray-800">Manage Users</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Manage Users</h1>
                 <Button onClick={() => setModalOpen(true)} className="flex items-center gap-2">
                     <Plus size={18} /> Add Sub Account
                 </Button>
@@ -52,7 +52,7 @@ const Users: React.FC = () => {
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
                 <ul className="divide-y divide-gray-200">
                     {users.map(user => (
-                        <li key={user.id} className="px-6 py-4 flex items-center justify-between">
+                        <li key={user.id} className="px-4 sm:px-6 py-4 flex items-center justify-between">
                             <div>
                                 <p className="text-lg font-medium text-gray-900">{user.username}</p>
                                 <p className={`text-sm font-semibold px-2 py-0.5 rounded-full inline-block ${user.role === 'master' ? 'bg-primary-100 text-primary-800' : 'bg-gray-200 text-gray-800'}`}>

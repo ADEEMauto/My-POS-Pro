@@ -79,7 +79,7 @@ const Sales: React.FC = () => {
     
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800">Sales History</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales History</h1>
             
             {sales.length === 0 ? (
                  <div className="text-center py-10 bg-white rounded-lg shadow">

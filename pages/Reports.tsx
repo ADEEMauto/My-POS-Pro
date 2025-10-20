@@ -56,9 +56,15 @@ const Reports: React.FC = () => {
     }, [filteredSales]);
 
     const itemSalesData = useMemo(() => {
-        const itemSales: { [key: string]: { product: Product, quantity: number, revenue: number, profit: number } } = {};
+        const itemSales: { [key: string]: { product: Product, quantity: number, revenue: number, profit: number, profitPercentage: number } } = {};
         inventory.forEach(p => {
-             itemSales[p.id] = { product: p, quantity: 0, revenue: 0, profit: 0 };
+             const purchasePrice = p.purchasePrice;
+             const salePrice = p.salePrice;
+             let profitPercentage = 0;
+             if (purchasePrice > 0 && salePrice > purchasePrice) {
+                 profitPercentage = ((salePrice - purchasePrice) / purchasePrice) * 100;
+             }
+             itemSales[p.id] = { product: p, quantity: 0, revenue: 0, profit: 0, profitPercentage };
         });
 
         filteredSales.forEach(sale => {
@@ -75,7 +81,7 @@ const Reports: React.FC = () => {
         return Object.values(itemSales);
     }, [filteredSales, inventory]);
 
-    const mostProfitable = useMemo(() => [...itemSalesData].sort((a,b) => b.profit - a.profit).slice(0, 5), [itemSalesData]);
+    const mostProfitable = useMemo(() => [...itemSalesData].filter(i => i.profitPercentage > 0).sort((a,b) => b.profitPercentage - a.profitPercentage).slice(0, 5), [itemSalesData]);
     const mostSelling = useMemo(() => [...itemSalesData].sort((a,b) => b.quantity - a.quantity).slice(0, 5), [itemSalesData]);
     const leastSelling = useMemo(() => itemSalesData.filter(i => i.quantity > 0).sort((a, b) => a.quantity - b.quantity).slice(0, 5), [itemSalesData]);
 
@@ -86,8 +92,8 @@ const Reports: React.FC = () => {
     }, 0);
     const totalProfit = totalRevenue - totalCostOfGoodsSold;
 
-    const handleDownloadReportPdf = async (products: Product[], reportTitle: string, filenamePrefix: string) => {
-        if (products.length === 0) {
+    const handleDownloadReportPdf = async (reportData: (Product | { product: Product, quantity: number })[], reportTitle: string, filenamePrefix: string) => {
+        if (reportData.length === 0) {
             toast.error(`No items to include in the ${reportTitle}.`);
             return;
         }
@@ -104,23 +110,39 @@ const Reports: React.FC = () => {
             pdfContainer.style.background = 'white';
             pdfContainer.style.color = 'black';
 
-            const tableRows = products.map(product => `
-                <tr>
-                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">
-                        <strong>${product.name}</strong><br>
-                        <small style="color: #555;">${product.manufacturer}</small>
-                    </td>
-                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">
-                        ${categoryMap.get(product.categoryId) || product.categoryId}
-                        ${product.subCategoryId && categoryMap.get(product.subCategoryId) ? `<br><small style="color: #555;">↳ ${categoryMap.get(product.subCategoryId)}</small>` : ''}
-                    </td>
-                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${product.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.purchasePrice)}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top;">${formatCurrency(product.salePrice)}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.location || 'N/A'}</td>
-                    <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
+            const isSellingReport = filenamePrefix.includes('selling');
+
+            const tableHeaderHtml = `
+                <tr style="background-color: #f2f2f2;">
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Product</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Manufacturer</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
+                    ${isSellingReport ? '<th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Sold Qty</th>' : ''}
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Stock Qty</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Location</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Barcode</th>
                 </tr>
-            `).join('');
+            `;
+
+            const tableRows = reportData.map(item => {
+                const product = 'product' in item ? item.product : item;
+                const soldQuantity = 'product' in item ? item.quantity : null;
+
+                return `
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;"><strong>${product.name}</strong></td>
+                        <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.manufacturer}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">
+                            ${categoryMap.get(product.categoryId) || product.categoryId}
+                            ${product.subCategoryId && categoryMap.get(product.subCategoryId) ? `<br><small style="color: #555;">↳ ${categoryMap.get(product.subCategoryId)}</small>` : ''}
+                        </td>
+                        ${isSellingReport ? `<td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${soldQuantity}</td>` : ''}
+                        <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${product.quantity}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.location || 'N/A'}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
+                    </tr>
+                `;
+            }).join('');
 
             pdfContainer.innerHTML = `
                 <div>
@@ -132,15 +154,7 @@ const Reports: React.FC = () => {
                     <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                         <thead>
-                            <tr style="background-color: #f2f2f2;">
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Product</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qty</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Purchase Price</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Sale Price</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Location</th>
-                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Barcode</th>
-                            </tr>
+                            ${tableHeaderHtml}
                         </thead>
                         <tbody>
                             ${tableRows}
@@ -203,7 +217,7 @@ const Reports: React.FC = () => {
     
     return (
         <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-gray-800">Sales Reports</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales Reports</h1>
 
             <div className="bg-white p-4 rounded-lg shadow-md flex flex-wrap items-center gap-4">
                 <h3 className="font-semibold">Filter by Date:</h3>
@@ -229,14 +243,14 @@ const Reports: React.FC = () => {
                         <FileText size={18} /> Out of Stock Items
                     </Button>
                     <Button
-                        onClick={() => handleDownloadReportPdf(mostSelling.map(item => item.product), 'Most Selling Items Report', 'most_selling')}
+                        onClick={() => handleDownloadReportPdf(mostSelling, 'Most Selling Items Report', 'most_selling')}
                         variant="secondary"
                         className="flex items-center gap-2"
                     >
                         <FileText size={18} /> Most Selling Items
                     </Button>
                     <Button
-                        onClick={() => handleDownloadReportPdf(leastSelling.map(item => item.product), 'Least Selling Items Report', 'least_selling')}
+                        onClick={() => handleDownloadReportPdf(leastSelling, 'Least Selling Items Report', 'least_selling')}
                         variant="secondary"
                         className="flex items-center gap-2"
                     >
@@ -246,21 +260,21 @@ const Reports: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 <div className="bg-white p-6 rounded-lg shadow-md">
+                 <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                      <h2 className="text-xl font-semibold text-gray-700 mb-2">Total Investment</h2>
                      <p className="text-3xl font-bold text-blue-600">{formatCurrency(totalInvestment)}</p>
                  </div>
-                 <div className="bg-white p-6 rounded-lg shadow-md">
+                 <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                      <h2 className="text-xl font-semibold text-gray-700 mb-2">Total Sales (Filtered)</h2>
                      <p className="text-3xl font-bold text-green-600">{formatCurrency(totalRevenue)}</p>
                  </div>
-                  <div className="bg-white p-6 rounded-lg shadow-md">
+                  <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                      <h2 className="text-xl font-semibold text-gray-700 mb-2">Total Profit (Filtered)</h2>
                      <p className="text-3xl font-bold text-indigo-600">{formatCurrency(totalProfit)}</p>
                  </div>
             </div>
 
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold mb-4">Sales Overview</h2>
                  <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={salesDataForChart}>
@@ -275,18 +289,18 @@ const Reports: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                 <div className="bg-white p-6 rounded-lg shadow-md">
+                 <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold mb-4">Most Profitable Items</h2>
                     <ul className="space-y-2">
                         {mostProfitable.map(item => (
                             <li key={item.product.id} className="flex justify-between items-center text-sm">
                                 <span>{item.product.name}</span>
-                                <span className="font-semibold bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">{formatCurrency(item.profit)}</span>
+                                <span className="font-semibold bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">{item.profitPercentage.toFixed(2)}%</span>
                             </li>
                         ))}
                     </ul>
                 </div>
-                <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold mb-4">Most Selling Items</h2>
                     <ul className="space-y-2">
                         {mostSelling.map(item => (
@@ -297,7 +311,7 @@ const Reports: React.FC = () => {
                         ))}
                     </ul>
                 </div>
-                <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold mb-4">Least Selling Items</h2>
                      <ul className="space-y-2">
                         {leastSelling.map(item => (

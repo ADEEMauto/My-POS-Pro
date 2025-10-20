@@ -67,9 +67,9 @@ const Categories: React.FC = () => {
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold text-gray-800">Manage Categories</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Manage Categories</h1>
 
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold mb-4">{editingCategory ? `Editing "${editingCategory.name}"` : 'Add New Category'}</h2>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                     <div className="flex-grow">
@@ -104,7 +104,7 @@ const Categories: React.FC = () => {
 
             <div className="space-y-4">
                 {mainCategories.map(mainCat => (
-                    <div key={mainCat.id} className="bg-white p-6 rounded-lg shadow-md">
+                    <div key={mainCat.id} className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                         <div className="flex justify-between items-center pb-3 border-b mb-3">
                             <h3 className="text-lg font-semibold">{mainCat.name}</h3>
                             <div className="space-x-3">
