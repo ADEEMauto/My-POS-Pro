@@ -9,7 +9,6 @@ import Button from '../components/ui/Button';
 import BarcodeScanner from '../components/BarcodeScanner';
 import CameraCapture from '../components/CameraCapture';
 import toast from 'react-hot-toast';
-import { SAMPLE_XLSX_BASE64 } from '../constants';
 // @ts-ignore
 import jsPDF from 'jspdf';
 // @ts-ignore
@@ -424,26 +423,44 @@ const Inventory: React.FC = () => {
     
     const downloadSampleExcel = () => {
         try {
-            const byteCharacters = atob(SAMPLE_XLSX_BASE64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+            const sampleData = [
+                {
+                    'Name': 'Classic Lays',
+                    'Manufacturer': 'PepsiCo',
+                    'Category ID': 'snacks',
+                    'SubCategory ID': 'chips',
+                    'Location': 'Rack A1',
+                    'Barcode': '89014911',
+                    'Quantity': 50,
+                    'Purchase Price (Rs)': 40,
+                    'Sale Price (Rs)': 50,
+                    'Image URL': 'https://example.com/lays.jpg'
+                },
+                {
+                    'Name': 'Sooper',
+                    'Manufacturer': 'EBM',
+                    'Category ID': 'biscuits',
+                    'SubCategory ID': '', 
+                    'Location': 'Drawer B2',
+                    'Barcode': '89014914',
+                    'Quantity': 80,
+                    'Purchase Price (Rs)': 25,
+                    'Sale Price (Rs)': 30,
+                    'Image URL': ''
+                }
+            ];
+    
+            const worksheet = XLSX.utils.json_to_sheet(sampleData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Sample');
             
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'sample-inventory.xlsx';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            toast.success("Sample template downloading...");
+            XLSX.writeFile(workbook, 'sample-inventory-template.xlsx');
+    
+            toast.success("Sample template downloaded!");
+    
         } catch (error) {
-            console.error("Download failed:", error);
-            toast.error("Could not download the sample file.");
+            console.error("Failed to download sample Excel:", error);
+            toast.error("Could not generate the sample file.");
         }
     };
 
