@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 // @ts-ignore
 import html2canvas from 'html2canvas';
 
-const ProductCard: React.FC<{ product: Product; onAddToCart: (product: Product) => void }> = ({ product, onAddToCart }) => {
+const ProductCard: React.FC<{ product: Product; onAddToCart: (product: Product) => void; categoryName?: string; }> = ({ product, onAddToCart, categoryName }) => {
     const isOutOfStock = product.quantity <= 0;
     return (
         <div
@@ -28,7 +28,9 @@ const ProductCard: React.FC<{ product: Product; onAddToCart: (product: Product) 
             )}
             <img src={product.imageUrl || 'https://picsum.photos/200'} alt={product.name} className="w-full h-32 object-cover rounded-md mb-2" />
             <h3 className="font-semibold text-gray-800 text-sm truncate">{product.name}</h3>
-            <p className="text-xs text-gray-500">{product.manufacturer}</p>
+            <p className="text-xs text-gray-500 truncate">
+                {categoryName || 'N/A'} &bull; {product.manufacturer} &bull; {product.location || 'N/A'}
+            </p>
             <p className="text-lg font-bold text-primary-600 mt-1">{formatCurrency(product.salePrice)}</p>
         </div>
     );
@@ -43,6 +45,14 @@ const POS: React.FC = () => {
     const [completedSale, setCompletedSale] = useState<Sale | null>(null);
 
     const receiptRef = useRef<HTMLDivElement>(null);
+
+    const categoryMap = useMemo(() => {
+        const map = new Map<string, string>();
+        categories.forEach(cat => {
+            map.set(cat.id, cat.name);
+        });
+        return map;
+    }, [categories]);
 
     const addToCart = (product: Product) => {
         setCart(prevCart => {
@@ -163,7 +173,12 @@ const POS: React.FC = () => {
                 </div>
                 <div className="flex-grow overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {filteredInventory.map(product => (
-                        <ProductCard key={product.id} product={product} onAddToCart={addToCart} />
+                        <ProductCard 
+                            key={product.id} 
+                            product={product} 
+                            onAddToCart={addToCart}
+                            categoryName={categoryMap.get(product.categoryId)}
+                        />
                     ))}
                 </div>
             </div>
