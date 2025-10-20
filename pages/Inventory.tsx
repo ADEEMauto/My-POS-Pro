@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
-import { formatCurrency, downloadFile, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle } from 'lucide-react';
+import { formatCurrency, compressImage } from '../utils/helpers';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -207,6 +207,7 @@ const Inventory: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isSampleViewOpen, setSampleViewOpen] = useState(false);
 
     const isMaster = currentUser?.role === 'master';
 
@@ -422,8 +423,28 @@ const Inventory: React.FC = () => {
     }
     
     const downloadSampleExcel = () => {
-        const data = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${SAMPLE_XLSX_BASE64}`;
-        downloadFile(data, 'sample-inventory.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        try {
+            const byteCharacters = atob(SAMPLE_XLSX_BASE64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+            
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'sample-inventory.xlsx';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            toast.success("Sample template downloading...");
+        } catch (error) {
+            console.error("Download failed:", error);
+            toast.error("Could not download the sample file.");
+        }
     };
 
     return (
@@ -443,8 +464,11 @@ const Inventory: React.FC = () => {
                 </div>
             </div>
              <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-blue-50 p-3 rounded-md">
-                <p className="text-sm text-blue-700 text-center md:text-left">Need help with bulk import? Download our sample Excel template.</p>
-                <Button onClick={downloadSampleExcel} variant="ghost" size="sm" className="flex items-center gap-2 shrink-0"><Download size={16}/> Download Template</Button>
+                <p className="text-sm text-blue-700 text-center md:text-left">Need help with bulk import? View or download our sample Excel template.</p>
+                <div className="flex items-center gap-2 shrink-0">
+                    <Button onClick={() => setSampleViewOpen(true)} variant="ghost" size="sm" className="flex items-center gap-2"><Eye size={16}/> View</Button>
+                    <Button onClick={downloadSampleExcel} variant="ghost" size="sm" className="flex items-center gap-2"><Download size={16}/> Download</Button>
+                </div>
              </div>
              {inventory.length === 0 && (
                 <div className="text-center py-10 bg-white rounded-lg shadow">
@@ -561,6 +585,66 @@ const Inventory: React.FC = () => {
                 <div className="flex justify-center gap-4 mt-6">
                     <Button variant="secondary" onClick={() => setProductToDelete(null)}>Cancel</Button>
                     <Button variant="danger" onClick={handleConfirmDelete}>Yes, Delete</Button>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={isSampleViewOpen}
+                onClose={() => setSampleViewOpen(false)}
+                title="Excel Import Template Preview"
+                size="2xl"
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600">
+                        Your Excel file should have these exact column headers. The order of columns does not matter. Fields marked with <span className="text-red-500 font-semibold">*</span> are required.
+                    </p>
+                    <div className="overflow-x-auto rounded-lg border">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-100">
+                                <tr>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Name <span className="text-red-500">*</span></th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Manufacturer</th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Category ID <span className="text-red-500">*</span></th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">SubCategory ID</th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Location</th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Barcode</th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Quantity <span className="text-red-500">*</span></th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Purchase Price (Rs) <span className="text-red-500">*</span></th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Sale Price (Rs) <span className="text-red-500">*</span></th>
+                                    <th className="p-2 font-semibold whitespace-nowrap">Image URL</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                <tr className="bg-white">
+                                    <td className="p-2">Classic Lays</td>
+                                    <td className="p-2">PepsiCo</td>
+                                    <td className="p-2">snacks</td>
+                                    <td className="p-2">chips</td>
+                                    <td className="p-2">Rack A1</td>
+                                    <td className="p-2">89014911</td>
+                                    <td className="p-2">50</td>
+                                    <td className="p-2">40</td>
+                                    <td className="p-2">50</td>
+                                    <td className="p-2 text-gray-500 text-xs truncate">https://example.com/image.jpg</td>
+                                </tr>
+                                <tr className="bg-gray-50">
+                                    <td className="p-2">Sooper</td>
+                                    <td className="p-2">EBM</td>
+                                    <td className="p-2">biscuits</td>
+                                    <td className="p-2 text-gray-500 text-xs">(leave empty if none)</td>
+                                    <td className="p-2">Drawer B2</td>
+                                    <td className="p-2">89014914</td>
+                                    <td className="p-2">80</td>
+                                    <td className="p-2">25</td>
+                                    <td className="p-2">30</td>
+                                    <td className="p-2 text-gray-500 text-xs">(optional)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                        <Button variant="secondary" onClick={() => setSampleViewOpen(false)}>Close</Button>
+                    </div>
                 </div>
             </Modal>
         </div>
