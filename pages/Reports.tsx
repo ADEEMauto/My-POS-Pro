@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { formatCurrency } from '../utils/helpers';
@@ -110,35 +111,34 @@ const Reports: React.FC = () => {
             pdfContainer.style.background = 'white';
             pdfContainer.style.color = 'black';
 
-            const isSellingReport = filenamePrefix.includes('selling');
-
             const tableHeaderHtml = `
                 <tr style="background-color: #f2f2f2;">
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Product</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Manufacturer</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Sr. No.</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Name of Item</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Manufacturing</th>
                     <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
-                    ${isSellingReport ? '<th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Sold Qty</th>' : ''}
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Stock Qty</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Location</th>
-                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Barcode</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Remaining Quantity</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Quantity Sold</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Bar Code</th>
                 </tr>
             `;
 
-            const tableRows = reportData.map(item => {
+            const tableRows = reportData.map((item, index) => {
                 const product = 'product' in item ? item.product : item;
-                const soldQuantity = 'product' in item ? item.quantity : null;
+                const salesInfo = itemSalesData.find(d => d.product.id === product.id);
+                const soldQuantity = salesInfo ? salesInfo.quantity : 0;
 
                 return `
                     <tr>
+                        <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${index + 1}</td>
                         <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;"><strong>${product.name}</strong></td>
                         <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.manufacturer}</td>
                         <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">
                             ${categoryMap.get(product.categoryId) || product.categoryId}
                             ${product.subCategoryId && categoryMap.get(product.subCategoryId) ? `<br><small style="color: #555;">↳ ${categoryMap.get(product.subCategoryId)}</small>` : ''}
                         </td>
-                        ${isSellingReport ? `<td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${soldQuantity}</td>` : ''}
                         <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${product.quantity}</td>
-                        <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.location || 'N/A'}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top;">${soldQuantity}</td>
                         <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
                     </tr>
                 `;
@@ -286,6 +286,52 @@ const Reports: React.FC = () => {
                         <Bar dataKey="sales" fill="#ff4747" />
                     </BarChart>
                 </ResponsiveContainer>
+            </div>
+
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md col-span-1 lg:col-span-3">
+                <h2 className="text-xl font-semibold mb-4">Item Profitability Analysis</h2>
+                <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm text-left text-gray-500">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                            <tr>
+                                <th scope="col" className="px-4 py-3">Product</th>
+                                <th scope="col" className="px-4 py-3 text-right">Purchase Price</th>
+                                <th scope="col" className="px-4 py-3 text-right">Sale Price</th>
+                                <th scope="col" className="px-4 py-3 text-right">Profit Margin</th>
+                                <th scope="col" className="px-4 py-3 text-right">Profit %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {itemSalesData
+                                .sort((a, b) => b.profitPercentage - a.profitPercentage)
+                                .map(item => {
+                                    const profitMargin = item.product.salePrice - item.product.purchasePrice;
+                                    const hasProfit = item.product.purchasePrice > 0 && item.product.salePrice > item.product.purchasePrice;
+                                    return (
+                                        <tr key={item.product.id} className="bg-white border-b hover:bg-gray-50">
+                                            <td className="px-4 py-2 font-medium text-gray-900">{item.product.name}</td>
+                                            <td className="px-4 py-2 text-right">{formatCurrency(item.product.purchasePrice)}</td>
+                                            <td className="px-4 py-2 text-right">{formatCurrency(item.product.salePrice)}</td>
+                                            <td className={`px-4 py-2 text-right font-semibold ${hasProfit ? 'text-green-600' : 'text-red-500'}`}>
+                                                {formatCurrency(profitMargin)}
+                                            </td>
+                                            <td className="px-4 py-2 text-right">
+                                                {hasProfit ? (
+                                                    <span className="font-semibold bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">
+                                                        {item.profitPercentage.toFixed(2)}%
+                                                    </span>
+                                                ) : (
+                                                    <span className="font-semibold bg-red-100 text-red-800 px-2 py-1 rounded-full">
+                                                        Loss
+                                                    </span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

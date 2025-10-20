@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Sale } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { Eye, Trash2, XCircle } from 'lucide-react';
+import { Eye, Trash2, XCircle, FileText } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
+import toast from 'react-hot-toast';
+// @ts-ignore
+import jsPDF from 'jspdf';
+// @ts-ignore
+import html2canvas from 'html2canvas';
+
 
 const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale, onClose }) => {
     
@@ -55,11 +61,19 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
 
 
 const Sales: React.FC = () => {
-    const { sales, reverseSale, currentUser } = useAppContext();
+    const { sales, reverseSale, currentUser, inventory, categories, shopInfo } = useAppContext();
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
     const [saleToReverse, setSaleToReverse] = useState<Sale | null>(null);
 
     const isMaster = currentUser?.role === 'master';
+
+    const categoryMap = useMemo(() => {
+        const map = new Map<string, string>();
+        categories.forEach(cat => {
+            map.set(cat.id, cat.name);
+        });
+        return map;
+    }, [categories]);
 
     const handleReverseSale = () => {
         if (saleToReverse) {
@@ -67,6 +81,129 @@ const Sales: React.FC = () => {
             setSaleToReverse(null);
         }
     };
+    
+    const handleDownloadPdf = async () => {
+        if (sales.length === 0) {
+            toast.error("No sales data to download.");
+            return;
+        }
+
+        const toastId = toast.loading("Generating Sales Report PDF...", { duration: Infinity });
+
+        try {
+            const aggregatedSales = new Map<string, { productId: string; soldQuantity: number }>();
+            sales.forEach(sale => {
+                sale.items.forEach(item => {
+                    const existing = aggregatedSales.get(item.productId);
+                    if (existing) {
+                        existing.soldQuantity += item.quantity;
+                    } else {
+                        aggregatedSales.set(item.productId, {
+                            productId: item.productId,
+                            soldQuantity: item.quantity,
+                        });
+                    }
+                });
+            });
+
+            const reportData = Array.from(aggregatedSales.values())
+                .map(soldItem => ({
+                    ...soldItem,
+                    product: inventory.find(p => p.id === soldItem.productId),
+                }))
+                .filter(item => !!item.product);
+
+            if (reportData.length === 0) {
+                toast.error("No valid product data for the sales report.", { id: toastId });
+                return;
+            }
+
+            const pdfContainer = document.createElement('div');
+            pdfContainer.style.position = 'absolute';
+            pdfContainer.style.left = '-9999px';
+            pdfContainer.style.width = '1000px';
+            pdfContainer.style.padding = '20px';
+            pdfContainer.style.fontFamily = 'Arial, sans-serif';
+            pdfContainer.style.background = 'white';
+            pdfContainer.style.color = 'black';
+
+            const tableRows = reportData.map((item, index) => {
+                const product = item.product!;
+                const categoryName = categoryMap.get(product.categoryId) || product.categoryId;
+
+                return `
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${index + 1}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px;">${product.name}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px;">${product.manufacturer}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px;">${categoryName}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${item.soldQuantity}</td>
+                        <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${product.quantity}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            pdfContainer.innerHTML = `
+                <div>
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h1 style="font-size: 24px; margin: 0;">${shopInfo?.name || 'Sales Report'}</h1>
+                        <p style="font-size: 12px; margin: 0;">${shopInfo?.address || ''}</p>
+                    </div>
+                    <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Sales Summary Report</h2>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                        <thead>
+                            <tr style="background-color: #f2f2f2;">
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Serial Number</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Name of Item</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Manufacturing</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Sold Quantity</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Quantity Remaining in Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            document.body.appendChild(pdfContainer);
+
+            const canvas = await html2canvas(pdfContainer, { scale: 2, useCORS: true });
+            document.body.removeChild(pdfContainer);
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            let heightLeft = pdfHeight;
+            let position = 0;
+            const margin = 10;
+            const pageHeightWithMargin = pdf.internal.pageSize.getHeight() - (2 * margin);
+
+            pdf.addImage(imgData, 'PNG', margin, margin, pdfWidth - (2 * margin), pdfHeight);
+            heightLeft -= pageHeightWithMargin;
+
+            while (heightLeft > 0) {
+                position -= pageHeightWithMargin;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', margin, position + margin, pdfWidth - (2*margin), pdfHeight);
+                heightLeft -= pageHeightWithMargin;
+            }
+
+            const filename = `sales_report_${new Date().toISOString().split('T')[0]}.pdf`;
+            pdf.save(filename);
+            toast.success("PDF downloaded successfully!", { id: toastId });
+
+        } catch (error) {
+            console.error("Failed to generate PDF:", error);
+            toast.error("Failed to generate PDF.", { id: toastId });
+        }
+    };
+
 
     if (!isMaster) {
         return (
@@ -79,7 +216,12 @@ const Sales: React.FC = () => {
     
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales History</h1>
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales History</h1>
+                <Button onClick={handleDownloadPdf} className="flex items-center gap-2" disabled={sales.length === 0}>
+                    <FileText size={18} /> Download Sales Report
+                </Button>
+            </div>
             
             {sales.length === 0 ? (
                  <div className="text-center py-10 bg-white rounded-lg shadow">
