@@ -59,4 +59,9 @@ export interface Customer {
     saleIds: string[];
     firstSeen: string; // ISO Date string
     lastSeen: string; // ISO Date string
+    contactNumber?: string;
+    servicingNotes?: string;
+    nextServiceDate?: string; // ISO Date string for manual override
+    serviceFrequencyValue?: number;
+    serviceFrequencyUnit?: 'days' | 'months' | 'years';
 }

@@ -47,6 +47,7 @@ interface AppContextType {
     reverseSale: (saleId: string) => void;
 
     customers: Customer[];
+    updateCustomerDetails: (customerId: string, details: Partial<Pick<Customer, 'contactNumber' | 'servicingNotes' | 'nextServiceDate' | 'serviceFrequencyValue' | 'serviceFrequencyUnit'>>) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -336,6 +337,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Sale reversed. Items returned to inventory.");
     };
 
+    const updateCustomerDetails = (customerId: string, details: Partial<Pick<Customer, 'contactNumber' | 'servicingNotes' | 'nextServiceDate' | 'serviceFrequencyValue' | 'serviceFrequencyUnit'>>) => {
+        setCustomers(prevCustomers => {
+            const updatedCustomers = prevCustomers.map(c => {
+                if (c.id === customerId) {
+                    return { ...c, ...details };
+                }
+                return c;
+            });
+            toast.success("Customer details updated.");
+            return updatedCustomers;
+        });
+    };
+
 
     const value = {
         loading,
@@ -364,6 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createSale,
         reverseSale,
         customers,
+        updateCustomerDetails,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
