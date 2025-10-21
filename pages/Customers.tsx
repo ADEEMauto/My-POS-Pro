@@ -225,13 +225,29 @@ const Customers: React.FC = () => {
     }, [sales]);
 
     const filteredCustomers = useMemo(() => {
-        if (!searchTerm) {
-            return [...customers].sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
-        }
-        return customers.filter(c =>
-            c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            c.id.toLowerCase().includes(searchTerm.toLowerCase())
-        ).sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime());
+        const customersToSort = searchTerm
+            ? customers.filter(c =>
+                c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                c.id.toLowerCase().includes(searchTerm.toLowerCase())
+              )
+            : [...customers];
+
+        return customersToSort.sort((a, b) => {
+            const aIsDue = isServiceDue(a).due;
+            const bIsDue = isServiceDue(b).due;
+
+            // Rule 1: Service due customers come first.
+            if (aIsDue && !bIsDue) return -1;
+            if (!aIsDue && bIsDue) return 1;
+
+            // Rule 2: If both are due, sort by number of visits (descending).
+            if (aIsDue && bIsDue) {
+                return b.saleIds.length - a.saleIds.length;
+            }
+
+            // Rule 3: For non-due customers, sort by last visit date (descending).
+            return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+        });
     }, [customers, searchTerm]);
 
     const handleViewDetails = (customer: Customer) => {
