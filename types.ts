@@ -46,7 +46,17 @@ export interface SaleItem {
 
 export interface Sale {
     id: string;
+    customerId: string; // The bike number
+    customerName: string;
     items: SaleItem[];
     total: number;
     date: string; // ISO string
+}
+
+export interface Customer {
+    id: string; // Bike number, unique identifier
+    name: string;
+    saleIds: string[];
+    firstSeen: string; // ISO Date string
+    lastSeen: string; // ISO Date string
 }

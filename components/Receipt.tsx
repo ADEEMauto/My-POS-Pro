@@ -18,7 +18,16 @@ const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) =
                 <h2 className="text-xl font-bold">{shopInfo?.name}</h2>
                 <p className="text-xs">{shopInfo?.address}</p>
                 <p className="text-xs mt-1">{formatDate(sale.date)}</p>
+                <p className="text-xs mt-1 font-semibold">Sale ID: {sale.id}</p>
             </div>
+            {(sale.customerName || sale.customerId) && (
+                <>
+                    <div className="text-left mb-2 text-xs">
+                        {sale.customerName && <p><strong>Customer:</strong> {sale.customerName}</p>}
+                        {sale.customerId && <p><strong>Bike No:</strong> {sale.customerId}</p>}
+                    </div>
+                </>
+            )}
             <hr className="my-2 border-dashed border-gray-400" />
             <table className="w-full table-fixed">
                 <thead>

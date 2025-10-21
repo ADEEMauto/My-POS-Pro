@@ -20,10 +20,12 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
     }, 0);
 
     return (
-        <Modal isOpen={true} onClose={onClose} title={`Sale Details - ID: ...${sale.id.slice(-6)}`} size="lg">
+        <Modal isOpen={true} onClose={onClose} title={`Sale Details - ID: ${sale.id}`} size="lg">
             <div className="space-y-4">
                 <div>
                     <p><strong>Date:</strong> {formatDate(sale.date)}</p>
+                    {sale.customerName && <p><strong>Customer:</strong> {sale.customerName}</p>}
+                    {sale.customerId && <p><strong>Bike No:</strong> {sale.customerId}</p>}
                     <div className="flex justify-between items-baseline mt-2">
                         <p><strong>Total Amount:</strong> <span className="font-bold text-lg text-primary-600">{formatCurrency(sale.total)}</span></p>
                         <p><strong>Est. Profit:</strong> <span className="font-bold text-base text-green-600">{formatCurrency(estimatedProfit)}</span></p>
@@ -244,7 +246,7 @@ const Sales: React.FC = () => {
                         <tbody>
                             {sales.map(sale => (
                                 <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4 font-mono text-xs text-gray-700">...{sale.id.slice(-12)}</td>
+                                    <td className="px-6 py-4 font-mono text-xs text-gray-700">{sale.id}</td>
                                     <td className="px-6 py-4">{formatDate(sale.date)}</td>
                                     <td className="px-6 py-4 text-center">{sale.items.reduce((acc, item) => acc + item.quantity, 0)}</td>
                                     <td className="px-6 py-4 text-right font-semibold">{formatCurrency(sale.total)}</td>
@@ -266,7 +268,7 @@ const Sales: React.FC = () => {
                          <div key={sale.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
                              <div className="flex justify-between items-start">
                                  <div>
-                                    <p className="text-sm font-semibold">Sale ID: <span className="font-mono text-xs">...{sale.id.slice(-12)}</span></p>
+                                    <p className="text-sm font-semibold">Sale ID: <span className="font-mono text-xs">{sale.id}</span></p>
                                     <p className="text-xs text-gray-500">{formatDate(sale.date)}</p>
                                  </div>
                                  <p className="text-lg font-bold text-primary-600">{formatCurrency(sale.total)}</p>

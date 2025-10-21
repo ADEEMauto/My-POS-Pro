@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem } from '../types';
+import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer } from '../types';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
@@ -43,8 +43,10 @@ interface AppContextType {
     deleteCategory: (id: string) => void;
 
     sales: Sale[];
-    createSale: (cartItems: { product: Product; quantity: number }[]) => Sale | null;
+    createSale: (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string }) => Sale | null;
     reverseSale: (saleId: string) => void;
+
+    customers: Customer[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -56,6 +58,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [inventory, setInventory] = useLocalStorage<Product[]>('inventory', []);
     const [categories, setCategories] = useLocalStorage<Category[]>('categories', []);
     const [sales, setSales] = useLocalStorage<Sale[]>('sales', []);
+    const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', []);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -226,7 +229,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Category and its sub-categories deleted.");
     };
 
-    const createSale = (cartItems: { product: Product; quantity: number }[]): Sale | null => {
+    const createSale = (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string }): Sale | null => {
         if (cartItems.length === 0) {
             toast.error("Cart is empty.");
             return null;
@@ -255,15 +258,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
         }
         
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const day = now.getDate().toString().padStart(2, '0');
+        const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
+        const newSaleId = `${year}${month}${day}${customerId}`;
+
         const newSale: Sale = {
-            id: uuidv4(),
+            id: newSaleId,
+            customerId: customerId,
+            customerName: customerInfo.customerName.trim() || `Customer ${customerId}`,
             items: saleItems,
             total: Math.round(total),
-            date: new Date().toISOString(),
+            date: now.toISOString(),
         };
 
         setInventory(updatedInventory);
         setSales([newSale, ...sales]);
+        
+        // Create or update customer profile
+        const existingCustomerIndex = customers.findIndex(c => c.id === customerId);
+        if (existingCustomerIndex > -1) {
+            const updatedCustomers = [...customers];
+            const customer = updatedCustomers[existingCustomerIndex];
+            customer.saleIds.unshift(newSale.id);
+            customer.lastSeen = now.toISOString();
+            if (customerInfo.customerName.trim()) {
+                customer.name = customerInfo.customerName.trim();
+            }
+            setCustomers(updatedCustomers);
+        } else {
+            const newCustomer: Customer = {
+                id: customerId,
+                name: customerInfo.customerName.trim() || `Customer ${customerId}`,
+                saleIds: [newSale.id],
+                firstSeen: now.toISOString(),
+                lastSeen: now.toISOString(),
+            };
+            setCustomers([newCustomer, ...customers]);
+        }
+
         toast.success("Sale completed successfully!");
         return newSale;
     };
@@ -282,13 +317,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (productIndex > -1) {
                 updatedInventory[productIndex].quantity += item.quantity;
             } else {
-                // This can happen if a product was deleted after the sale
-                // For simplicity, we'll log a warning. A more robust solution
-                // might re-create a product stub or add to an "unlinked" list.
                 console.warn(`Product with ID ${item.productId} not found during sale reversal. It may have been deleted.`);
             }
         }
         
+        // Remove saleId from the customer's profile
+        const customerId = saleToReverse.customerId;
+        const customerIndex = customers.findIndex(c => c.id === customerId);
+        if (customerIndex > -1) {
+            const updatedCustomers = [...customers];
+            const customer = updatedCustomers[customerIndex];
+            customer.saleIds = customer.saleIds.filter(id => id !== saleId);
+            setCustomers(updatedCustomers);
+        }
+
         setInventory(updatedInventory);
         setSales(sales.filter(s => s.id !== saleId));
         toast.success("Sale reversed. Items returned to inventory.");
@@ -321,6 +363,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sales,
         createSale,
         reverseSale,
+        customers,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

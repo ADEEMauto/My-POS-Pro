@@ -43,6 +43,10 @@ const POS: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [completedSale, setCompletedSale] = useState<Sale | null>(null);
+    const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
+    const [customerName, setCustomerName] = useState('');
+    const [bikeNumber, setBikeNumber] = useState('');
+
 
     const receiptRef = useRef<HTMLDivElement>(null);
 
@@ -100,15 +104,35 @@ const POS: React.FC = () => {
         }
         setScannerOpen(false);
     };
+    
+    const handleInitiateCheckout = () => {
+        if (cart.length === 0) {
+            toast.error("Cart is empty.");
+            return;
+        }
+        setCheckoutModalOpen(true);
+    };
 
-    const handleCheckout = () => {
-        const sale = createSale(cart.map(item => ({ product: item, quantity: item.cartQuantity })));
-        if(sale) {
+    const handleConfirmCheckout = () => {
+        if (!bikeNumber.trim()) {
+            toast.error("Bike number is required to generate a sale ID.");
+            return;
+        }
+        
+        const sale = createSale(
+            cart.map(item => ({ product: item, quantity: item.cartQuantity })),
+            { customerName, bikeNumber }
+        );
+    
+        if (sale) {
             setCompletedSale(sale);
             setCart([]);
+            setCheckoutModalOpen(false);
+            setCustomerName('');
+            setBikeNumber('');
         }
     };
-    
+
     const handlePrintReceipt = () => {
         const printWindow = window.open('', '_blank');
         if (printWindow && receiptRef.current) {
@@ -221,7 +245,7 @@ const POS: React.FC = () => {
                         <span>Total:</span>
                         <span>{formatCurrency(cartTotal)}</span>
                     </div>
-                    <Button onClick={handleCheckout} disabled={cart.length === 0} className="w-full text-lg justify-center">
+                    <Button onClick={handleInitiateCheckout} disabled={cart.length === 0} className="w-full text-lg justify-center">
                         Checkout
                     </Button>
                 </div>
@@ -239,6 +263,30 @@ const POS: React.FC = () => {
                     <Button onClick={handleSaveReceiptAsImage} className="flex items-center gap-2"><ImageDown size={18}/> Save</Button>
                 </div>
             </Modal>
+            
+            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Customer Information" footer={
+                <div className="flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
+                    <Button onClick={handleConfirmCheckout}>Confirm Sale</Button>
+                </div>
+            }>
+                <div className="space-y-4">
+                    <Input
+                        label="Customer Name"
+                        placeholder="e.g., Jack (Optional)"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                    />
+                    <Input
+                        label="Bike Number"
+                        placeholder="e.g., RIP555"
+                        value={bikeNumber}
+                        onChange={(e) => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())}
+                        required
+                    />
+                </div>
+            </Modal>
+
         </div>
     );
 };
