@@ -46,6 +46,9 @@ const POS: React.FC = () => {
     const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
     const [customerName, setCustomerName] = useState('');
     const [bikeNumber, setBikeNumber] = useState('');
+    const [contactNumber, setContactNumber] = useState('');
+    const [serviceFrequencyValue, setServiceFrequencyValue] = useState<number | string>('');
+    const [serviceFrequencyUnit, setServiceFrequencyUnit] = useState<'days' | 'months' | 'years'>('months');
 
 
     const receiptRef = useRef<HTMLDivElement>(null);
@@ -121,7 +124,13 @@ const POS: React.FC = () => {
         
         const sale = createSale(
             cart.map(item => ({ product: item, quantity: item.cartQuantity })),
-            { customerName, bikeNumber }
+            { 
+                customerName, 
+                bikeNumber,
+                contactNumber,
+                serviceFrequencyValue: serviceFrequencyValue ? Number(serviceFrequencyValue) : undefined,
+                serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined,
+            }
         );
     
         if (sale) {
@@ -130,6 +139,9 @@ const POS: React.FC = () => {
             setCheckoutModalOpen(false);
             setCustomerName('');
             setBikeNumber('');
+            setContactNumber('');
+            setServiceFrequencyValue('');
+            setServiceFrequencyUnit('months');
         }
     };
 
@@ -284,6 +296,36 @@ const POS: React.FC = () => {
                         onChange={(e) => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())}
                         required
                     />
+                     <Input
+                        label="Contact Number (Optional)"
+                        type="tel"
+                        placeholder="e.g., 03001234567"
+                        value={contactNumber}
+                        onChange={(e) => setContactNumber(e.target.value)}
+                    />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Service Frequency (Optional)</label>
+                        <div className="flex items-center gap-2">
+                            <Input
+                                type="number"
+                                placeholder="e.g., 3"
+                                min="1"
+                                value={serviceFrequencyValue}
+                                onChange={(e) => setServiceFrequencyValue(e.target.value)}
+                                className="w-1/3"
+                            />
+                            <select
+                                value={serviceFrequencyUnit}
+                                onChange={(e) => setServiceFrequencyUnit(e.target.value as 'days' | 'months' | 'years')}
+                                className="flex-grow p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            >
+                                <option value="days">Days</option>
+                                <option value="months">Months</option>
+                                <option value="years">Years</option>
+                            </select>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Set a recurring service reminder for this customer.</p>
+                    </div>
                 </div>
             </Modal>
 

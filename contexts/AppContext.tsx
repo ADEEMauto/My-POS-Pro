@@ -43,8 +43,8 @@ interface AppContextType {
     deleteCategory: (id: string) => void;
 
     sales: Sale[];
-    createSale: (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string }) => Sale | null;
-    reverseSale: (saleId: string) => void;
+    createSale: (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }) => Sale | null;
+    reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     customers: Customer[];
     updateCustomerDetails: (customerId: string, details: Partial<Pick<Customer, 'contactNumber' | 'servicingNotes' | 'nextServiceDate' | 'serviceFrequencyValue' | 'serviceFrequencyUnit'>>) => void;
@@ -230,7 +230,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Category and its sub-categories deleted.");
     };
 
-    const createSale = (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string }): Sale | null => {
+    const createSale = (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }): Sale | null => {
         if (cartItems.length === 0) {
             toast.error("Cart is empty.");
             return null;
@@ -288,6 +288,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (customerInfo.customerName.trim()) {
                 customer.name = customerInfo.customerName.trim();
             }
+            if (customerInfo.contactNumber && customerInfo.contactNumber.trim()) {
+                customer.contactNumber = customerInfo.contactNumber.trim();
+            }
+            if (customerInfo.serviceFrequencyValue && customerInfo.serviceFrequencyUnit) {
+                customer.serviceFrequencyValue = customerInfo.serviceFrequencyValue;
+                customer.serviceFrequencyUnit = customerInfo.serviceFrequencyUnit;
+            }
             setCustomers(updatedCustomers);
         } else {
             const newCustomer: Customer = {
@@ -296,6 +303,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 saleIds: [newSale.id],
                 firstSeen: now.toISOString(),
                 lastSeen: now.toISOString(),
+                contactNumber: customerInfo.contactNumber?.trim() || undefined,
+                serviceFrequencyValue: customerInfo.serviceFrequencyValue,
+                serviceFrequencyUnit: customerInfo.serviceFrequencyValue ? customerInfo.serviceFrequencyUnit : undefined,
             };
             setCustomers([newCustomer, ...customers]);
         }
@@ -304,38 +314,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return newSale;
     };
 
-    const reverseSale = (saleId: string) => {
-        const saleToReverse = sales.find(s => s.id === saleId);
-        if (!saleToReverse) {
+    const reverseSale = (saleId: string, itemsToReturn: SaleItem[]) => {
+        const saleIndex = sales.findIndex(s => s.id === saleId);
+        if (saleIndex === -1) {
             toast.error("Sale not found.");
             return;
         }
+        if (itemsToReturn.length === 0) {
+            toast.error("No items selected for reversal.");
+            return;
+        }
 
+        const saleToModify = { ...sales[saleIndex] };
+
+        // 1. Update inventory
         const updatedInventory = [...inventory];
-
-        for (const item of saleToReverse.items) {
+        let returnedItemsCount = 0;
+        for (const item of itemsToReturn) {
             const productIndex = updatedInventory.findIndex(p => p.id === item.productId);
             if (productIndex > -1) {
                 updatedInventory[productIndex].quantity += item.quantity;
+                returnedItemsCount++;
             } else {
-                console.warn(`Product with ID ${item.productId} not found during sale reversal. It may have been deleted.`);
+                console.warn(`Product with ID ${item.productId} not found during sale reversal.`);
             }
         }
-        
-        // Remove saleId from the customer's profile
-        const customerId = saleToReverse.customerId;
-        const customerIndex = customers.findIndex(c => c.id === customerId);
-        if (customerIndex > -1) {
-            const updatedCustomers = [...customers];
-            const customer = updatedCustomers[customerIndex];
-            customer.saleIds = customer.saleIds.filter(id => id !== saleId);
-            setCustomers(updatedCustomers);
+        setInventory(updatedInventory);
+
+        // 2. Update the sale record
+        const itemsToReturnProductIds = new Set(itemsToReturn.map(item => item.productId));
+        const remainingItems = saleToModify.items.filter(item => !itemsToReturnProductIds.has(item.productId));
+
+        const updatedSales = [...sales];
+
+        if (remainingItems.length === 0) {
+            // All items were returned, so delete the sale
+            updatedSales.splice(saleIndex, 1);
+            
+            // Also remove saleId from the customer's profile
+            const customerId = saleToModify.customerId;
+            setCustomers(prevCustomers => prevCustomers.map(c => 
+                c.id === customerId 
+                ? { ...c, saleIds: c.saleIds.filter(id => id !== saleId) }
+                : c
+            ));
+
+            toast.success("Sale completely reversed. All items returned to inventory.");
+        } else {
+            // Some items remain, so update the sale
+            const newTotal = remainingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+            const updatedSale = { 
+                ...saleToModify, 
+                items: remainingItems, 
+                total: Math.round(newTotal) 
+            };
+            updatedSales[saleIndex] = updatedSale;
+            toast.success(`${returnedItemsCount} item(s) returned to inventory. Sale record updated.`);
         }
 
-        setInventory(updatedInventory);
-        setSales(sales.filter(s => s.id !== saleId));
-        toast.success("Sale reversed. Items returned to inventory.");
+        setSales(updatedSales);
     };
+
 
     const updateCustomerDetails = (customerId: string, details: Partial<Pick<Customer, 'contactNumber' | 'servicingNotes' | 'nextServiceDate' | 'serviceFrequencyValue' | 'serviceFrequencyUnit'>>) => {
         setCustomers(prevCustomers => {

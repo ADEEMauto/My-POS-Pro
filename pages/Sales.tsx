@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-import { Sale } from '../types';
+import { Sale, SaleItem } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { Eye, Trash2, XCircle, FileText } from 'lucide-react';
+import { Eye, Trash2, FileText } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -61,6 +61,84 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
     );
 };
 
+const ReverseSaleModal: React.FC<{ sale: Sale; onClose: () => void; onConfirm: (itemsToReturn: SaleItem[]) => void }> = ({ sale, onClose, onConfirm }) => {
+    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+
+    const handleToggleItem = (productId: string) => {
+        const newSet = new Set(selectedProductIds);
+        if (newSet.has(productId)) {
+            newSet.delete(productId);
+        } else {
+            newSet.add(productId);
+        }
+        setSelectedProductIds(newSet);
+    };
+    
+    const handleToggleAll = () => {
+        if (selectedProductIds.size === sale.items.length) {
+            setSelectedProductIds(new Set());
+        } else {
+            setSelectedProductIds(new Set(sale.items.map(item => item.productId)));
+        }
+    };
+
+    const handleConfirmClick = () => {
+        const itemsToReturn = sale.items.filter(item => selectedProductIds.has(item.productId));
+        onConfirm(itemsToReturn);
+    };
+
+    const allSelected = selectedProductIds.size === sale.items.length && sale.items.length > 0;
+
+    return (
+        <Modal isOpen={true} onClose={onClose} title="Select Items to Return to Inventory" size="lg">
+            <p className="text-sm text-gray-600 mb-4">
+                Select which items from sale <span className="font-mono bg-gray-100 p-1 rounded">{sale.id}</span> you want to return to stock. This will update the sale record. If all items are returned, the sale will be deleted.
+            </p>
+
+            <div className="border rounded-md">
+                <div className="flex items-center p-3 bg-gray-50 border-b">
+                    <input
+                        id="select-all-checkbox"
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={handleToggleAll}
+                        className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                    />
+                    <label htmlFor="select-all-checkbox" className="ml-3 text-sm font-medium text-gray-700 cursor-pointer">
+                       {allSelected ? 'Deselect All' : 'Select All'}
+                    </label>
+                </div>
+                <ul className="max-h-80 overflow-y-auto divide-y divide-gray-200">
+                    {sale.items.map(item => (
+                        <li key={item.productId} className="p-3 flex items-center hover:bg-gray-50">
+                            <input
+                                id={`item-checkbox-${item.productId}`}
+                                type="checkbox"
+                                checked={selectedProductIds.has(item.productId)}
+                                onChange={() => handleToggleItem(item.productId)}
+                                className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                            />
+                            <label htmlFor={`item-checkbox-${item.productId}`} className="ml-3 flex-grow cursor-pointer">
+                                <p className="font-semibold text-gray-800">{item.name}</p>
+                                <p className="text-xs text-gray-500">
+                                    {item.quantity} x {formatCurrency(item.price)} = {formatCurrency(item.quantity * item.price)}
+                                </p>
+                            </label>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-4 mt-2 border-t">
+                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button variant="danger" onClick={handleConfirmClick} disabled={selectedProductIds.size === 0}>
+                    Reverse Selected ({selectedProductIds.size})
+                </Button>
+            </div>
+        </Modal>
+    );
+};
+
 
 const Sales: React.FC = () => {
     const { sales, reverseSale, currentUser, inventory, categories, shopInfo } = useAppContext();
@@ -77,9 +155,9 @@ const Sales: React.FC = () => {
         return map;
     }, [categories]);
 
-    const handleReverseSale = () => {
+    const handleConfirmReversal = (itemsToReturn: SaleItem[]) => {
         if (saleToReverse) {
-            reverseSale(saleToReverse.id);
+            reverseSale(saleToReverse.id, itemsToReturn);
             setSaleToReverse(null);
         }
     };
@@ -290,17 +368,13 @@ const Sales: React.FC = () => {
 
             {selectedSale && <SaleDetailsModal sale={selectedSale} onClose={() => setSelectedSale(null)} />}
 
-            <Modal isOpen={!!saleToReverse} onClose={() => setSaleToReverse(null)} title="Confirm Sale Reversal" size="md">
-                <div className="text-center">
-                    <XCircle className="mx-auto h-12 w-12 text-red-500" />
-                    <p className="mt-4 text-gray-700">Are you sure you want to reverse this sale?</p>
-                    <p className="text-sm text-gray-500">This action will return all sold items to the inventory and permanently delete the sale record. This cannot be undone.</p>
-                </div>
-                <div className="flex justify-center gap-4 mt-6">
-                    <Button variant="secondary" onClick={() => setSaleToReverse(null)}>Cancel</Button>
-                    <Button variant="danger" onClick={handleReverseSale}>Yes, Reverse Sale</Button>
-                </div>
-            </Modal>
+            {saleToReverse && (
+                <ReverseSaleModal
+                    sale={saleToReverse}
+                    onClose={() => setSaleToReverse(null)}
+                    onConfirm={handleConfirmReversal}
+                />
+            )}
         </div>
     );
 };
