@@ -34,13 +34,18 @@ export interface Product {
 
 export interface CartItem extends Product {
     cartQuantity: number;
+    discount: number;
+    discountType: 'fixed' | 'percentage';
 }
 
 export interface SaleItem {
     productId: string;
     name: string;
     quantity: number;
-    price: number; // Sale price per item
+    originalPrice: number; // Original sale price per item
+    discount: number; // The value of the discount (e.g. 50 or 10)
+    discountType: 'fixed' | 'percentage';
+    price: number; // Final price per item after discount
     purchasePrice: number; // Purchase price per item at time of sale
 }
 
@@ -49,9 +54,14 @@ export interface Sale {
     customerId: string; // The bike number
     customerName: string;
     items: SaleItem[];
-    total: number;
+    subtotal: number; // Sum of original prices before any discounts
+    totalItemDiscounts: number; // Sum of all calculated item-level discounts
+    overallDiscount: number; // The value of the discount (e.g. 500 or 15)
+    overallDiscountType: 'fixed' | 'percentage';
+    total: number; // Final amount
     date: string; // ISO string
 }
+
 
 export interface Customer {
     id: string; // Bike number, unique identifier

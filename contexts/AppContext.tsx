@@ -1,6 +1,7 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer } from '../types';
+import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem } from '../types';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
@@ -43,7 +44,7 @@ interface AppContextType {
     deleteCategory: (id: string) => void;
 
     sales: Sale[];
-    createSale: (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }) => Sale | null;
+    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }) => Sale | null;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     customers: Customer[];
@@ -230,54 +231,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Category and its sub-categories deleted.");
     };
 
-    const createSale = (cartItems: { product: Product; quantity: number }[], customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }): Sale | null => {
+    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }): Sale | null => {
         if (cartItems.length === 0) {
             toast.error("Cart is empty.");
             return null;
         }
-
-        let total = 0;
+    
         const saleItems: SaleItem[] = [];
         const updatedInventory = [...inventory];
-
+    
         for (const item of cartItems) {
-            const productInStock = updatedInventory.find(p => p.id === item.product.id);
-            if (!productInStock || productInStock.quantity < item.quantity) {
-                toast.error(`Not enough stock for ${item.product.name}.`);
+            const productInStock = updatedInventory.find(p => p.id === item.id);
+            if (!productInStock || productInStock.quantity < item.cartQuantity) {
+                toast.error(`Not enough stock for ${item.name}.`);
                 return null;
             }
-            productInStock.quantity -= item.quantity;
-            
-            const salePrice = item.product.salePrice;
-            total += salePrice * item.quantity;
+            productInStock.quantity -= item.cartQuantity;
+    
+            const discountAmount = item.discountType === 'fixed' 
+                ? item.discount 
+                : (item.salePrice * item.discount) / 100;
+
             saleItems.push({
-                productId: item.product.id,
-                name: item.product.name,
-                quantity: item.quantity,
-                price: salePrice,
-                purchasePrice: item.product.purchasePrice,
+                productId: item.id,
+                name: item.name,
+                quantity: item.cartQuantity,
+                originalPrice: item.salePrice,
+                discount: item.discount,
+                discountType: item.discountType,
+                price: item.salePrice - discountAmount,
+                purchasePrice: item.purchasePrice,
             });
         }
-        
+    
+        const subtotal = saleItems.reduce((acc, item) => acc + item.originalPrice * item.quantity, 0);
+        const totalItemDiscounts = saleItems.reduce((acc, item) => {
+            const discountAmount = item.discountType === 'fixed'
+                ? item.discount
+                : (item.originalPrice * item.discount) / 100;
+            return acc + (discountAmount * item.quantity);
+        }, 0);
+
+        const subtotalAfterItemDiscounts = subtotal - totalItemDiscounts;
+
+        const overallDiscountAmount = overallDiscountType === 'fixed'
+            ? overallDiscountValue
+            : (subtotalAfterItemDiscounts * overallDiscountValue) / 100;
+
+        const total = subtotalAfterItemDiscounts - overallDiscountAmount;
+    
+        if (total < 0) {
+            toast.error("Total amount cannot be negative after discounts.");
+            return null;
+        }
+    
         const now = new Date();
         const year = now.getFullYear();
         const month = (now.getMonth() + 1).toString().padStart(2, '0');
         const day = now.getDate().toString().padStart(2, '0');
         const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
         const newSaleId = `${year}${month}${day}${customerId}`;
-
+    
         const newSale: Sale = {
             id: newSaleId,
             customerId: customerId,
-            customerName: customerInfo.customerName.trim() || `Customer ${customerId}`,
+            customerName: customerInfo.customerName.trim(),
             items: saleItems,
+            subtotal: Math.round(subtotal),
+            totalItemDiscounts: Math.round(totalItemDiscounts),
+            overallDiscount: overallDiscountValue,
+            overallDiscountType: overallDiscountType,
             total: Math.round(total),
             date: now.toISOString(),
         };
-
+    
         setInventory(updatedInventory);
         setSales([newSale, ...sales]);
-        
+    
         // Create or update customer profile
         const existingCustomerIndex = customers.findIndex(c => c.id === customerId);
         if (existingCustomerIndex > -1) {
@@ -309,10 +339,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             };
             setCustomers([newCustomer, ...customers]);
         }
-
+    
         toast.success("Sale completed successfully!");
         return newSale;
     };
+    
 
     const reverseSale = (saleId: string, itemsToReturn: SaleItem[]) => {
         const saleIndex = sales.findIndex(s => s.id === saleId);
@@ -362,10 +393,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             toast.success("Sale completely reversed. All items returned to inventory.");
         } else {
             // Some items remain, so update the sale
-            const newTotal = remainingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            const updatedSale = { 
+            const newSubtotal = remainingItems.reduce((acc, item) => acc + (item.originalPrice * item.quantity), 0);
+            
+            const newItemDiscounts = remainingItems.reduce((acc, item) => {
+                const discountAmount = item.discountType === 'fixed'
+                    ? item.discount
+                    : (item.originalPrice * item.discount) / 100;
+                return acc + (discountAmount * item.quantity);
+            }, 0);
+
+            const newSubtotalAfterItemDiscounts = newSubtotal - newItemDiscounts;
+
+            const overallDiscountAmount = saleToModify.overallDiscountType === 'fixed'
+                ? saleToModify.overallDiscount
+                : (newSubtotalAfterItemDiscounts * saleToModify.overallDiscount) / 100;
+            
+            const newTotal = newSubtotalAfterItemDiscounts - overallDiscountAmount;
+
+            const updatedSale: Sale = { 
                 ...saleToModify, 
                 items: remainingItems, 
+                subtotal: Math.round(newSubtotal),
+                totalItemDiscounts: Math.round(newItemDiscounts),
                 total: Math.round(newTotal) 
             };
             updatedSales[saleIndex] = updatedSale;

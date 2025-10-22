@@ -18,6 +18,9 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
         const cost = item.purchasePrice || 0; // Handle old sales data without purchasePrice
         return acc + (item.price - cost) * item.quantity;
     }, 0);
+    
+    const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0;
+    const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - sale.total;
 
     return (
         <Modal isOpen={true} onClose={onClose} title={`Sale Details - ID: ${sale.id}`} size="lg">
@@ -26,17 +29,13 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
                     <p><strong>Date:</strong> {formatDate(sale.date)}</p>
                     {sale.customerName && <p><strong>Customer:</strong> {sale.customerName}</p>}
                     {sale.customerId && <p><strong>Bike No:</strong> {sale.customerId}</p>}
-                    <div className="flex justify-between items-baseline mt-2">
-                        <p><strong>Total Amount:</strong> <span className="font-bold text-lg text-primary-600">{formatCurrency(sale.total)}</span></p>
-                        <p><strong>Est. Profit:</strong> <span className="font-bold text-base text-green-600">{formatCurrency(estimatedProfit)}</span></p>
-                    </div>
                 </div>
                 <div className="max-h-80 overflow-y-auto pr-2">
                     <table className="w-full text-sm text-left">
                         <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
                             <tr>
                                 <th className="px-4 py-2">Product Name</th>
-                                <th className="px-4 py-2 text-center">Quantity</th>
+                                <th className="px-4 py-2 text-center">Qty</th>
                                 <th className="px-4 py-2 text-right">Price/Item</th>
                                 <th className="px-4 py-2 text-right">Subtotal</th>
                             </tr>
@@ -44,14 +43,55 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
                         <tbody className="divide-y">
                             {sale.items.map((item, index) => (
                                 <tr key={`${item.productId}-${index}`}>
-                                    <td className="px-4 py-2 font-medium text-gray-900">{item.name}</td>
+                                    <td className="px-4 py-2 font-medium text-gray-900">
+                                        {item.name}
+                                        {item.discount > 0 && (
+                                            <span className="block text-xs text-red-500">
+                                                (-{item.discountType === 'fixed' ? formatCurrency(item.discount) : `${item.discount}%`}/item)
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-2 text-center">{item.quantity}</td>
-                                    <td className="px-4 py-2 text-right">{formatCurrency(item.price)}</td>
+                                    <td className="px-4 py-2 text-right">
+                                         {item.discount > 0 ? (
+                                            <del className="text-xs text-gray-400">{formatCurrency(item.originalPrice)}</del>
+                                         ) : null}
+                                         {' '}
+                                         {formatCurrency(item.price)}
+                                    </td>
                                     <td className="px-4 py-2 text-right font-semibold">{formatCurrency(item.price * item.quantity)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
+                </div>
+                <div className="pt-2 border-t space-y-1">
+                     {hasDiscounts && (
+                        <div className="flex justify-between items-baseline text-sm">
+                            <p><strong>Subtotal:</strong></p>
+                            <p>{formatCurrency(sale.subtotal)}</p>
+                        </div>
+                    )}
+                    {(sale.totalItemDiscounts || 0) > 0 && (
+                         <div className="flex justify-between items-baseline text-sm text-red-600">
+                            <p><strong>Item Discounts:</strong></p>
+                            <p>- {formatCurrency(sale.totalItemDiscounts)}</p>
+                        </div>
+                    )}
+                    {(sale.overallDiscount || 0) > 0 && (
+                         <div className="flex justify-between items-baseline text-sm text-red-600">
+                            <p><strong>Overall Discount {sale.overallDiscountType === 'percentage' && `(${sale.overallDiscount}%)`}</strong></p>
+                            <p>- {formatCurrency(calculatedOverallDiscount)}</p>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-baseline pt-1 border-t">
+                        <p><strong>Total Amount:</strong></p> 
+                        <p><span className="font-bold text-lg text-primary-600">{formatCurrency(sale.total)}</span></p>
+                    </div>
+                     <div className="flex justify-between items-baseline">
+                        <p><strong>Est. Profit:</strong></p> 
+                        <p><span className="font-bold text-base text-green-600">{formatCurrency(estimatedProfit)}</span></p>
+                    </div>
                 </div>
             </div>
              <div className="flex justify-end gap-2 pt-4">

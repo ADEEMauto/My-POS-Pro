@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -12,17 +12,22 @@ import toast from 'react-hot-toast';
 // @ts-ignore
 import html2canvas from 'html2canvas';
 
-const ProductCard: React.FC<{ product: Product; onAddToCart: (product: Product) => void; categoryName?: string; }> = ({ product, onAddToCart, categoryName }) => {
+const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) => void; isSelected: boolean; categoryName?: string; }> = ({ product, onSelect, isSelected, categoryName }) => {
     const isOutOfStock = product.quantity <= 0;
     return (
         <div
-            className={`bg-white rounded-lg shadow-md p-4 flex flex-col justify-between transition-all relative overflow-hidden ${
+            className={`bg-white rounded-lg shadow-md p-4 flex flex-col justify-between transition-all relative overflow-hidden border-2 ${
                 isOutOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:-translate-y-1 cursor-pointer'
-            }`}
-            onClick={() => !isOutOfStock && onAddToCart(product)}
+            } ${isSelected ? 'border-primary-600 ring-2 ring-primary-200' : 'border-transparent'}`}
+            onClick={() => !isOutOfStock && onSelect(product.id)}
         >
+             {isSelected && (
+                <div className="absolute top-1 right-1 bg-primary-600 text-white rounded-full p-0.5 z-10">
+                    <Check size={16} />
+                </div>
+            )}
             {isOutOfStock && (
-                <div className="absolute inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center">
+                <div className="absolute inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-20">
                     <span className="text-white font-bold text-lg">OUT OF STOCK</span>
                 </div>
             )}
@@ -49,6 +54,9 @@ const POS: React.FC = () => {
     const [contactNumber, setContactNumber] = useState('');
     const [serviceFrequencyValue, setServiceFrequencyValue] = useState<number | string>('');
     const [serviceFrequencyUnit, setServiceFrequencyUnit] = useState<'days' | 'months' | 'years'>('months');
+    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+    const [overallDiscount, setOverallDiscount] = useState('');
+    const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
 
 
     const receiptRef = useRef<HTMLDivElement>(null);
@@ -74,8 +82,55 @@ const POS: React.FC = () => {
                     return prevCart;
                 }
             }
-            return [...prevCart, { ...product, cartQuantity: 1 }];
+            return [...prevCart, { ...product, cartQuantity: 1, discount: 0, discountType: 'fixed' }];
         });
+    };
+
+    const toggleProductSelection = (productId: string) => {
+        setSelectedProductIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(productId)) {
+                newSet.delete(productId);
+            } else {
+                newSet.add(productId);
+            }
+            return newSet;
+        });
+    };
+    
+    const handleAddSelectedToCart = () => {
+        const cartProductIds = new Set(cart.map(item => item.id));
+        let newItemsAdded = 0;
+        let itemsSkipped = 0;
+    
+        const itemsToAdd: CartItem[] = [];
+    
+        selectedProductIds.forEach(productId => {
+            if (cartProductIds.has(productId)) {
+                itemsSkipped++;
+            } else {
+                const product = inventory.find(p => p.id === productId);
+                if (product && product.quantity > 0) {
+                    itemsToAdd.push({ ...product, cartQuantity: 1, discount: 0, discountType: 'fixed' });
+                    newItemsAdded++;
+                }
+            }
+        });
+    
+        if (newItemsAdded > 0) {
+            setCart(prevCart => [...prevCart, ...itemsToAdd]);
+            toast.success(`${newItemsAdded} item(s) added to cart.`);
+        }
+        
+        if (itemsSkipped > 0) {
+            toast.info(`${itemsSkipped} selected item(s) were already in the cart.`);
+        }
+        
+        if (newItemsAdded === 0 && itemsSkipped === 0 && selectedProductIds.size > 0) {
+             toast.error(`Could not add selected items. They may be out of stock.`);
+        }
+    
+        setSelectedProductIds(new Set());
     };
 
     const updateCartQuantity = (productId: string, newQuantity: number) => {
@@ -95,7 +150,64 @@ const POS: React.FC = () => {
         setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
     };
 
-    const cartTotal = useMemo(() => cart.reduce((total, item) => total + item.salePrice * item.cartQuantity, 0), [cart]);
+    const updateItemDiscount = (productId: string, value: string, type?: 'fixed' | 'percentage') => {
+        const discountValue = parseFloat(value) || 0;
+        setCart(cart.map(item => {
+            if (item.id === productId) {
+                const newType = type || item.discountType;
+
+                if (discountValue < 0) {
+                    toast.error("Discount cannot be negative.");
+                    return item;
+                }
+                if (newType === 'fixed' && discountValue > item.salePrice) {
+                    toast.error("Fixed discount cannot be greater than item price.");
+                    return { ...item, discount: item.salePrice, discountType: newType };
+                }
+                if (newType === 'percentage' && (discountValue < 0 || discountValue > 100)) {
+                    toast.error("Percentage discount must be between 0 and 100.");
+                    return { ...item, discount: Math.max(0, Math.min(100, discountValue)), discountType: newType };
+                }
+                
+                return { ...item, discount: discountValue, discountType: newType };
+            }
+            return item;
+        }));
+    };
+
+    const { cartSubtotal, totalItemDiscounts, parsedOverallDiscountValue, totalOverallDiscount, cartTotal } = useMemo(() => {
+        const subtotal = cart.reduce((total, item) => total + item.salePrice * item.cartQuantity, 0);
+        
+        const itemDiscounts = cart.reduce((total, item) => {
+            let discountAmount = 0;
+            if (item.discountType === 'fixed') {
+                discountAmount = item.discount;
+            } else { // percentage
+                discountAmount = (item.salePrice * item.discount) / 100;
+            }
+            return total + (discountAmount * item.cartQuantity);
+        }, 0);
+
+        const subtotalAfterItemDiscounts = subtotal - itemDiscounts;
+        const overallDiscValue = parseFloat(overallDiscount) || 0;
+
+        let overallDiscountAmount = 0;
+        if (overallDiscountType === 'fixed') {
+            overallDiscountAmount = overallDiscValue;
+        } else { // percentage
+            overallDiscountAmount = (subtotalAfterItemDiscounts * overallDiscValue) / 100;
+        }
+        
+        const total = subtotalAfterItemDiscounts - overallDiscountAmount;
+
+        return {
+            cartSubtotal: subtotal,
+            totalItemDiscounts: itemDiscounts,
+            parsedOverallDiscountValue: overallDiscValue,
+            totalOverallDiscount: overallDiscountAmount,
+            cartTotal: total,
+        };
+    }, [cart, overallDiscount, overallDiscountType]);
 
     const handleScanSuccess = (decodedText: string) => {
         const product = findProductByBarcode(decodedText);
@@ -113,6 +225,10 @@ const POS: React.FC = () => {
             toast.error("Cart is empty.");
             return;
         }
+        if (cartTotal < 0) {
+            toast.error("Total amount cannot be negative.");
+            return;
+        }
         setCheckoutModalOpen(true);
     };
 
@@ -123,7 +239,9 @@ const POS: React.FC = () => {
         }
         
         const sale = createSale(
-            cart.map(item => ({ product: item, quantity: item.cartQuantity })),
+            cart,
+            parsedOverallDiscountValue,
+            overallDiscountType,
             { 
                 customerName, 
                 bikeNumber,
@@ -136,6 +254,8 @@ const POS: React.FC = () => {
         if (sale) {
             setCompletedSale(sale);
             setCart([]);
+            setOverallDiscount('');
+            setOverallDiscountType('fixed');
             setCheckoutModalOpen(false);
             setCustomerName('');
             setBikeNumber('');
@@ -212,11 +332,19 @@ const POS: React.FC = () => {
                         <ProductCard 
                             key={product.id} 
                             product={product} 
-                            onAddToCart={addToCart}
+                            onSelect={toggleProductSelection}
+                            isSelected={selectedProductIds.has(product.id)}
                             categoryName={categoryMap.get(product.categoryId)}
                         />
                     ))}
                 </div>
+                {selectedProductIds.size > 0 && (
+                    <div className="mt-4 flex-shrink-0">
+                        <Button onClick={handleAddSelectedToCart} className="w-full text-lg justify-center">
+                            Add {selectedProductIds.size} Selected Item(s) to Cart
+                        </Button>
+                    </div>
+                )}
             </div>
 
             {/* Cart Section */}
@@ -228,32 +356,90 @@ const POS: React.FC = () => {
                     ) : (
                         <div className="divide-y divide-gray-200">
                             {cart.map(item => (
-                                <div key={item.id} className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                                    <div className="flex-grow">
-                                        <p className="font-semibold text-sm">{item.name}</p>
-                                        <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
-                                    </div>
-                                    <div className="flex items-center justify-between sm:justify-end gap-2">
-                                        <input
-                                            type="number"
-                                            value={item.cartQuantity}
-                                            onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value, 10) || 1)}
-                                            className="w-16 p-1 border rounded-md text-center"
-                                            min="1"
-                                            max={item.quantity}
-                                        />
-                                        <p className="w-24 text-right font-semibold">{formatCurrency(item.salePrice * item.cartQuantity)}</p>
-                                        <button onClick={() => updateCartQuantity(item.id, 0)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100">
+                                <div key={item.id} className="py-3 flex flex-col gap-2">
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex-grow">
+                                            <p className="font-semibold text-sm">{item.name}</p>
+                                            <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
+                                        </div>
+                                        <p className="font-semibold text-right">{formatCurrency((item.salePrice - (item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount / 100))) * item.cartQuantity)}</p>
+                                         <button onClick={() => updateCartQuantity(item.id, 0)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 ml-1">
                                             <X size={18} />
                                         </button>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-xs">Qty:</label>
+                                            <input
+                                                type="number"
+                                                value={item.cartQuantity}
+                                                onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value, 10) || 1)}
+                                                className="w-16 p-1 border rounded-md text-center"
+                                                min="1"
+                                                max={item.quantity}
+                                            />
+                                        </div>
+                                         <div className="flex items-center gap-1">
+                                            <label className="text-xs text-gray-600">Disc:</label>
+                                            <div className="flex items-center border border-gray-300 rounded-md shadow-sm">
+                                                <input
+                                                    type="number"
+                                                    placeholder="0"
+                                                    value={item.discount > 0 ? item.discount : ''}
+                                                    onChange={(e) => updateItemDiscount(item.id, e.target.value)}
+                                                    className="w-16 p-1 border-0 rounded-l-md text-right focus:ring-0"
+                                                    min="0"
+                                                />
+                                                <select
+                                                    value={item.discountType}
+                                                    onChange={(e) => updateItemDiscount(item.id, String(item.discount), e.target.value as 'fixed' | 'percentage')}
+                                                    className="text-xs bg-gray-50 border-0 border-l border-gray-300 rounded-r-md py-1 pl-1 pr-2 focus:ring-0"
+                                                >
+                                                    <option value="fixed">Rs</option>
+                                                    <option value="percentage">%</option>
+                                                </select>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     )}
                 </div>
-                <div className="mt-auto pt-4 border-t">
-                    <div className="flex justify-between text-xl font-bold mb-4">
+                <div className="mt-auto pt-4 border-t space-y-2">
+                     <div className="flex justify-between text-md">
+                        <span>Subtotal:</span>
+                        <span>{formatCurrency(cartSubtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-md text-red-600">
+                        <span>Item Discounts:</span>
+                        <span>- {formatCurrency(totalItemDiscounts)}</span>
+                    </div>
+                    <div className="flex justify-between text-md text-red-600">
+                        <span>Overall Discount:</span>
+                        <span>- {formatCurrency(totalOverallDiscount)}</span>
+                    </div>
+                     <div className="flex justify-between items-center text-md">
+                        <span className="text-gray-700">Apply Discount:</span>
+                        <div className="flex items-center border border-gray-300 rounded-md shadow-sm">
+                            <Input
+                                type="number"
+                                placeholder="0"
+                                className="w-24 text-right font-semibold !py-1 !border-0 !rounded-r-none !shadow-none !ring-0"
+                                value={overallDiscount}
+                                onChange={(e) => setOverallDiscount(e.target.value)}
+                            />
+                            <select
+                                value={overallDiscountType}
+                                onChange={(e) => setOverallDiscountType(e.target.value as 'fixed' | 'percentage')}
+                                className="text-sm bg-gray-50 focus:outline-none rounded-r-md p-2 border-l border-gray-300"
+                            >
+                                <option value="fixed">Rs</option>
+                                <option value="percentage">%</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="flex justify-between text-xl font-bold pt-2 border-t">
                         <span>Total:</span>
                         <span>{formatCurrency(cartTotal)}</span>
                     </div>
