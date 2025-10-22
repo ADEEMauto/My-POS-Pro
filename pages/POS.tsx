@@ -1,8 +1,10 @@
+
 import React, { useState, useRef, useMemo } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag, PlusCircle } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -57,6 +59,10 @@ const POS: React.FC = () => {
     const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
     const [overallDiscount, setOverallDiscount] = useState('');
     const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+    const [isManualItemModalOpen, setManualItemModalOpen] = useState(false);
+    const [manualItemName, setManualItemName] = useState('');
+    const [manualItemPrice, setManualItemPrice] = useState('');
+    const [manualItemQuantity, setManualItemQuantity] = useState('1');
 
 
     const receiptRef = useRef<HTMLDivElement>(null);
@@ -134,19 +140,27 @@ const POS: React.FC = () => {
     };
 
     const updateCartQuantity = (productId: string, newQuantity: number) => {
-        const product = inventory.find(p => p.id === productId);
-        
+        const cartItem = cart.find(item => item.id === productId);
+        if (!cartItem) return;
+    
         if (newQuantity <= 0) {
             setCart(cart.filter(item => item.id !== productId));
             return;
         }
-
+    
+        // For manual items, stock is not tracked from inventory
+        if (cartItem.id.startsWith('manual-')) {
+            setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
+            return;
+        }
+        
+        const product = inventory.find(p => p.id === productId);
         if(product && newQuantity > product.quantity) {
             toast.error(`Only ${product.quantity} of ${product.name} in stock.`);
             setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: product.quantity } : item));
             return;
         }
-
+    
         setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
     };
 
@@ -289,6 +303,41 @@ const POS: React.FC = () => {
         }
     };
 
+    const handleAddManualItem = () => {
+        const name = manualItemName.trim();
+        const price = parseFloat(manualItemPrice);
+        const quantity = parseInt(manualItemQuantity, 10);
+    
+        if (!name || !(price > 0) || !(quantity > 0)) {
+            toast.error("Please provide a valid name, price, and quantity.");
+            return;
+        }
+    
+        const newManualItem: CartItem = {
+            id: `manual-${uuidv4()}`,
+            name,
+            salePrice: price,
+            cartQuantity: quantity,
+            quantity: 9999, // Effectively infinite stock for manual items
+            purchasePrice: 0, // Assume no cost/profit for manual items unless specified
+            categoryId: 'manual',
+            subCategoryId: null,
+            manufacturer: 'Manual Entry',
+            location: '',
+            discount: 0,
+            discountType: 'fixed'
+        };
+    
+        setCart(prevCart => [...prevCart, newManualItem]);
+        toast.success(`${name} added to cart.`);
+        
+        // Reset and close
+        setManualItemModalOpen(false);
+        setManualItemName('');
+        setManualItemPrice('');
+        setManualItemQuantity('1');
+    };
+
     const filteredInventory = useMemo(() => {
         return inventory.filter(product => {
             const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -325,6 +374,9 @@ const POS: React.FC = () => {
                     </select>
                      <Button onClick={() => setScannerOpen(true)} className="flex items-center justify-center gap-2">
                         <ScanLine className="w-5 h-5" /> Scan
+                    </Button>
+                    <Button onClick={() => setManualItemModalOpen(true)} variant="secondary" className="flex items-center justify-center gap-2">
+                        <PlusCircle className="w-5 h-5" /> Add Manual Item
                     </Button>
                 </div>
                 <div className="flex-grow overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -512,6 +564,40 @@ const POS: React.FC = () => {
                         </div>
                         <p className="text-xs text-gray-500 mt-1">Set a recurring service reminder for this customer.</p>
                     </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isManualItemModalOpen} onClose={() => setManualItemModalOpen(false)} title="Add Manual Item to Cart" footer={
+                <div className="flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setManualItemModalOpen(false)}>Cancel</Button>
+                    <Button onClick={handleAddManualItem}>Add Item</Button>
+                </div>
+            }>
+                <div className="space-y-4">
+                    <Input
+                        label="Item Name"
+                        value={manualItemName}
+                        onChange={e => setManualItemName(e.target.value)}
+                        required
+                        placeholder="e.g., Bike Wash, Service Charge"
+                    />
+                    <Input
+                        label="Sale Price (per item)"
+                        type="number"
+                        value={manualItemPrice}
+                        onChange={e => setManualItemPrice(e.target.value)}
+                        required
+                        min="0.01"
+                        placeholder="e.g., 500"
+                    />
+                    <Input
+                        label="Quantity"
+                        type="number"
+                        value={manualItemQuantity}
+                        onChange={e => setManualItemQuantity(e.target.value)}
+                        required
+                        min="1"
+                    />
                 </div>
             </Modal>
 

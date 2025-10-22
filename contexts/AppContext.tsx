@@ -241,12 +241,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const updatedInventory = [...inventory];
     
         for (const item of cartItems) {
-            const productInStock = updatedInventory.find(p => p.id === item.id);
-            if (!productInStock || productInStock.quantity < item.cartQuantity) {
-                toast.error(`Not enough stock for ${item.name}.`);
-                return null;
+            if (item.id.startsWith('manual-')) {
+                // This is a manual item, so we don't check/deduct from inventory.
+            } else {
+                const productInStock = updatedInventory.find(p => p.id === item.id);
+                if (!productInStock || productInStock.quantity < item.cartQuantity) {
+                    toast.error(`Not enough stock for ${item.name}.`);
+                    return null;
+                }
+                productInStock.quantity -= item.cartQuantity;
             }
-            productInStock.quantity -= item.cartQuantity;
     
             const discountAmount = item.discountType === 'fixed' 
                 ? item.discount 
