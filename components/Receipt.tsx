@@ -93,9 +93,7 @@ const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) =
                     <div className="flex justify-between font-bold"><span>Final Balance:</span><span>{sale.finalLoyaltyPoints}</span></div>
                     {tier && (
                         <p className="text-center mt-2 text-xs">
-                            You are a {tier.name} Customer Now. Upgrade your Tier to Earn more Loyalty Points.
-                            <br />
-                            <strong className="font-bold">More Points... More Discounts !!</strong>
+                            You are a {tier.name} Customer Now. Upgrade your Tier to Earn More Loyalty Points.
                         </p>
                     )}
                  </div>
