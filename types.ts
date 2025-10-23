@@ -58,8 +58,12 @@ export interface Sale {
     totalItemDiscounts: number; // Sum of all calculated item-level discounts
     overallDiscount: number; // The value of the discount (e.g. 500 or 15)
     overallDiscountType: 'fixed' | 'percentage';
+    loyaltyDiscount?: number; // Discount from redeemed loyalty points
     total: number; // Final amount
     date: string; // ISO string
+    pointsEarned?: number;
+    redeemedPoints?: number;
+    finalLoyaltyPoints?: number;
 }
 
 
@@ -74,4 +78,22 @@ export interface Customer {
     nextServiceDate?: string; // ISO Date string for manual override
     serviceFrequencyValue?: number;
     serviceFrequencyUnit?: 'days' | 'months' | 'years';
+    loyaltyPoints: number;
+}
+
+export interface EarningRule {
+    id: string;
+    minSpend: number;
+    maxSpend: number | null; // null for the highest tier
+    pointsPerHundred: number;
+}
+
+export interface RedemptionRule {
+    method: 'fixedValue' | 'percentage';
+    // For 'fixedValue': points required for 1 unit of currency discount (e.g., 1 point = 1 Rs)
+    // `points`: 1, `value`: 1
+    points: number; 
+    // For 'percentage': points required for a 1% discount
+    // `points`: 100, `value`: 1
+    value: number; 
 }

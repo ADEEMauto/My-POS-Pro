@@ -12,8 +12,8 @@ interface ReceiptProps {
 // React.FC does not include `ref` in its props definition, which caused a type error.
 const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) => {
     const { shopInfo, customers } = useAppContext();
-    const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0;
-    const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - sale.total;
+    const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0 || (sale.loyaltyDiscount || 0) > 0;
+    const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total;
     const hasItemDiscounts = sale.items.some(item => item.discount > 0);
 
     const formatReceiptCurrency = (amount: number) => Math.round(amount).toLocaleString('en-IN');
@@ -111,10 +111,16 @@ const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) =
                             <span>- Rs. {formatReceiptCurrency(sale.totalItemDiscounts)}</span>
                         </div>
                     )}
-                    {sale.overallDiscount > 0 && (
+                    {(sale.overallDiscount || 0) > 0 && (
                         <div className="flex justify-between">
                             <span>Overall Discount {sale.overallDiscountType === 'percentage' && `(${sale.overallDiscount}%)`}</span>
                             <span>- Rs. {formatReceiptCurrency(calculatedOverallDiscount)}</span>
+                        </div>
+                    )}
+                     {(sale.loyaltyDiscount || 0) > 0 && (
+                        <div className="flex justify-between">
+                            <span>Loyalty Discount ({sale.redeemedPoints} pts)</span>
+                            <span>- Rs. {formatReceiptCurrency(sale.loyaltyDiscount!)}</span>
                         </div>
                     )}
                 </div>
@@ -123,6 +129,16 @@ const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) =
                 <span>TOTAL</span>
                 <span className="whitespace-nowrap">Rs. {formatReceiptCurrency(sale.total)}</span>
             </div>
+             {(sale.pointsEarned !== undefined || sale.finalLoyaltyPoints !== undefined) && (
+                <>
+                    <hr className="my-3 border-dashed border-gray-400" />
+                    <div className="space-y-1 text-xs text-center">
+                        <p><strong>Loyalty Points Update</strong></p>
+                        <p>Points Earned: {sale.pointsEarned || 0}</p>
+                        <p>New Balance: {sale.finalLoyaltyPoints || 0} Points</p>
+                    </div>
+                </>
+            )}
             <div className="text-center mt-4 text-xs">
                 <p>Thank You for Your Visit!</p>
                 {nextServiceMessage && <p className="mt-1">{nextServiceMessage}</p>}

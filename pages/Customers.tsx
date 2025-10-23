@@ -5,7 +5,7 @@ import { formatDate, formatCurrency } from '../utils/helpers';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
-import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare } from 'lucide-react';
+import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const isServiceDue = (customer: Customer): { due: boolean; message: string } => {
@@ -110,6 +110,14 @@ const CustomerDetailsModal: React.FC<{
                     <div className="bg-gray-100 p-3 rounded-lg">
                         <p className="text-sm text-gray-500">Last Visit</p>
                         <p className="font-bold text-primary-600">{new Date(customer.lastSeen).toLocaleDateString()}</p>
+                    </div>
+                </div>
+
+                 <div className="pt-4 border-t">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2"><Star size={20}/> Loyalty Program</h3>
+                     <div className="bg-indigo-50 p-4 rounded-lg text-center">
+                        <p className="text-sm text-indigo-700">Available Loyalty Points</p>
+                        <p className="text-3xl font-bold text-indigo-600">{customer.loyaltyPoints || 0}</p>
                     </div>
                 </div>
 
@@ -321,13 +329,19 @@ const Customers: React.FC = () => {
                         return (
                         <div key={customer.id} className="bg-white rounded-lg shadow-md p-4 flex flex-col justify-between">
                             <div>
-                                <div className="flex items-center gap-3 mb-3">
-                                    <div className="bg-primary-100 p-3 rounded-full">
-                                        <User className="w-6 h-6 text-primary-700" />
+                                <div className="flex items-start justify-between">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="bg-primary-100 p-3 rounded-full">
+                                            <User className="w-6 h-6 text-primary-700" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-lg text-gray-800 truncate">{customer.name}</h3>
+                                            <p className="text-sm text-gray-500 font-mono flex items-center gap-1">{customer.id}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg text-gray-800 truncate">{customer.name}</h3>
-                                        <p className="text-sm text-gray-500 font-mono flex items-center gap-1">{customer.id}</p>
+                                    <div className="text-right">
+                                        <p className="text-xs text-indigo-600">Loyalty Points</p>
+                                        <p className="font-bold text-indigo-600 text-lg">{customer.loyaltyPoints || 0}</p>
                                     </div>
                                 </div>
                                 <div className="text-sm space-y-2 text-gray-600">

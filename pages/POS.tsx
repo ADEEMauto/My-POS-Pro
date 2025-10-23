@@ -1,10 +1,10 @@
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
-import { Product, CartItem, Sale } from '../types';
+import { Product, CartItem, Sale, Customer } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag, PlusCircle } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag, PlusCircle, Star } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -44,18 +44,23 @@ const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) =>
 };
 
 const POS: React.FC = () => {
-    const { inventory, categories, findProductByBarcode, createSale } = useAppContext();
+    const { inventory, categories, findProductByBarcode, createSale, customers, redemptionRule } = useAppContext();
     const [cart, setCart] = useState<CartItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [completedSale, setCompletedSale] = useState<Sale | null>(null);
     const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
+    
+    // Checkout states
     const [customerName, setCustomerName] = useState('');
     const [bikeNumber, setBikeNumber] = useState('');
     const [contactNumber, setContactNumber] = useState('');
     const [serviceFrequencyValue, setServiceFrequencyValue] = useState<number | string>('');
     const [serviceFrequencyUnit, setServiceFrequencyUnit] = useState<'days' | 'months' | 'years'>('months');
+    const [customerForCheckout, setCustomerForCheckout] = useState<Customer | null>(null);
+    const [pointsToRedeem, setPointsToRedeem] = useState('');
+
     const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
     const [overallDiscount, setOverallDiscount] = useState('');
     const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
@@ -74,6 +79,19 @@ const POS: React.FC = () => {
         });
         return map;
     }, [categories]);
+
+    useEffect(() => {
+        if (bikeNumber) {
+            const customer = customers.find(c => c.id === bikeNumber.replace(/\s+/g, '').toUpperCase());
+            setCustomerForCheckout(customer || null);
+            if(customer && !customerName) {
+                setCustomerName(customer.name);
+            }
+        } else {
+            setCustomerForCheckout(null);
+        }
+    }, [bikeNumber, customers, customerName]);
+
 
     const addToCart = (product: Product) => {
         setCart(prevCart => {
@@ -129,7 +147,8 @@ const POS: React.FC = () => {
         }
         
         if (itemsSkipped > 0) {
-            toast.info(`${itemsSkipped} selected item(s) were already in the cart.`);
+            // FIX: Replaced `toast.info` with the generic `toast()` function call, as `react-hot-toast` does not have a dedicated `info` method. This resolves the TypeScript error.
+            toast(`${itemsSkipped} selected item(s) were already in the cart.`);
         }
         
         if (newItemsAdded === 0 && itemsSkipped === 0 && selectedProductIds.size > 0) {
@@ -223,6 +242,26 @@ const POS: React.FC = () => {
         };
     }, [cart, overallDiscount, overallDiscountType]);
 
+    const loyaltyDiscount = useMemo(() => {
+        const points = parseInt(pointsToRedeem, 10) || 0;
+        if (!customerForCheckout || points <= 0) return 0;
+
+        const availablePoints = customerForCheckout.loyaltyPoints;
+        const pointsToUse = Math.min(points, availablePoints);
+        
+        let discount = 0;
+        if (redemptionRule.method === 'fixedValue') {
+            discount = (pointsToUse / redemptionRule.points) * redemptionRule.value;
+        } else { // percentage
+            const percentage = (pointsToUse / redemptionRule.points) * redemptionRule.value;
+            discount = (cartTotal * percentage) / 100;
+        }
+
+        return Math.min(discount, cartTotal); // Cannot discount more than the total
+
+    }, [pointsToRedeem, customerForCheckout, redemptionRule, cartTotal]);
+
+
     const handleScanSuccess = (decodedText: string) => {
         const product = findProductByBarcode(decodedText);
         if (product) {
@@ -262,7 +301,8 @@ const POS: React.FC = () => {
                 contactNumber,
                 serviceFrequencyValue: serviceFrequencyValue ? Number(serviceFrequencyValue) : undefined,
                 serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined,
-            }
+            },
+            parseInt(pointsToRedeem, 10) || 0
         );
     
         if (sale) {
@@ -271,11 +311,14 @@ const POS: React.FC = () => {
             setOverallDiscount('');
             setOverallDiscountType('fixed');
             setCheckoutModalOpen(false);
+            // Reset checkout form
             setCustomerName('');
             setBikeNumber('');
             setContactNumber('');
             setServiceFrequencyValue('');
             setServiceFrequencyUnit('months');
+            setPointsToRedeem('');
+            setCustomerForCheckout(null);
         }
     };
 
@@ -514,25 +557,25 @@ const POS: React.FC = () => {
                 </div>
             </Modal>
             
-            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Customer Information" footer={
+            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Customer & Checkout" footer={
                 <div className="flex justify-end gap-2">
                     <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
                     <Button onClick={handleConfirmCheckout}>Confirm Sale</Button>
                 </div>
             }>
                 <div className="space-y-4">
-                    <Input
-                        label="Customer Name"
-                        placeholder="e.g., Jack (Optional)"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                    />
-                    <Input
+                     <Input
                         label="Bike Number"
                         placeholder="e.g., RIP555"
                         value={bikeNumber}
                         onChange={(e) => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())}
                         required
+                    />
+                    <Input
+                        label="Customer Name"
+                        placeholder="e.g., Jack (Optional)"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
                     />
                      <Input
                         label="Contact Number (Optional)"
@@ -541,6 +584,55 @@ const POS: React.FC = () => {
                         value={contactNumber}
                         onChange={(e) => setContactNumber(e.target.value)}
                     />
+                     {customerForCheckout && (
+                         <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-md space-y-3">
+                             <div className="flex justify-between items-center">
+                                 <h4 className="font-semibold text-indigo-800 flex items-center gap-2"><Star size={16}/> Loyalty Points</h4>
+                                 <span className="font-bold text-indigo-800">{customerForCheckout.loyaltyPoints} pts</span>
+                            </div>
+                            {customerForCheckout.loyaltyPoints > 0 && (
+                                <div className="flex items-end gap-2">
+                                <Input
+                                    label="Redeem Points"
+                                    type="number"
+                                    placeholder="0"
+                                    min="0"
+                                    max={customerForCheckout.loyaltyPoints}
+                                    value={pointsToRedeem}
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value, 10);
+                                        if (val > customerForCheckout.loyaltyPoints) {
+                                            setPointsToRedeem(String(customerForCheckout.loyaltyPoints));
+                                            toast.error(`Max ${customerForCheckout.loyaltyPoints} points can be redeemed.`);
+                                        } else {
+                                            setPointsToRedeem(e.target.value);
+                                        }
+                                    }}
+                                />
+                                <Button size="sm" variant="ghost" onClick={() => setPointsToRedeem(String(customerForCheckout.loyaltyPoints))}>Max</Button>
+                               </div>
+                            )}
+                         </div>
+                    )}
+
+                    <div className="p-4 border-t space-y-2 mt-4">
+                        <div className="flex justify-between text-md">
+                            <span>Total</span>
+                            <span>{formatCurrency(cartTotal)}</span>
+                        </div>
+                        {loyaltyDiscount > 0 && (
+                            <div className="flex justify-between text-md text-green-600">
+                                <span>Loyalty Discount:</span>
+                                <span>- {formatCurrency(loyaltyDiscount)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between text-xl font-bold pt-2 border-t">
+                            <span>To Pay:</span>
+                            <span>{formatCurrency(cartTotal - loyaltyDiscount)}</span>
+                        </div>
+                    </div>
+
+
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Service Frequency (Optional)</label>
                         <div className="flex items-center gap-2">

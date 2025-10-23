@@ -17,6 +17,7 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Sales from './pages/Sales';
 import Customers from './pages/Customers';
+import LoyaltySettings from './pages/LoyaltySettings';
 
 const AppRoutes: React.FC = () => {
     const { shopInfo, currentUser, loading } = useAppContext();
@@ -60,6 +61,7 @@ const AppRoutes: React.FC = () => {
                 <ReactRouterDOM.Route path="/reports" element={<Reports />} />
                 <ReactRouterDOM.Route path="/profile" element={<Profile />} />
                 <ReactRouterDOM.Route path="/settings" element={<Settings />} />
+                <ReactRouterDOM.Route path="/loyalty" element={<LoyaltySettings />} />
                 <ReactRouterDOM.Route path="*" element={<ReactRouterDOM.Navigate to="/" />} />
             </ReactRouterDOM.Routes>
         </Layout>

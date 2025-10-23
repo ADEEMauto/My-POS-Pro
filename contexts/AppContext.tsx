@@ -1,7 +1,6 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem } from '../types';
+import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule } from '../types';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
@@ -12,7 +11,7 @@ const simpleHash = async (password: string) => {
     // This is not secure. For demo purposes only.
     const encoder = new TextEncoder();
     const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashBuffer = await crypto.subtle.digest('SHA-26', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
@@ -44,11 +43,16 @@ interface AppContextType {
     deleteCategory: (id: string) => void;
 
     sales: Sale[];
-    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }) => Sale | null;
+    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number) => Sale | null;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     customers: Customer[];
     updateCustomerDetails: (customerId: string, details: Partial<Pick<Customer, 'contactNumber' | 'servicingNotes' | 'nextServiceDate' | 'serviceFrequencyValue' | 'serviceFrequencyUnit'>>) => void;
+
+    earningRules: EarningRule[];
+    updateEarningRules: (rules: EarningRule[]) => void;
+    redemptionRule: RedemptionRule;
+    updateRedemptionRule: (rule: RedemptionRule) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -62,6 +66,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [sales, setSales] = useLocalStorage<Sale[]>('sales', []);
     const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', []);
     const [loading, setLoading] = useState(true);
+
+    const [earningRules, setEarningRules] = useLocalStorage<EarningRule[]>('earningRules', [
+        { id: '1', minSpend: 0, maxSpend: 500, pointsPerHundred: 1 },
+        { id: '2', minSpend: 501, maxSpend: 1000, pointsPerHundred: 1.5 },
+        { id: '3', minSpend: 1001, maxSpend: null, pointsPerHundred: 2 }
+    ]);
+    const [redemptionRule, setRedemptionRule] = useLocalStorage<RedemptionRule>('redemptionRule', {
+        method: 'fixedValue',
+        points: 1,
+        value: 1
+    });
 
     useEffect(() => {
         // This simulates loading data
@@ -231,19 +246,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Category and its sub-categories deleted.");
     };
 
-    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }): Sale | null => {
+    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number): Sale | null => {
         if (cartItems.length === 0) {
             toast.error("Cart is empty.");
             return null;
         }
-    
+
         const saleItems: SaleItem[] = [];
         const updatedInventory = [...inventory];
-    
+
+        // Process inventory deductions
         for (const item of cartItems) {
-            if (item.id.startsWith('manual-')) {
-                // This is a manual item, so we don't check/deduct from inventory.
-            } else {
+            if (!item.id.startsWith('manual-')) {
                 const productInStock = updatedInventory.find(p => p.id === item.id);
                 if (!productInStock || productInStock.quantity < item.cartQuantity) {
                     toast.error(`Not enough stock for ${item.name}.`);
@@ -251,99 +265,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
                 productInStock.quantity -= item.cartQuantity;
             }
-    
-            const discountAmount = item.discountType === 'fixed' 
-                ? item.discount 
-                : (item.salePrice * item.discount) / 100;
-
-            saleItems.push({
-                productId: item.id,
-                name: item.name,
-                quantity: item.cartQuantity,
-                originalPrice: item.salePrice,
-                discount: item.discount,
-                discountType: item.discountType,
-                price: item.salePrice - discountAmount,
-                purchasePrice: item.purchasePrice,
+             const discountAmount = item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount) / 100;
+             saleItems.push({
+                productId: item.id, name: item.name, quantity: item.cartQuantity,
+                originalPrice: item.salePrice, discount: item.discount, discountType: item.discountType,
+                price: item.salePrice - discountAmount, purchasePrice: item.purchasePrice,
             });
         }
-    
+        
+        // Calculate totals
         const subtotal = saleItems.reduce((acc, item) => acc + item.originalPrice * item.quantity, 0);
-        const totalItemDiscounts = saleItems.reduce((acc, item) => {
-            const discountAmount = item.discountType === 'fixed'
-                ? item.discount
-                : (item.originalPrice * item.discount) / 100;
-            return acc + (discountAmount * item.quantity);
-        }, 0);
-
+        const totalItemDiscounts = saleItems.reduce((acc, item) => acc + (item.originalPrice - item.price) * item.quantity, 0);
         const subtotalAfterItemDiscounts = subtotal - totalItemDiscounts;
+        const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (subtotalAfterItemDiscounts * overallDiscountValue) / 100;
+        const totalBeforeLoyalty = subtotalAfterItemDiscounts - overallDiscountAmount;
 
-        const overallDiscountAmount = overallDiscountType === 'fixed'
-            ? overallDiscountValue
-            : (subtotalAfterItemDiscounts * overallDiscountValue) / 100;
+        // Loyalty Points Handling
+        const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
+        let customer = customers.find(c => c.id === customerId);
+        let loyaltyDiscount = 0;
+        
+        if (customer && redeemedPoints > 0) {
+            if (customer.loyaltyPoints < redeemedPoints) {
+                toast.error("Customer does not have enough points to redeem.");
+                return null;
+            }
+            if (redemptionRule.method === 'fixedValue') {
+                loyaltyDiscount = (redeemedPoints / redemptionRule.points) * redemptionRule.value;
+            } else { // percentage
+                const percentage = (redeemedPoints / redemptionRule.points) * redemptionRule.value;
+                loyaltyDiscount = (totalBeforeLoyalty * percentage) / 100;
+            }
+            // Ensure discount doesn't exceed total
+            loyaltyDiscount = Math.min(loyaltyDiscount, totalBeforeLoyalty);
+        }
 
-        const total = subtotalAfterItemDiscounts - overallDiscountAmount;
-    
+        const total = totalBeforeLoyalty - loyaltyDiscount;
         if (total < 0) {
-            toast.error("Total amount cannot be negative after discounts.");
+            toast.error("Total amount cannot be negative.");
             return null;
         }
-    
+
+        const sortedEarningRules = [...earningRules].sort((a, b) => a.minSpend - b.minSpend);
+        const applicableRule = sortedEarningRules.reverse().find(rule => totalBeforeLoyalty >= rule.minSpend);
+        const pointsEarned = applicableRule ? Math.floor((totalBeforeLoyalty / 100) * applicableRule.pointsPerHundred) : 0;
+
+        // Finalize sale object
         const now = new Date();
-        const year = now.getFullYear();
-        const month = (now.getMonth() + 1).toString().padStart(2, '0');
-        const day = now.getDate().toString().padStart(2, '0');
-        const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
-        const newSaleId = `${year}${month}${day}${customerId}`;
-    
+        const newSaleId = `${now.getFullYear().toString().slice(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${customerId}`;
+        let finalLoyaltyPoints = customer?.loyaltyPoints || 0;
+
+        // Create or update customer
+        if (customer) {
+            customer.loyaltyPoints -= redeemedPoints;
+            customer.loyaltyPoints += pointsEarned;
+            finalLoyaltyPoints = customer.loyaltyPoints;
+        }
+
         const newSale: Sale = {
-            id: newSaleId,
-            customerId: customerId,
-            customerName: customerInfo.customerName.trim(),
-            items: saleItems,
-            subtotal: Math.round(subtotal),
-            totalItemDiscounts: Math.round(totalItemDiscounts),
-            overallDiscount: overallDiscountValue,
-            overallDiscountType: overallDiscountType,
-            total: Math.round(total),
-            date: now.toISOString(),
+            id: newSaleId, customerId, customerName: customerInfo.customerName.trim(), items: saleItems,
+            subtotal, totalItemDiscounts, overallDiscount: overallDiscountValue, overallDiscountType,
+            loyaltyDiscount: Math.round(loyaltyDiscount), total: Math.round(total), date: now.toISOString(),
+            redeemedPoints, pointsEarned, finalLoyaltyPoints,
         };
-    
+
+        // Update state
         setInventory(updatedInventory);
         setSales([newSale, ...sales]);
-    
-        // Create or update customer profile
+
         const existingCustomerIndex = customers.findIndex(c => c.id === customerId);
         if (existingCustomerIndex > -1) {
             const updatedCustomers = [...customers];
-            const customer = updatedCustomers[existingCustomerIndex];
-            customer.saleIds.unshift(newSale.id);
-            customer.lastSeen = now.toISOString();
-            if (customerInfo.customerName.trim()) {
-                customer.name = customerInfo.customerName.trim();
-            }
-            if (customerInfo.contactNumber && customerInfo.contactNumber.trim()) {
-                customer.contactNumber = customerInfo.contactNumber.trim();
-            }
+            const custToUpdate = { ...updatedCustomers[existingCustomerIndex] };
+            custToUpdate.saleIds.unshift(newSale.id);
+            custToUpdate.lastSeen = now.toISOString();
+            if (customerInfo.customerName.trim()) custToUpdate.name = customerInfo.customerName.trim();
+            if (customerInfo.contactNumber?.trim()) custToUpdate.contactNumber = customerInfo.contactNumber.trim();
             if (customerInfo.serviceFrequencyValue && customerInfo.serviceFrequencyUnit) {
-                customer.serviceFrequencyValue = customerInfo.serviceFrequencyValue;
-                customer.serviceFrequencyUnit = customerInfo.serviceFrequencyUnit;
+                custToUpdate.serviceFrequencyValue = customerInfo.serviceFrequencyValue;
+                custToUpdate.serviceFrequencyUnit = customerInfo.serviceFrequencyUnit;
             }
+            custToUpdate.loyaltyPoints = finalLoyaltyPoints;
+            updatedCustomers[existingCustomerIndex] = custToUpdate;
             setCustomers(updatedCustomers);
         } else {
             const newCustomer: Customer = {
-                id: customerId,
-                name: customerInfo.customerName.trim() || `Customer ${customerId}`,
-                saleIds: [newSale.id],
-                firstSeen: now.toISOString(),
-                lastSeen: now.toISOString(),
+                id: customerId, name: customerInfo.customerName.trim() || `Customer ${customerId}`, saleIds: [newSale.id],
+                firstSeen: now.toISOString(), lastSeen: now.toISOString(),
                 contactNumber: customerInfo.contactNumber?.trim() || undefined,
                 serviceFrequencyValue: customerInfo.serviceFrequencyValue,
                 serviceFrequencyUnit: customerInfo.serviceFrequencyValue ? customerInfo.serviceFrequencyUnit : undefined,
+                loyaltyPoints: pointsEarned,
             };
             setCustomers([newCustomer, ...customers]);
         }
-    
+
         toast.success("Sale completed successfully!");
         return newSale;
     };
@@ -393,33 +409,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? { ...c, saleIds: c.saleIds.filter(id => id !== saleId) }
                 : c
             ));
+            
+            // Revert loyalty points
+            if (saleToModify.pointsEarned || saleToModify.redeemedPoints) {
+                 setCustomers(prevCustomers => prevCustomers.map(c => {
+                    if (c.id === customerId) {
+                        let newPoints = c.loyaltyPoints;
+                        newPoints -= (saleToModify.pointsEarned || 0);
+                        newPoints += (saleToModify.redeemedPoints || 0);
+                        return { ...c, loyaltyPoints: Math.max(0, newPoints) };
+                    }
+                    return c;
+                 }));
+            }
+
 
             toast.success("Sale completely reversed. All items returned to inventory.");
         } else {
-            // Some items remain, so update the sale
+            // Some items remain, so update the sale. NOTE: Loyalty point reversal on partial returns is complex and not implemented.
+            // A simple approach would be to inform the user.
+            if (saleToModify.pointsEarned || saleToModify.redeemedPoints) {
+                toast("Partial reversal complete. Loyalty points were not adjusted for this transaction.", { icon: 'ℹ️' });
+            }
+            
             const newSubtotal = remainingItems.reduce((acc, item) => acc + (item.originalPrice * item.quantity), 0);
-            
-            const newItemDiscounts = remainingItems.reduce((acc, item) => {
-                const discountAmount = item.discountType === 'fixed'
-                    ? item.discount
-                    : (item.originalPrice * item.discount) / 100;
-                return acc + (discountAmount * item.quantity);
-            }, 0);
-
+            const newItemDiscounts = remainingItems.reduce((acc, item) => acc + (item.originalPrice - item.price) * item.quantity, 0);
             const newSubtotalAfterItemDiscounts = newSubtotal - newItemDiscounts;
-
-            const overallDiscountAmount = saleToModify.overallDiscountType === 'fixed'
-                ? saleToModify.overallDiscount
-                : (newSubtotalAfterItemDiscounts * saleToModify.overallDiscount) / 100;
-            
+            const overallDiscountAmount = saleToModify.overallDiscountType === 'fixed' ? saleToModify.overallDiscount : (newSubtotalAfterItemDiscounts * saleToModify.overallDiscount) / 100;
             const newTotal = newSubtotalAfterItemDiscounts - overallDiscountAmount;
 
             const updatedSale: Sale = { 
-                ...saleToModify, 
-                items: remainingItems, 
-                subtotal: Math.round(newSubtotal),
-                totalItemDiscounts: Math.round(newItemDiscounts),
-                total: Math.round(newTotal) 
+                ...saleToModify, items: remainingItems, subtotal: Math.round(newSubtotal),
+                totalItemDiscounts: Math.round(newItemDiscounts), total: Math.round(newTotal) 
             };
             updatedSales[saleIndex] = updatedSale;
             toast.success(`${returnedItemsCount} item(s) returned to inventory. Sale record updated.`);
@@ -440,6 +461,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             toast.success("Customer details updated.");
             return updatedCustomers;
         });
+    };
+
+    const updateEarningRules = (rules: EarningRule[]) => {
+        setEarningRules(rules);
+        toast.success("Earning rules updated.");
+    };
+
+    const updateRedemptionRule = (rule: RedemptionRule) => {
+        setRedemptionRule(rule);
+        toast.success("Redemption rule updated.");
     };
 
 
@@ -471,6 +502,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reverseSale,
         customers,
         updateCustomerDetails,
+        earningRules,
+        updateEarningRules,
+        redemptionRule,
+        updateRedemptionRule,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
