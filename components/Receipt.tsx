@@ -7,172 +7,101 @@ interface ReceiptProps {
     sale: Sale;
 }
 
-// FIX: Removed React.FC type from forwardRef component to allow ref to be passed correctly.
-// React.FC does not include `ref` in its props definition, which caused a type error.
 const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) => {
     const { shopInfo, customers, customerTiers } = useAppContext();
-    const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0 || (sale.loyaltyDiscount || 0) > 0;
-    const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total;
-    const hasItemDiscounts = sale.items.some(item => item.discount > 0);
-
-    const formatReceiptCurrency = (amount: number) => Math.round(amount).toLocaleString('en-IN');
-
     const customer = customers.find(c => c.id === sale.customerId);
     const tier = customer?.tierId ? customerTiers.find(t => t.id === customer.tierId) : null;
-    const isSpecialTier = tier && tier.rank > 0;
 
-    let customerDisplayLine = null;
-    if (sale.customerName && isSpecialTier) {
-        customerDisplayLine = <p><strong>Customer:</strong> {sale.customerName} ({tier.name} Customer)</p>;
-    } else if (sale.customerName) {
-        customerDisplayLine = <p><strong>Customer:</strong> {sale.customerName}</p>;
-    } else if (isSpecialTier) {
-        customerDisplayLine = <p><strong>Customer:</strong> ({tier.name} Customer)</p>;
-    }
-    
-    let tierMessage = null;
-    if (tier) {
-        const hasHigherTier = customerTiers.some(t => t.rank > tier.rank);
-        if (hasHigherTier) {
-            tierMessage = `You are a ${tier.name} Customer Now. Upgrade your Tier to Earn More Loyalty Points.`;
-        } else {
-            tierMessage = `Congratulations! You are a top-tier ${tier.name} Customer!`;
-        }
-    }
-
-    let nextServiceMessage = null;
-
-    // Check if the frequency was set for the customer associated with this sale
-    if (customer && customer.serviceFrequencyValue && customer.serviceFrequencyUnit) {
-        const saleDate = new Date(sale.date);
-        const nextServiceDate = new Date(saleDate);
-
-        switch (customer.serviceFrequencyUnit) {
-            case 'days':
-                nextServiceDate.setDate(saleDate.getDate() + customer.serviceFrequencyValue);
-                break;
-            case 'months':
-                nextServiceDate.setMonth(saleDate.getMonth() + customer.serviceFrequencyValue);
-                break;
-            case 'years':
-                nextServiceDate.setFullYear(saleDate.getFullYear() + customer.serviceFrequencyValue);
-                break;
-        }
-
-        const day = nextServiceDate.getDate().toString().padStart(2, '0');
-        const month = nextServiceDate.toLocaleString('en-US', { month: 'short' });
-        const year = nextServiceDate.getFullYear();
-        const formattedDate = `${day}-${month}-${year}`;
-
-        nextServiceMessage = `See you on ${formattedDate}.`;
-    }
+    const formatCurrencyForReceipt = (amount: number) => `Rs. ${Math.round(amount).toFixed(2)}`;
 
     return (
-        <div ref={ref} className="bg-white p-4 w-full max-w-sm font-mono text-xs text-black">
+        <div ref={ref} className="p-4 bg-white text-black font-mono text-xs max-w-sm mx-auto">
             <div className="text-center mb-4">
                 <h2 className="text-lg font-bold">{shopInfo?.name}</h2>
-                <p className="text-xs">{shopInfo?.address}</p>
-                <p className="text-xs mt-1">{formatDate(sale.date)}</p>
-                <p className="text-xs mt-1 font-semibold">Sale ID: {sale.id}</p>
+                <p>{shopInfo?.address}</p>
             </div>
-            {(customerDisplayLine || sale.customerId) && (
-                <div className="text-left mb-2 text-xs">
-                    {customerDisplayLine}
-                    {sale.customerId && <p><strong>Bike No:</strong> {sale.customerId}</p>}
-                </div>
-            )}
-            <hr className="my-3 border-dashed border-gray-400" />
-            <table className="w-full table-fixed text-xs">
-                 <thead>
+            <hr className="my-2 border-dashed" />
+            <p><strong>Receipt ID:</strong> {sale.id}</p>
+            <p><strong>Date:</strong> {formatDate(sale.date)}</p>
+            <p><strong>Bike No:</strong> {sale.customerId}</p>
+            {sale.customerName && <p><strong>Customer:</strong> {sale.customerName}</p>}
+            <hr className="my-2 border-dashed" />
+            <table className="w-full">
+                <thead>
                     <tr>
-                        <th className="w-[15%] text-left font-normal pb-1">QTY</th>
-                        <th className={`${hasItemDiscounts ? 'w-[35%]' : 'w-[55%]'} text-left font-normal pb-1`}>ITEM</th>
-                        {hasItemDiscounts && <th className="w-[18%] text-right font-normal pb-1">PRICE</th>}
-                        {hasItemDiscounts && <th className="w-[17%] text-right font-normal pb-1">DISC</th>}
-                        <th className={`${hasItemDiscounts ? 'w-[20%]' : 'w-[30%]'} text-right font-normal pb-1`}>
-                            {hasItemDiscounts ? 'TOTAL' : 'PRICE'}
-                        </th>
+                        <th className="text-left">Item</th>
+                        <th className="text-center">Qty</th>
+                        <th className="text-right">Price</th>
+                        <th className="text-right">Total</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {sale.items.map((item) => (
-                        <tr key={item.productId}>
-                            <td className="text-left py-1 align-top">{item.quantity}</td>
-                            <td className="text-left py-1 pr-2 align-top break-words">{item.name}</td>
-                            {hasItemDiscounts && <td className="text-right py-1 align-top whitespace-nowrap">{formatReceiptCurrency(item.originalPrice)}</td>}
-                            {hasItemDiscounts && (
-                                <td className="text-right py-1 align-top whitespace-nowrap">
-                                    {item.discount > 0
-                                        ? (item.discountType === 'fixed'
-                                            ? `-${formatReceiptCurrency(item.discount)}`
-                                            : `${item.discount}%`)
-                                        : '-'
-                                    }
-                                </td>
-                            )}
-                            <td className="text-right py-1 align-top whitespace-nowrap font-semibold">
-                                {formatReceiptCurrency(item.price * item.quantity)}
+                    {sale.items.map((item, index) => (
+                        <tr key={`${item.productId}-${index}`}>
+                            <td className="text-left align-top">
+                                {item.name}
+                                {item.discount > 0 && (
+                                    <div className="text-xs">
+                                        (Disc: -{item.discountType === 'fixed' ? formatCurrencyForReceipt(item.discount) : `${item.discount}%`})
+                                    </div>
+                                )}
                             </td>
+                            <td className="text-center align-top">{item.quantity}</td>
+                            <td className="text-right align-top">{formatCurrencyForReceipt(item.originalPrice)}</td>
+                            <td className="text-right align-top">{formatCurrencyForReceipt(item.originalPrice * item.quantity)}</td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <hr className="my-3 border-dashed border-gray-400" />
-             {hasDiscounts ? (
-                <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                        <span>Subtotal</span>
-                        <span>Rs. {formatReceiptCurrency(sale.subtotal)}</span>
-                    </div>
-                    {sale.totalItemDiscounts > 0 && (
-                        <div className="flex justify-between">
-                            <span>Item Discounts</span>
-                            <span>- Rs. {formatReceiptCurrency(sale.totalItemDiscounts)}</span>
-                        </div>
-                    )}
-                    {(sale.overallDiscount || 0) > 0 && (
-                        <div className="flex justify-between">
-                            <span>Overall Discount {sale.overallDiscountType === 'percentage' && `(${sale.overallDiscount}%)`}</span>
-                            <span>- Rs. {formatReceiptCurrency(calculatedOverallDiscount)}</span>
-                        </div>
-                    )}
-                     {(sale.loyaltyDiscount || 0) > 0 && (
-                        <div className="flex justify-between">
-                            <span>Loyalty Discount ({sale.redeemedPoints} pts)</span>
-                            <span>- Rs. {formatReceiptCurrency(sale.loyaltyDiscount!)}</span>
-                        </div>
-                    )}
+            <hr className="my-2 border-dashed" />
+            <div className="space-y-1">
+                <div className="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
                 </div>
-            ) : null}
-            <div className="flex justify-between font-bold text-xl mt-2 pt-2 border-t-2 border-dashed border-gray-400">
-                <span>TOTAL</span>
-                <span className="whitespace-nowrap">Rs. {formatReceiptCurrency(sale.total)}</span>
-            </div>
-             {(sale.pointsEarned !== undefined || sale.finalLoyaltyPoints !== undefined) && (
-                <>
-                    <hr className="my-3 border-dashed border-gray-400" />
-                    <div className="space-y-1 text-xs text-center">
-                        <p><strong>Loyalty Points Update</strong></p>
-                        {sale.tierApplied && (
-                            <p className="font-bold text-indigo-600">
-                                ⭐ {sale.tierApplied.name} Tier Bonus Applied ({sale.tierApplied.multiplier}x Points!) ⭐
-                            </p>
-                        )}
-                        {sale.promotionApplied && (
-                             <p className="font-bold text-green-600">
-                                ✨ {sale.promotionApplied.name} ({sale.promotionApplied.multiplier}x Points!) ✨
-                            </p>
-                        )}
-                        <p>Points Earned: {sale.pointsEarned || 0}</p>
-                        <p>New Balance: {sale.finalLoyaltyPoints || 0} Points</p>
-                         {tierMessage && <p className="mt-2 pt-1 border-t border-dashed font-semibold text-gray-700">{tierMessage}</p>}
+                {sale.totalItemDiscounts > 0 && (
+                    <div className="flex justify-between">
+                        <span>Item Discounts:</span>
+                        <span>-{formatCurrencyForReceipt(sale.totalItemDiscounts)}</span>
                     </div>
-                </>
-            )}
-            <div className="text-center mt-4 text-xs">
-                <p>Thank You for Your Visit!</p>
-                {nextServiceMessage && <p className="mt-1">{nextServiceMessage}</p>}
+                )}
+                {sale.overallDiscount > 0 && (
+                     <div className="flex justify-between">
+                        <span>Overall Discount:</span>
+                        <span>-{formatCurrencyForReceipt(sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total)}</span>
+                    </div>
+                )}
+                {sale.loyaltyDiscount && sale.loyaltyDiscount > 0 && (
+                     <div className="flex justify-between">
+                        <span>Loyalty Discount:</span>
+                        <span>-{formatCurrencyForReceipt(sale.loyaltyDiscount)}</span>
+                    </div>
+                )}
+                <div className="flex justify-between font-bold text-sm">
+                    <span>TOTAL:</span>
+                    <span>{formatCurrencyForReceipt(sale.total)}</span>
+                </div>
             </div>
+
+            {(sale.pointsEarned !== undefined) && (
+                 <div className="mt-4 pt-2 border-t border-dashed">
+                    <h3 className="font-bold text-center mb-1">Loyalty Points Summary</h3>
+                    <div className="flex justify-between"><span>Points Earned:</span><span>+{sale.pointsEarned}</span></div>
+                    {sale.redeemedPoints && sale.redeemedPoints > 0 && (
+                       <div className="flex justify-between"><span>Points Redeemed:</span><span>-{sale.redeemedPoints}</span></div>
+                    )}
+                    <div className="flex justify-between font-bold"><span>Final Balance:</span><span>{sale.finalLoyaltyPoints}</span></div>
+                    {tier && (
+                        <p className="text-center mt-2 text-xs">
+                            You are a {tier.name} Customer Now. Upgrade your Tier to Earn more Loyalty Points.
+                            <br />
+                            <strong className="font-bold">More Points... More Discounts !!</strong>
+                        </p>
+                    )}
+                 </div>
+            )}
+            
+            <p className="text-center mt-4 text-xs">Thank you for your purchase!</p>
         </div>
     );
 });
