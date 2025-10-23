@@ -68,6 +68,10 @@ export interface Sale {
         name: string;
         multiplier: number;
     };
+    tierApplied?: {
+        name: string;
+        multiplier: number;
+    };
 }
 
 
@@ -83,6 +87,7 @@ export interface Customer {
     serviceFrequencyValue?: number;
     serviceFrequencyUnit?: 'days' | 'months' | 'years';
     loyaltyPoints: number;
+    tierId: string | null;
 }
 
 export interface EarningRule {
@@ -108,4 +113,37 @@ export interface Promotion {
     startDate: string; // ISO Date string YYYY-MM-DD
     endDate: string;   // ISO Date string YYYY-MM-DD
     multiplier: number;
+}
+
+export interface LoyaltyTransaction {
+    id: string;
+    customerId: string;
+    type: 'earned' | 'redeemed' | 'manual_add' | 'manual_subtract';
+    points: number; // always a positive value
+    date: string; // ISO string
+    relatedSaleId?: string;
+    reason?: string;
+    pointsBefore: number;
+    pointsAfter: number;
+}
+
+export interface LoyaltyExpirySettings {
+    enabled: boolean;
+    inactivityPeriodValue: number;
+    inactivityPeriodUnit: 'days' | 'months' | 'years';
+    pointsLifespanValue: number;
+    pointsLifespanUnit: 'days' | 'months' | 'years';
+    reminderPeriodValue: number;
+    reminderPeriodUnit: 'days' | 'months' | 'years';
+}
+
+export interface CustomerTier {
+    id: string;
+    name: string;
+    minVisits: number;
+    minSpend: number;
+    periodValue: number;
+    periodUnit: 'days' | 'months' | 'years';
+    pointsMultiplier: number;
+    rank: number; // Higher is better
 }

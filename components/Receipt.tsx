@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Sale } from '../types';
 import { useAppContext } from '../contexts/AppContext';
@@ -11,7 +10,7 @@ interface ReceiptProps {
 // FIX: Removed React.FC type from forwardRef component to allow ref to be passed correctly.
 // React.FC does not include `ref` in its props definition, which caused a type error.
 const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) => {
-    const { shopInfo, customers } = useAppContext();
+    const { shopInfo, customers, customerTiers } = useAppContext();
     const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0 || (sale.loyaltyDiscount || 0) > 0;
     const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total;
     const hasItemDiscounts = sale.items.some(item => item.discount > 0);
@@ -19,6 +18,28 @@ const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) =
     const formatReceiptCurrency = (amount: number) => Math.round(amount).toLocaleString('en-IN');
 
     const customer = customers.find(c => c.id === sale.customerId);
+    const tier = customer?.tierId ? customerTiers.find(t => t.id === customer.tierId) : null;
+    const isSpecialTier = tier && tier.rank > 0;
+
+    let customerDisplayLine = null;
+    if (sale.customerName && isSpecialTier) {
+        customerDisplayLine = <p><strong>Customer:</strong> {sale.customerName} ({tier.name} Customer)</p>;
+    } else if (sale.customerName) {
+        customerDisplayLine = <p><strong>Customer:</strong> {sale.customerName}</p>;
+    } else if (isSpecialTier) {
+        customerDisplayLine = <p><strong>Customer:</strong> ({tier.name} Customer)</p>;
+    }
+    
+    let tierMessage = null;
+    if (tier) {
+        const hasHigherTier = customerTiers.some(t => t.rank > tier.rank);
+        if (hasHigherTier) {
+            tierMessage = `You are a ${tier.name} Customer Now. Upgrade your Tier to Earn More Loyalty Points.`;
+        } else {
+            tierMessage = `Congratulations! You are a top-tier ${tier.name} Customer!`;
+        }
+    }
+
     let nextServiceMessage = null;
 
     // Check if the frequency was set for the customer associated with this sale
@@ -54,13 +75,11 @@ const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) =
                 <p className="text-xs mt-1">{formatDate(sale.date)}</p>
                 <p className="text-xs mt-1 font-semibold">Sale ID: {sale.id}</p>
             </div>
-            {(sale.customerName || sale.customerId) && (
-                <>
-                    <div className="text-left mb-2 text-xs">
-                        {sale.customerName && <p><strong>Customer:</strong> {sale.customerName}</p>}
-                        {sale.customerId && <p><strong>Bike No:</strong> {sale.customerId}</p>}
-                    </div>
-                </>
+            {(customerDisplayLine || sale.customerId) && (
+                <div className="text-left mb-2 text-xs">
+                    {customerDisplayLine}
+                    {sale.customerId && <p><strong>Bike No:</strong> {sale.customerId}</p>}
+                </div>
             )}
             <hr className="my-3 border-dashed border-gray-400" />
             <table className="w-full table-fixed text-xs">
@@ -134,8 +153,19 @@ const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) =
                     <hr className="my-3 border-dashed border-gray-400" />
                     <div className="space-y-1 text-xs text-center">
                         <p><strong>Loyalty Points Update</strong></p>
+                        {sale.tierApplied && (
+                            <p className="font-bold text-indigo-600">
+                                ⭐ {sale.tierApplied.name} Tier Bonus Applied ({sale.tierApplied.multiplier}x Points!) ⭐
+                            </p>
+                        )}
+                        {sale.promotionApplied && (
+                             <p className="font-bold text-green-600">
+                                ✨ {sale.promotionApplied.name} ({sale.promotionApplied.multiplier}x Points!) ✨
+                            </p>
+                        )}
                         <p>Points Earned: {sale.pointsEarned || 0}</p>
                         <p>New Balance: {sale.finalLoyaltyPoints || 0} Points</p>
+                         {tierMessage && <p className="mt-2 pt-1 border-t border-dashed font-semibold text-gray-700">{tierMessage}</p>}
                     </div>
                 </>
             )}

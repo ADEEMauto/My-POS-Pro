@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Sale, SaleItem } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { Eye, Trash2, FileText } from 'lucide-react';
+import { Eye, Trash2, FileText, Star } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -19,8 +19,8 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
         return acc + (item.price - cost) * item.quantity;
     }, 0);
     
-    const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0;
-    const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - sale.total;
+    const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0 || (sale.loyaltyDiscount || 0) > 0;
+    const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total;
 
     return (
         <Modal isOpen={true} onClose={onClose} title={`Sale Details - ID: ${sale.id}`} size="lg">
@@ -84,6 +84,12 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
                             <p>- {formatCurrency(calculatedOverallDiscount)}</p>
                         </div>
                     )}
+                     {(sale.loyaltyDiscount || 0) > 0 && (
+                         <div className="flex justify-between items-baseline text-sm text-green-600">
+                            <p><strong>Loyalty Discount:</strong></p>
+                            <p>- {formatCurrency(sale.loyaltyDiscount!)}</p>
+                        </div>
+                    )}
                     <div className="flex justify-between items-baseline pt-1 border-t">
                         <p><strong>Total Amount:</strong></p> 
                         <p><span className="font-bold text-lg text-primary-600">{formatCurrency(sale.total)}</span></p>
@@ -93,6 +99,19 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
                         <p><span className="font-bold text-base text-green-600">{formatCurrency(estimatedProfit)}</span></p>
                     </div>
                 </div>
+                {(sale.pointsEarned !== undefined) && (
+                    <div className="pt-2 border-t space-y-1 text-sm">
+                         <h4 className="font-semibold flex items-center gap-1"><Star size={14}/> Loyalty Summary</h4>
+                         {sale.promotionApplied && (
+                            <p className="p-2 bg-green-50 text-green-700 rounded-md text-center font-semibold">
+                                ✨ Promotion Applied: {sale.promotionApplied.name} ({sale.promotionApplied.multiplier}x Points!) ✨
+                            </p>
+                         )}
+                         <div className="flex justify-between"><span>Points Earned:</span> <span>{sale.pointsEarned}</span></div>
+                         <div className="flex justify-between"><span>Points Redeemed:</span> <span>{sale.redeemedPoints || 0}</span></div>
+                         <div className="flex justify-between font-bold"><span>Final Balance:</span> <span>{sale.finalLoyaltyPoints}</span></div>
+                    </div>
+                )}
             </div>
              <div className="flex justify-end gap-2 pt-4">
                 <Button variant="secondary" onClick={onClose}>Close</Button>
