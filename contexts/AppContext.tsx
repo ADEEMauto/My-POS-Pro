@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule } from '../types';
+import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion } from '../types';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
@@ -11,7 +11,7 @@ const simpleHash = async (password: string) => {
     // This is not secure. For demo purposes only.
     const encoder = new TextEncoder();
     const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-26', data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
@@ -47,12 +47,17 @@ interface AppContextType {
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     customers: Customer[];
-    updateCustomerDetails: (customerId: string, details: Partial<Pick<Customer, 'contactNumber' | 'servicingNotes' | 'nextServiceDate' | 'serviceFrequencyValue' | 'serviceFrequencyUnit'>>) => void;
+    updateCustomer: (customerId: string, details: { id: string; name: string; contactNumber?: string; servicingNotes?: string; nextServiceDate?: string; serviceFrequencyValue?: number; serviceFrequencyUnit?: 'days' | 'months' | 'years'; }) => boolean;
 
     earningRules: EarningRule[];
     updateEarningRules: (rules: EarningRule[]) => void;
     redemptionRule: RedemptionRule;
     updateRedemptionRule: (rule: RedemptionRule) => void;
+
+    promotions: Promotion[];
+    addPromotion: (promotion: Omit<Promotion, 'id'>) => void;
+    updatePromotion: (promotion: Promotion) => void;
+    deletePromotion: (promotionId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -77,6 +82,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         points: 1,
         value: 1
     });
+    const [promotions, setPromotions] = useLocalStorage<Promotion[]>('promotions', []);
 
     useEffect(() => {
         // This simulates loading data
@@ -255,7 +261,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const saleItems: SaleItem[] = [];
         const updatedInventory = [...inventory];
 
-        // Process inventory deductions
         for (const item of cartItems) {
             if (!item.id.startsWith('manual-')) {
                 const productInStock = updatedInventory.find(p => p.id === item.id);
@@ -273,14 +278,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
         }
         
-        // Calculate totals
         const subtotal = saleItems.reduce((acc, item) => acc + item.originalPrice * item.quantity, 0);
         const totalItemDiscounts = saleItems.reduce((acc, item) => acc + (item.originalPrice - item.price) * item.quantity, 0);
         const subtotalAfterItemDiscounts = subtotal - totalItemDiscounts;
         const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (subtotalAfterItemDiscounts * overallDiscountValue) / 100;
         const totalBeforeLoyalty = subtotalAfterItemDiscounts - overallDiscountAmount;
 
-        // Loyalty Points Handling
         const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
         let customer = customers.find(c => c.id === customerId);
         let loyaltyDiscount = 0;
@@ -296,7 +299,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const percentage = (redeemedPoints / redemptionRule.points) * redemptionRule.value;
                 loyaltyDiscount = (totalBeforeLoyalty * percentage) / 100;
             }
-            // Ensure discount doesn't exceed total
             loyaltyDiscount = Math.min(loyaltyDiscount, totalBeforeLoyalty);
         }
 
@@ -308,14 +310,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const sortedEarningRules = [...earningRules].sort((a, b) => a.minSpend - b.minSpend);
         const applicableRule = sortedEarningRules.reverse().find(rule => totalBeforeLoyalty >= rule.minSpend);
-        const pointsEarned = applicableRule ? Math.floor((totalBeforeLoyalty / 100) * applicableRule.pointsPerHundred) : 0;
+        let pointsEarned = applicableRule ? Math.floor((totalBeforeLoyalty / 100) * applicableRule.pointsPerHundred) : 0;
+        let promotionApplied: Sale['promotionApplied'] | undefined = undefined;
 
-        // Finalize sale object
         const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        const activePromotion = promotions.find(p => {
+            const startDate = new Date(p.startDate);
+            const endDate = new Date(p.endDate);
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
+            return today >= startDate && today <= endDate;
+        });
+
+        if (activePromotion && pointsEarned > 0) {
+            pointsEarned = Math.floor(pointsEarned * activePromotion.multiplier);
+            promotionApplied = {
+                name: activePromotion.name,
+                multiplier: activePromotion.multiplier,
+            };
+            toast.success(`Promotional points applied: ${activePromotion.name} (${activePromotion.multiplier}x)!`);
+        }
+
         const newSaleId = `${now.getFullYear().toString().slice(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${customerId}`;
         let finalLoyaltyPoints = customer?.loyaltyPoints || 0;
 
-        // Create or update customer
         if (customer) {
             customer.loyaltyPoints -= redeemedPoints;
             customer.loyaltyPoints += pointsEarned;
@@ -326,10 +346,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: newSaleId, customerId, customerName: customerInfo.customerName.trim(), items: saleItems,
             subtotal, totalItemDiscounts, overallDiscount: overallDiscountValue, overallDiscountType,
             loyaltyDiscount: Math.round(loyaltyDiscount), total: Math.round(total), date: now.toISOString(),
-            redeemedPoints, pointsEarned, finalLoyaltyPoints,
+            redeemedPoints, pointsEarned, finalLoyaltyPoints, promotionApplied,
         };
 
-        // Update state
         setInventory(updatedInventory);
         setSales([newSale, ...sales]);
 
@@ -377,8 +396,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         const saleToModify = { ...sales[saleIndex] };
-
-        // 1. Update inventory
         const updatedInventory = [...inventory];
         let returnedItemsCount = 0;
         for (const item of itemsToReturn) {
@@ -392,129 +409,4 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         setInventory(updatedInventory);
 
-        // 2. Update the sale record
-        const itemsToReturnProductIds = new Set(itemsToReturn.map(item => item.productId));
-        const remainingItems = saleToModify.items.filter(item => !itemsToReturnProductIds.has(item.productId));
-
-        const updatedSales = [...sales];
-
-        if (remainingItems.length === 0) {
-            // All items were returned, so delete the sale
-            updatedSales.splice(saleIndex, 1);
-            
-            // Also remove saleId from the customer's profile
-            const customerId = saleToModify.customerId;
-            setCustomers(prevCustomers => prevCustomers.map(c => 
-                c.id === customerId 
-                ? { ...c, saleIds: c.saleIds.filter(id => id !== saleId) }
-                : c
-            ));
-            
-            // Revert loyalty points
-            if (saleToModify.pointsEarned || saleToModify.redeemedPoints) {
-                 setCustomers(prevCustomers => prevCustomers.map(c => {
-                    if (c.id === customerId) {
-                        let newPoints = c.loyaltyPoints;
-                        newPoints -= (saleToModify.pointsEarned || 0);
-                        newPoints += (saleToModify.redeemedPoints || 0);
-                        return { ...c, loyaltyPoints: Math.max(0, newPoints) };
-                    }
-                    return c;
-                 }));
-            }
-
-
-            toast.success("Sale completely reversed. All items returned to inventory.");
-        } else {
-            // Some items remain, so update the sale. NOTE: Loyalty point reversal on partial returns is complex and not implemented.
-            // A simple approach would be to inform the user.
-            if (saleToModify.pointsEarned || saleToModify.redeemedPoints) {
-                toast("Partial reversal complete. Loyalty points were not adjusted for this transaction.", { icon: 'ℹ️' });
-            }
-            
-            const newSubtotal = remainingItems.reduce((acc, item) => acc + (item.originalPrice * item.quantity), 0);
-            const newItemDiscounts = remainingItems.reduce((acc, item) => acc + (item.originalPrice - item.price) * item.quantity, 0);
-            const newSubtotalAfterItemDiscounts = newSubtotal - newItemDiscounts;
-            const overallDiscountAmount = saleToModify.overallDiscountType === 'fixed' ? saleToModify.overallDiscount : (newSubtotalAfterItemDiscounts * saleToModify.overallDiscount) / 100;
-            const newTotal = newSubtotalAfterItemDiscounts - overallDiscountAmount;
-
-            const updatedSale: Sale = { 
-                ...saleToModify, items: remainingItems, subtotal: Math.round(newSubtotal),
-                totalItemDiscounts: Math.round(newItemDiscounts), total: Math.round(newTotal) 
-            };
-            updatedSales[saleIndex] = updatedSale;
-            toast.success(`${returnedItemsCount} item(s) returned to inventory. Sale record updated.`);
-        }
-
-        setSales(updatedSales);
-    };
-
-
-    const updateCustomerDetails = (customerId: string, details: Partial<Pick<Customer, 'contactNumber' | 'servicingNotes' | 'nextServiceDate' | 'serviceFrequencyValue' | 'serviceFrequencyUnit'>>) => {
-        setCustomers(prevCustomers => {
-            const updatedCustomers = prevCustomers.map(c => {
-                if (c.id === customerId) {
-                    return { ...c, ...details };
-                }
-                return c;
-            });
-            toast.success("Customer details updated.");
-            return updatedCustomers;
-        });
-    };
-
-    const updateEarningRules = (rules: EarningRule[]) => {
-        setEarningRules(rules);
-        toast.success("Earning rules updated.");
-    };
-
-    const updateRedemptionRule = (rule: RedemptionRule) => {
-        setRedemptionRule(rule);
-        toast.success("Redemption rule updated.");
-    };
-
-
-    const value = {
-        loading,
-        shopInfo,
-        saveShopInfo,
-        currentUser,
-        users,
-        signUp,
-        login,
-        logout,
-        updateUser,
-        addUser,
-        deleteUser,
-        inventory,
-        addProduct,
-        updateProduct,
-        deleteProduct,
-        findProductByBarcode,
-        addSampleData,
-        importFromExcel,
-        categories,
-        addCategory,
-        updateCategory,
-        deleteCategory,
-        sales,
-        createSale,
-        reverseSale,
-        customers,
-        updateCustomerDetails,
-        earningRules,
-        updateEarningRules,
-        redemptionRule,
-        updateRedemptionRule,
-    };
-
-    return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
-};
-
-export const useAppContext = () => {
-    const context = useContext(AppContext);
-    if (context === undefined) {
-        throw new Error('useAppContext must be used within an AppProvider');
-    }
-    return context;
-};
+        const itemsToReturnProductIds = new Set(itemsToReturn.map

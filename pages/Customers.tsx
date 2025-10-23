@@ -50,14 +50,18 @@ const CustomerDetailsModal: React.FC<{
     sales: Sale[],
     onClose: () => void,
     onSave: (details: {
+        id: string;
+        name: string;
         contactNumber?: string,
         servicingNotes?: string,
         nextServiceDate?: string,
         serviceFrequencyValue?: number,
         serviceFrequencyUnit?: 'days' | 'months' | 'years',
-    }) => void
+    }) => boolean
 }> = ({ customer, sales, onClose, onSave }) => {
 
+    const [name, setName] = useState(customer.name);
+    const [bikeNumber, setBikeNumber] = useState(customer.id);
     const [contactNumber, setContactNumber] = useState(customer.contactNumber || '');
     const [servicingNotes, setServicingNotes] = useState(customer.servicingNotes || '');
     const [nextServiceDate, setNextServiceDate] = useState(customer.nextServiceDate ? customer.nextServiceDate.split('T')[0] : '');
@@ -68,14 +72,23 @@ const CustomerDetailsModal: React.FC<{
     const serviceStatus = isServiceDue(customer);
 
     const handleSave = () => {
-        onSave({
+         if (!name.trim() || !bikeNumber.trim()) {
+            toast.error("Customer Name and Bike Number are required.");
+            return;
+        }
+        const success = onSave({
+            id: bikeNumber,
+            name: name,
             contactNumber: contactNumber.trim() || undefined,
             servicingNotes: servicingNotes.trim() || undefined,
             nextServiceDate: nextServiceDate || undefined,
             serviceFrequencyValue: serviceFrequencyValue ? Number(serviceFrequencyValue) : undefined,
             serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined,
         });
-        onClose();
+        
+        if (success) {
+            onClose();
+        }
     };
 
     const modalFooter = (
@@ -122,8 +135,20 @@ const CustomerDetailsModal: React.FC<{
                 </div>
 
                 <div className="pt-4 border-t">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Contact & Servicing Notes</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Customer Details</h3>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input
+                            label="Customer Name"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            required
+                        />
+                        <Input
+                            label="Bike Number (ID)"
+                            value={bikeNumber}
+                            onChange={(e) => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())}
+                            required
+                        />
                         <Input
                             label="Contact Number"
                             type="tel"
@@ -131,7 +156,7 @@ const CustomerDetailsModal: React.FC<{
                             value={contactNumber}
                             onChange={(e) => setContactNumber(e.target.value)}
                         />
-                         <div className="md:col-span-1">
+                         <div className="md:col-span-2">
                             <label htmlFor="servicing-notes" className="block text-sm font-medium text-gray-700 mb-1">Servicing Notes</label>
                             <textarea
                                 id="servicing-notes"
@@ -220,7 +245,7 @@ const CustomerDetailsModal: React.FC<{
 
 
 const Customers: React.FC = () => {
-    const { customers, sales, currentUser, updateCustomerDetails, shopInfo } = useAppContext();
+    const { customers, sales, currentUser, updateCustomer, shopInfo } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
@@ -265,10 +290,6 @@ const Customers: React.FC = () => {
     const getCustomerSales = (customer: Customer | null): Sale[] => {
         if (!customer) return [];
         return customer.saleIds.map(id => salesMap.get(id)).filter((s): s is Sale => !!s);
-    };
-
-    const handleSaveCustomerDetails = (customerId: string, details: Parameters<typeof updateCustomerDetails>[1]) => {
-        updateCustomerDetails(customerId, details);
     };
 
     const handleSendWhatsAppReminder = (customer: Customer) => {
@@ -378,7 +399,7 @@ const Customers: React.FC = () => {
                     customer={selectedCustomer}
                     sales={getCustomerSales(selectedCustomer)}
                     onClose={() => setSelectedCustomer(null)}
-                    onSave={(details) => handleSaveCustomerDetails(selectedCustomer.id, details)}
+                    onSave={(details) => updateCustomer(selectedCustomer.id, details)}
                 />
             )}
         </div>

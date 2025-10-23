@@ -64,6 +64,10 @@ export interface Sale {
     pointsEarned?: number;
     redeemedPoints?: number;
     finalLoyaltyPoints?: number;
+    promotionApplied?: {
+        name: string;
+        multiplier: number;
+    };
 }
 
 
@@ -96,4 +100,12 @@ export interface RedemptionRule {
     // For 'percentage': points required for a 1% discount
     // `points`: 100, `value`: 1
     value: number; 
+}
+
+export interface Promotion {
+    id: string;
+    name: string;
+    startDate: string; // ISO Date string YYYY-MM-DD
+    endDate: string;   // ISO Date string YYYY-MM-DD
+    multiplier: number;
 }
