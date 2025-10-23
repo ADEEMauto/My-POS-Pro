@@ -442,7 +442,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             toast.success(`Promotional points applied: ${activePromotion.name} (${activePromotion.multiplier}x)!`);
         }
 
-        const newSaleId = `${now.getFullYear().toString().slice(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${customerId}`;
+        const newSaleId = `${now.getFullYear().toString().slice(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
         let finalLoyaltyPoints = customer?.loyaltyPoints || 0;
 
         if (customer) {

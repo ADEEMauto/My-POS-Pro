@@ -1,105 +1,187 @@
 import React from 'react';
 import { Sale } from '../types';
 import { useAppContext } from '../contexts/AppContext';
-import { formatDate } from '../utils/helpers';
 
-interface ReceiptProps {
-    sale: Sale;
-}
-
-const Receipt = React.forwardRef<HTMLDivElement, ReceiptProps>(({ sale }, ref) => {
+const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref) => {
     const { shopInfo, customers, customerTiers } = useAppContext();
     const customer = customers.find(c => c.id === sale.customerId);
     const tier = customer?.tierId ? customerTiers.find(t => t.id === customer.tierId) : null;
 
-    const formatCurrencyForReceipt = (amount: number) => `Rs. ${Math.round(amount).toFixed(2)}`;
+    const hasItemDiscounts = sale.items.some(item => item.discount > 0);
 
+    const formatCurrencyForReceipt = (amount: number) => `Rs. ${Math.round(amount).toLocaleString('en-IN')}`;
+    const formatNumberForReceipt = (amount: number) => Math.round(amount).toLocaleString('en-IN');
+    
+    const calculatedOverallDiscount = sale.overallDiscount > 0
+        ? Math.max(0, sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total)
+        : 0;
+        
+    // By rounding the calculated discounts before checking, we avoid showing a line for amounts < 0.5 that would round to "Rs. 0".
+    const showItemDiscounts = Math.round(sale.totalItemDiscounts) > 0;
+    const showOverallDiscount = Math.round(calculatedOverallDiscount) > 0;
+    const showLoyaltyDiscount = (sale.loyaltyDiscount || 0) > 0; // Already rounded at sale creation
+
+    const hasAnyDiscount = showItemDiscounts || showOverallDiscount || showLoyaltyDiscount;
+
+
+    const calculateNextServiceDate = (lastVisit: string, value?: number, unit?: 'days' | 'months' | 'years'): string | null => {
+        if (!value || !unit) return null;
+        
+        const lastVisitDate = new Date(lastVisit);
+        const nextDate = new Date(lastVisitDate);
+
+        switch (unit) {
+            case 'days':
+                nextDate.setDate(lastVisitDate.getDate() + value);
+                break;
+            case 'months':
+                nextDate.setMonth(lastVisitDate.getMonth() + value);
+                break;
+            case 'years':
+                nextDate.setFullYear(lastVisitDate.getFullYear() + value);
+                break;
+        }
+        
+        const day = String(nextDate.getDate()).padStart(2, '0');
+        const month = nextDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+        const year = String(nextDate.getFullYear()).slice(-2);
+        
+        return `${day}-${month}-${year}`;
+    };
+
+    const nextServiceDate = customer ? calculateNextServiceDate(sale.date, customer.serviceFrequencyValue, customer.serviceFrequencyUnit) : null;
+    
     return (
-        <div ref={ref} className="p-4 bg-white text-black font-mono text-xs max-w-sm mx-auto">
-            <div className="text-center mb-4">
+        <div ref={ref} className="p-4 bg-white text-black font-mono text-sm max-w-sm mx-auto">
+            {/* 1 & 2. Shop Info */}
+            <div className="text-center mb-2">
                 <h2 className="text-lg font-bold">{shopInfo?.name}</h2>
                 <p>{shopInfo?.address}</p>
             </div>
-            <hr className="my-2 border-dashed" />
-            <p><strong>Receipt ID:</strong> {sale.id}</p>
-            <p><strong>Date:</strong> {formatDate(sale.date)}</p>
-            <p><strong>Bike No:</strong> {sale.customerId}</p>
-            {sale.customerName && <p><strong>Customer:</strong> {sale.customerName}</p>}
-            <hr className="my-2 border-dashed" />
-            <table className="w-full">
+            
+            {/* 3. Sale ID */}
+            <p className="text-center font-mono my-2">Sale ID: {sale.id}</p>
+            
+            {/* 4. Customer Info */}
+            <div className="text-left mb-2">
+                Customer: {sale.customerName ? `${sale.customerName}, ${sale.customerId}` : sale.customerId}
+            </div>
+
+            {/* 5, 6, 7. Items Table */}
+            <hr className="my-1 border-dashed border-black"/>
+            <table className="w-full table-fixed">
                 <thead>
-                    <tr>
-                        <th className="text-left">Item</th>
-                        <th className="text-center">Qty</th>
-                        <th className="text-right">Price</th>
-                        <th className="text-right">Total</th>
+                    <tr className="border-b border-dashed border-black text-xs">
+                        {hasItemDiscounts ? (
+                            <>
+                                <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
+                                <th className="text-center font-bold w-[30%] pb-1 px-1">Item</th>
+                                <th className="text-center font-bold w-[20%] pb-1 px-1">Price</th>
+                                <th className="text-center font-bold w-[20%] pb-1 px-1">Discount</th>
+                                <th className="text-center font-bold w-[20%] pb-1 px-1">Total</th>
+                            </>
+                        ) : (
+                            <>
+                                <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
+                                <th className="text-center font-bold w-[60%] pb-1 px-1">Item</th>
+                                <th className="text-center font-bold w-[30%] pb-1 px-1">Total</th>
+                            </>
+                        )}
                     </tr>
                 </thead>
                 <tbody>
                     {sale.items.map((item, index) => (
-                        <tr key={`${item.productId}-${index}`}>
-                            <td className="text-left align-top">
-                                {item.name}
-                                {item.discount > 0 && (
-                                    <div className="text-xs">
-                                        (Disc: -{item.discountType === 'fixed' ? formatCurrencyForReceipt(item.discount) : `${item.discount}%`})
-                                    </div>
-                                )}
-                            </td>
-                            <td className="text-center align-top">{item.quantity}</td>
-                            <td className="text-right align-top">{formatCurrencyForReceipt(item.originalPrice)}</td>
-                            <td className="text-right align-top">{formatCurrencyForReceipt(item.originalPrice * item.quantity)}</td>
+                        <tr key={`${item.productId}-${index}`} className="align-top text-xs">
+                            {hasItemDiscounts ? (
+                                <>
+                                    <td className="text-center pt-1 px-1">{item.quantity}</td>
+                                    <td className="text-left pt-1 px-1">{item.name}</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(item.originalPrice)}</td>
+                                    <td className="text-right pt-1 px-1">
+                                        {item.discount > 0 ? (item.discountType === 'fixed' ? formatNumberForReceipt(item.discount) : `${item.discount}%`) : '-'}
+                                    </td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(item.price * item.quantity)}</td>
+                                </>
+                            ) : (
+                                <>
+                                    <td className="text-center pt-1 px-1">{item.quantity}</td>
+                                    <td className="text-left pt-1 px-1">{item.name}</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(item.price * item.quantity)}</td>
+                                </>
+                            )}
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <hr className="my-2 border-dashed" />
-            <div className="space-y-1">
-                <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
-                </div>
-                {sale.totalItemDiscounts > 0 && (
-                    <div className="flex justify-between">
-                        <span>Item Discounts:</span>
-                        <span>-{formatCurrencyForReceipt(sale.totalItemDiscounts)}</span>
+
+            {/* 8. Line below items */}
+            <hr className="my-1 border-dashed border-black"/>
+            
+            {/* 9 & 10. Totals */}
+            <div className="space-y-1 text-xs">
+                 {hasAnyDiscount ? (
+                    <>
+                        <div className="flex justify-between">
+                            <span>Subtotal</span>
+                            <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
+                        </div>
+                        {showItemDiscounts && (
+                            <div className="flex justify-between">
+                                <span>Item Discounts</span>
+                                <span>-{formatCurrencyForReceipt(sale.totalItemDiscounts)}</span>
+                            </div>
+                        )}
+                        {showOverallDiscount && (
+                            <div className="flex justify-between">
+                                <span>Overall Discount</span>
+                                <span>-{formatCurrencyForReceipt(calculatedOverallDiscount)}</span>
+                            </div>
+                        )}
+                        {showLoyaltyDiscount && (
+                            <div className="flex justify-between">
+                                <span>Loyalty Discount</span>
+                                <span>-{formatCurrencyForReceipt(sale.loyaltyDiscount!)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between font-bold text-sm mt-1 pt-1 border-t border-dashed border-black">
+                            <span>GRAND TOTAL</span>
+                            <span>{formatCurrencyForReceipt(sale.total)}</span>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex justify-between font-bold text-sm my-1">
+                        <span>TOTAL</span>
+                        <span>{formatCurrencyForReceipt(sale.total)}</span>
                     </div>
                 )}
-                {sale.overallDiscount > 0 && (
-                     <div className="flex justify-between">
-                        <span>Overall Discount:</span>
-                        <span>-{formatCurrencyForReceipt(sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total)}</span>
-                    </div>
-                )}
-                {sale.loyaltyDiscount && sale.loyaltyDiscount > 0 && (
-                     <div className="flex justify-between">
-                        <span>Loyalty Discount:</span>
-                        <span>-{formatCurrencyForReceipt(sale.loyaltyDiscount)}</span>
-                    </div>
-                )}
-                <div className="flex justify-between font-bold text-sm">
-                    <span>TOTAL:</span>
-                    <span>{formatCurrencyForReceipt(sale.total)}</span>
-                </div>
             </div>
 
-            {(sale.pointsEarned !== undefined) && (
-                 <div className="mt-4 pt-2 border-t border-dashed">
-                    <h3 className="font-bold text-center mb-1">Loyalty Points Summary</h3>
-                    <div className="flex justify-between"><span>Points Earned:</span><span>+{sale.pointsEarned}</span></div>
-                    {sale.redeemedPoints && sale.redeemedPoints > 0 && (
-                       <div className="flex justify-between"><span>Points Redeemed:</span><span>-{sale.redeemedPoints}</span></div>
+            {/* 11. Loyalty Points */}
+            {(sale.pointsEarned !== undefined && sale.pointsEarned > 0) || (sale.redeemedPoints !== undefined && sale.redeemedPoints > 0) ? (
+                 <div className="mt-4 pt-2 border-t border-dashed border-black">
+                    {sale.pointsEarned !== undefined && sale.pointsEarned > 0 && <div className="flex justify-between text-xs"><span>Points Earned:</span><span>+{sale.pointsEarned}</span></div>}
+                    {sale.redeemedPoints !== undefined && sale.redeemedPoints > 0 && (
+                       <div className="flex justify-between text-xs"><span>Points Redeemed:</span><span>-{sale.redeemedPoints}</span></div>
                     )}
-                    <div className="flex justify-between font-bold"><span>Final Balance:</span><span>{sale.finalLoyaltyPoints}</span></div>
-                    {tier && (
-                        <p className="text-center mt-2 text-xs">
-                            You are a {tier.name} Customer Now. Upgrade your Tier to Earn More Loyalty Points.
-                        </p>
-                    )}
+                    <div className="flex justify-between font-bold text-sm"><span>Points Balance:</span><span>{sale.finalLoyaltyPoints}</span></div>
                  </div>
-            )}
+            ) : null}
             
-            <p className="text-center mt-4 text-xs">Thank you for your purchase!</p>
+            {/* 12. Tier Message */}
+            {tier && (
+                <div className="text-center mt-3 text-xs">
+                    <p>You are a {tier.name} Customer now. Upgrade Your Tier to Earn More Loyalty Points.</p>
+                    <p>More Points… Bigger Discounts!!!</p>
+                </div>
+            )}
+
+            {/* 14. Next Service Date */}
+            {nextServiceDate &&
+                <p className="text-center mt-3 font-semibold">See you on {nextServiceDate}</p>
+            }
+            
+            {/* 13. Thanking Note */}
+            <p className="text-center mt-3 text-xs">Thanks for Your Visit</p>
         </div>
     );
 });
