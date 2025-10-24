@@ -4,14 +4,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale, Customer } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag, PlusCircle, Star, MessageSquare } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, UserPlus, FileSearch } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import BarcodeScanner from '../components/BarcodeScanner';
 import Receipt from '../components/Receipt';
 import toast from 'react-hot-toast';
-// @ts-ignore
 import html2canvas from 'html2canvas';
 
 const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) => void; isSelected: boolean; categoryName?: string; }> = ({ product, onSelect, isSelected, categoryName }) => {
@@ -22,6 +21,8 @@ const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) =>
                 isOutOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:-translate-y-1 cursor-pointer'
             } ${isSelected ? 'border-primary-600 ring-2 ring-primary-200' : 'border-transparent'}`}
             onClick={() => !isOutOfStock && onSelect(product.id)}
+            aria-label={`Add ${product.name} to cart`}
+            role="button"
         >
              {isSelected && (
                 <div className="absolute top-1 right-1 bg-primary-600 text-white rounded-full p-0.5 z-10">
@@ -43,773 +44,681 @@ const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) =>
     );
 };
 
+const CustomerLookupModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSelectCustomer: (customer: Customer) => void;
+}> = ({ isOpen, onClose, onSelectCustomer }) => {
+    const { customers } = useAppContext();
+    const [search, setSearch] = useState('');
+
+    const filteredCustomers = useMemo(() => {
+        if (!search) return customers;
+        const lowercasedSearch = search.toLowerCase();
+        return customers.filter(c => 
+            c.name.toLowerCase().includes(lowercasedSearch) ||
+            c.id.toLowerCase().includes(lowercasedSearch)
+        );
+    }, [customers, search]);
+
+    const handleSelect = (customer: Customer) => {
+        onSelectCustomer(customer);
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Find Existing Customer" size="lg">
+            <Input 
+                placeholder="Search by name or bike number..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                icon={<Search className="w-5 h-5 text-gray-400" />}
+                autoFocus
+            />
+            <div className="max-h-80 overflow-y-auto mt-4 border rounded-md divide-y">
+                {filteredCustomers.length > 0 ? filteredCustomers.map(c => (
+                    <div 
+                        key={c.id}
+                        className="p-3 flex justify-between items-center cursor-pointer hover:bg-gray-50"
+                        onClick={() => handleSelect(c)}
+                    >
+                        <div>
+                            <p className="font-semibold">{c.name}</p>
+                            <p className="text-sm text-gray-500">{c.id}</p>
+                        </div>
+                        <span className="text-xs text-gray-400">Last Seen: {new Date(c.lastSeen).toLocaleDateString()}</span>
+                    </div>
+                )) : (
+                    <p className="text-center text-gray-500 p-4">No customers found.</p>
+                )}
+            </div>
+        </Modal>
+    );
+};
+
+
 const POS: React.FC = () => {
-    const { inventory, categories, findProductByBarcode, createSale, customers, redemptionRule, shopInfo, updateCustomer } = useAppContext();
-    const [cart, setCart] = useState<CartItem[]>([]);
+    const { inventory, categories, createSale, findProductByBarcode, customers, redemptionRule, updateCustomer, shopInfo, customerTiers } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState('all');
-    const [isScannerOpen, setScannerOpen] = useState(false);
-    const [completedSale, setCompletedSale] = useState<Sale | null>(null);
-    const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [cart, setCart] = useState<CartItem[]>([]);
     
-    // Checkout states
+    const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
+    const [overallDiscount, setOverallDiscount] = useState<number | string>('');
+    const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+    
+    const [isSaleCompleteModalOpen, setIsSaleCompleteModalOpen] = useState(false);
+    const [completedSale, setCompletedSale] = useState<Sale | null>(null);
+    const receiptRef = useRef<HTMLDivElement>(null);
+
+    const [isScannerModalOpen, setScannerModalOpen] = useState(false);
+    
+    // Customer state for checkout
     const [customerName, setCustomerName] = useState('');
     const [bikeNumber, setBikeNumber] = useState('');
     const [contactNumber, setContactNumber] = useState('');
     const [serviceFrequencyValue, setServiceFrequencyValue] = useState<number | string>('');
     const [serviceFrequencyUnit, setServiceFrequencyUnit] = useState<'days' | 'months' | 'years'>('months');
-    const [customerForCheckout, setCustomerForCheckout] = useState<Customer | null>(null);
-    const [pointsToRedeem, setPointsToRedeem] = useState('');
+    const [isCustomerLookupOpen, setCustomerLookupOpen] = useState(false);
 
-    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
-    const [overallDiscount, setOverallDiscount] = useState('');
-    const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
-    const [isManualItemModalOpen, setManualItemModalOpen] = useState(false);
-    const [manualItemName, setManualItemName] = useState('');
-    const [manualItemPrice, setManualItemPrice] = useState('');
-    const [manualItemQuantity, setManualItemQuantity] = useState('1');
-
-    // WhatsApp states
-    const [isWhatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
+    // Loyalty Points Redemption
+    const [pointsToRedeem, setPointsToRedeem] = useState<number | string>('');
+    const currentCustomer = useMemo(() => customers.find(c => c.id === bikeNumber.replace(/\s+/g, '').toUpperCase()), [customers, bikeNumber]);
+    const customerTier = useMemo(() => currentCustomer?.tierId ? customerTiers.find(t => t.id === currentCustomer.tierId) : null, [currentCustomer, customerTiers]);
+    
+    // State for WhatsApp modal
+    const [showWhatsAppInput, setShowWhatsAppInput] = useState(false);
     const [whatsAppNumber, setWhatsAppNumber] = useState('');
+    const [customerForReceipt, setCustomerForReceipt] = useState<Customer | null>(null);
 
 
-    const receiptRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        // When a customer is selected, reset redemption points
+        setPointsToRedeem('');
+    }, [currentCustomer]);
 
     const categoryMap = useMemo(() => {
         const map = new Map<string, string>();
-        categories.forEach(cat => {
-            map.set(cat.id, cat.name);
-        });
+        categories.forEach(c => map.set(c.id, c.name));
         return map;
     }, [categories]);
 
-    useEffect(() => {
-        if (bikeNumber) {
-            const customer = customers.find(c => c.id === bikeNumber.replace(/\s+/g, '').toUpperCase());
-            setCustomerForCheckout(customer || null);
-            if(customer && !customerName) {
-                setCustomerName(customer.name);
+    const filteredInventory = useMemo(() => {
+        return inventory.filter(product => {
+            const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory || product.subCategoryId === selectedCategory;
+            const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
+            return matchesCategory && matchesSearch;
+        });
+    }, [inventory, searchTerm, selectedCategory]);
+
+    const mainCategories = useMemo(() => categories.filter(c => c.parentId === null), [categories]);
+
+    const addToCart = (productId: string) => {
+        const product = inventory.find(p => p.id === productId);
+        if (!product) return;
+
+        const existingItem = cart.find(item => item.id === productId);
+        if (existingItem) {
+            if (existingItem.cartQuantity < product.quantity) {
+                 setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item));
+            } else {
+                toast.error(`No more stock for ${product.name}.`);
             }
         } else {
-            setCustomerForCheckout(null);
-        }
-    }, [bikeNumber, customers, customerName]);
-
-
-    const addToCart = (product: Product) => {
-        setCart(prevCart => {
-            const existingItem = prevCart.find(item => item.id === product.id);
-            if (existingItem) {
-                if (existingItem.cartQuantity < product.quantity) {
-                    return prevCart.map(item =>
-                        item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
-                    );
-                } else {
-                    toast.error(`Maximum stock for ${product.name} reached.`);
-                    return prevCart;
-                }
-            }
-            return [...prevCart, { ...product, cartQuantity: 1, discount: 0, discountType: 'fixed' }];
-        });
-    };
-
-    const toggleProductSelection = (productId: string) => {
-        setSelectedProductIds(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(productId)) {
-                newSet.delete(productId);
+            if (product.quantity > 0) {
+                 setCart([...cart, { ...product, cartQuantity: 1, discount: 0, discountType: 'fixed' }]);
             } else {
-                newSet.add(productId);
+                toast.error(`${product.name} is out of stock.`);
             }
-            return newSet;
-        });
+        }
     };
     
-    const handleAddSelectedToCart = () => {
-        const cartProductIds = new Set(cart.map(item => item.id));
-        let newItemsAdded = 0;
-        let itemsSkipped = 0;
-    
-        const itemsToAdd: CartItem[] = [];
-    
-        selectedProductIds.forEach(productId => {
-            if (cartProductIds.has(productId)) {
-                itemsSkipped++;
-            } else {
-                const product = inventory.find(p => p.id === productId);
-                if (product && product.quantity > 0) {
-                    itemsToAdd.push({ ...product, cartQuantity: 1, discount: 0, discountType: 'fixed' });
-                    newItemsAdded++;
-                }
-            }
-        });
-    
-        if (newItemsAdded > 0) {
-            setCart(prevCart => [...prevCart, ...itemsToAdd]);
-            toast.success(`${newItemsAdded} item(s) added to cart.`);
+    const addManualItemToCart = () => {
+        const itemName = prompt("Enter item name:");
+        if (!itemName) return;
+        const itemPrice = parseFloat(prompt("Enter item price:") || '0');
+        if (isNaN(itemPrice) || itemPrice <= 0) {
+            toast.error("Invalid price entered.");
+            return;
         }
-        
-        if (itemsSkipped > 0) {
-            // FIX: Replaced `toast.info` with the generic `toast()` function call, as `react-hot-toast` does not have a dedicated `info` method. This resolves the TypeScript error.
-            toast(`${itemsSkipped} selected item(s) were already in the cart.`);
-        }
-        
-        if (newItemsAdded === 0 && itemsSkipped === 0 && selectedProductIds.size > 0) {
-             toast.error(`Could not add selected items. They may be out of stock.`);
-        }
-    
-        setSelectedProductIds(new Set());
+
+        const manualProduct: CartItem = {
+            id: `manual-${uuidv4()}`,
+            name: itemName,
+            salePrice: itemPrice,
+            purchasePrice: 0, // No profit tracking for manual items
+            quantity: Infinity, // No stock limit
+            cartQuantity: 1,
+            discount: 0,
+            discountType: 'fixed',
+            categoryId: 'manual',
+            subCategoryId: null,
+            manufacturer: 'N/A',
+            location: 'N/A'
+        };
+        setCart([...cart, manualProduct]);
     };
 
-    const updateCartQuantity = (productId: string, newQuantity: number) => {
-        const cartItem = cart.find(item => item.id === productId);
-        if (!cartItem) return;
-    
+    const handleBarcodeScan = (decodedText: string) => {
+        const product = findProductByBarcode(decodedText);
+        if (product) {
+            addToCart(product.id);
+            toast.success(`${product.name} added to cart.`);
+            setScannerModalOpen(false);
+        } else {
+            toast.error(`Product with barcode ${decodedText} not found.`);
+        }
+    };
+
+    const updateQuantity = (productId: string, newQuantity: number) => {
+        const productInStock = inventory.find(p => p.id === productId);
+        const maxQuantity = productInStock ? productInStock.quantity : Infinity; // Infinity for manual items
+        
         if (newQuantity <= 0) {
             setCart(cart.filter(item => item.id !== productId));
-            return;
-        }
-    
-        // For manual items, stock is not tracked from inventory
-        if (cartItem.id.startsWith('manual-')) {
+        } else if (newQuantity > maxQuantity) {
+            toast.error(`Only ${maxQuantity} units of ${productInStock?.name} available.`);
+            setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: maxQuantity } : item));
+        } else {
             setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
-            return;
         }
-        
-        const product = inventory.find(p => p.id === productId);
-        if(product && newQuantity > product.quantity) {
-            toast.error(`Only ${product.quantity} of ${product.name} in stock.`);
-            setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: product.quantity } : item));
-            return;
-        }
-    
-        setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
     };
 
-    const updateItemDiscount = (productId: string, value: string, type?: 'fixed' | 'percentage') => {
-        const discountValue = parseFloat(value) || 0;
-        setCart(cart.map(item => {
-            if (item.id === productId) {
-                const newType = type || item.discountType;
-
-                if (discountValue < 0) {
-                    toast.error("Discount cannot be negative.");
-                    return item;
-                }
-                if (newType === 'fixed' && discountValue > item.salePrice) {
-                    toast.error("Fixed discount cannot be greater than item price.");
-                    return { ...item, discount: item.salePrice, discountType: newType };
-                }
-                if (newType === 'percentage' && (discountValue < 0 || discountValue > 100)) {
-                    toast.error("Percentage discount must be between 0 and 100.");
-                    return { ...item, discount: Math.max(0, Math.min(100, discountValue)), discountType: newType };
-                }
-                
-                return { ...item, discount: discountValue, discountType: newType };
-            }
-            return item;
-        }));
+     const handleItemDiscountChange = (productId: string, value: string) => {
+        const numericValue = parseFloat(value);
+        setCart(cart.map(item => 
+            item.id === productId 
+            ? { ...item, discount: isNaN(numericValue) ? 0 : numericValue } 
+            : item
+        ));
     };
 
-    const { cartSubtotal, totalItemDiscounts, parsedOverallDiscountValue, totalOverallDiscount, cartTotal } = useMemo(() => {
-        const subtotal = cart.reduce((total, item) => total + item.salePrice * item.cartQuantity, 0);
-        
-        const itemDiscounts = cart.reduce((total, item) => {
-            let discountAmount = 0;
-            if (item.discountType === 'fixed') {
-                discountAmount = item.discount;
-            } else { // percentage
-                discountAmount = (item.salePrice * item.discount) / 100;
-            }
-            return total + (discountAmount * item.cartQuantity);
+    const handleItemDiscountTypeChange = (productId: string, type: 'fixed' | 'percentage') => {
+        setCart(cart.map(item => 
+            item.id === productId 
+            ? { ...item, discountType: type } 
+            : item
+        ));
+    };
+
+    const subtotal = useMemo(() => cart.reduce((acc, item) => acc + (item.salePrice * item.cartQuantity), 0), [cart]);
+    const totalItemDiscount = useMemo(() => {
+        return cart.reduce((acc, item) => {
+            const discount = item.discountType === 'fixed'
+                ? item.discount
+                : (item.salePrice * item.discount) / 100;
+            return acc + (discount * item.cartQuantity);
         }, 0);
+    }, [cart]);
+    
+    const subtotalAfterItemDiscount = subtotal - totalItemDiscount;
 
-        const subtotalAfterItemDiscounts = subtotal - itemDiscounts;
-        const overallDiscValue = parseFloat(overallDiscount) || 0;
+    const overallDiscountAmount = useMemo(() => {
+        const value = parseFloat(String(overallDiscount));
+        if (isNaN(value) || value < 0) return 0;
+        return overallDiscountType === 'fixed' ? value : (subtotalAfterItemDiscount * value) / 100;
+    }, [overallDiscount, overallDiscountType, subtotalAfterItemDiscount]);
 
-        let overallDiscountAmount = 0;
-        if (overallDiscountType === 'fixed') {
-            overallDiscountAmount = overallDiscValue;
-        } else { // percentage
-            overallDiscountAmount = (subtotalAfterItemDiscounts * overallDiscValue) / 100;
-        }
-        
-        const total = subtotalAfterItemDiscounts - overallDiscountAmount;
-
-        return {
-            cartSubtotal: subtotal,
-            totalItemDiscounts: itemDiscounts,
-            parsedOverallDiscountValue: overallDiscValue,
-            totalOverallDiscount: overallDiscountAmount,
-            cartTotal: total,
-        };
-    }, [cart, overallDiscount, overallDiscountType]);
-
-    const loyaltyDiscount = useMemo(() => {
-        const points = parseInt(pointsToRedeem, 10) || 0;
-        if (!customerForCheckout || points <= 0) return 0;
-
-        const availablePoints = customerForCheckout.loyaltyPoints;
-        const pointsToUse = Math.min(points, availablePoints);
+    const loyaltyDiscountAmount = useMemo(() => {
+        if (!currentCustomer || !pointsToRedeem) return 0;
+        const points = Number(pointsToRedeem);
+        if (isNaN(points) || points <= 0 || points > currentCustomer.loyaltyPoints) return 0;
         
         let discount = 0;
         if (redemptionRule.method === 'fixedValue') {
-            discount = (pointsToUse / redemptionRule.points) * redemptionRule.value;
+            discount = (points / redemptionRule.points) * redemptionRule.value;
         } else { // percentage
-            const percentage = (pointsToUse / redemptionRule.points) * redemptionRule.value;
-            discount = (cartTotal * percentage) / 100;
+            const percentage = (points / redemptionRule.points) * redemptionRule.value;
+            const amountToApplyPercentageOn = subtotalAfterItemDiscount - overallDiscountAmount;
+            discount = (amountToApplyPercentageOn * percentage) / 100;
         }
+        return discount;
+    }, [pointsToRedeem, currentCustomer, redemptionRule, subtotalAfterItemDiscount, overallDiscountAmount]);
 
-        return Math.min(discount, cartTotal); // Cannot discount more than the total
+    const total = useMemo(() => {
+        const finalTotal = subtotalAfterItemDiscount - overallDiscountAmount - loyaltyDiscountAmount;
+        return finalTotal > 0 ? finalTotal : 0;
+    }, [subtotalAfterItemDiscount, overallDiscountAmount, loyaltyDiscountAmount]);
 
-    }, [pointsToRedeem, customerForCheckout, redemptionRule, cartTotal]);
-
-
-    const handleScanSuccess = (decodedText: string) => {
-        const product = findProductByBarcode(decodedText);
-        if (product) {
-            addToCart(product);
-            toast.success(`${product.name} added to cart!`);
-        } else {
-            toast.error("Product not found for this barcode.");
-        }
-        setScannerOpen(false);
-    };
-    
-    const handleInitiateCheckout = () => {
-        if (cart.length === 0) {
-            toast.error("Cart is empty.");
-            return;
-        }
-        if (cartTotal < 0) {
-            toast.error("Total amount cannot be negative.");
-            return;
-        }
-        setCheckoutModalOpen(true);
-    };
-
-    const handleConfirmCheckout = () => {
+    const handleCheckout = () => {
         if (!bikeNumber.trim()) {
-            toast.error("Bike number is required to generate a sale ID.");
+            toast.error("Bike Number (ID) is required to proceed.");
             return;
         }
-        
+        if (!customerName.trim()) {
+            toast.error("Customer Name is required.");
+            return;
+        }
+
         const sale = createSale(
-            cart,
-            parsedOverallDiscountValue,
+            cart, 
+            parseFloat(String(overallDiscount)) || 0,
             overallDiscountType,
-            { 
-                customerName, 
-                bikeNumber,
-                contactNumber,
-                serviceFrequencyValue: serviceFrequencyValue ? Number(serviceFrequencyValue) : undefined,
-                serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined,
-            },
-            parseInt(pointsToRedeem, 10) || 0
+            { customerName, bikeNumber, contactNumber, serviceFrequencyValue: Number(serviceFrequencyValue) || undefined, serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined },
+            Number(pointsToRedeem) || 0
         );
-    
+
         if (sale) {
             setCompletedSale(sale);
+            setIsSaleCompleteModalOpen(true);
+            setCheckoutModalOpen(false);
+            // Reset state for next sale
             setCart([]);
             setOverallDiscount('');
-            setOverallDiscountType('fixed');
-            setCheckoutModalOpen(false);
-            // Reset checkout form
             setCustomerName('');
             setBikeNumber('');
             setContactNumber('');
             setServiceFrequencyValue('');
-            setServiceFrequencyUnit('months');
             setPointsToRedeem('');
-            setCustomerForCheckout(null);
         }
     };
-
+    
     const handlePrintReceipt = () => {
-        const printWindow = window.open('', '_blank');
-        if (printWindow && receiptRef.current) {
-            printWindow.document.write('<html><head><title>Print Receipt</title>');
-            printWindow.document.write('<style>body { font-family: monospace; } table { width: 100%; border-collapse: collapse; } td, th { padding: 4px; } .text-center { text-align: center; } .text-right { text-align: right; } hr { border: 0; border-top: 1px dashed #8c8c8c; } </style>');
-            printWindow.document.write('</head><body>');
-            printWindow.document.write(receiptRef.current.innerHTML);
-            printWindow.document.write('</body></html>');
-            printWindow.document.close();
-            printWindow.print();
+        if (receiptRef.current) {
+            const printContents = receiptRef.current.innerHTML;
+            const originalContents = document.body.innerHTML;
+            document.body.innerHTML = printContents;
+            window.print();
+            document.body.innerHTML = originalContents;
+            window.location.reload(); // Reload to restore styles and event handlers
         }
     };
 
-    const handleSaveReceiptAsImage = () => {
-        if(receiptRef.current) {
-            html2canvas(receiptRef.current, { scale: 2, useCORS: true }).then((canvas: any) => {
+    const handleDownloadImage = async () => {
+        if (receiptRef.current) {
+            const toastId = toast.loading("Generating image...");
+            try {
+                const canvas = await html2canvas(receiptRef.current, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
                 const link = document.createElement('a');
                 link.download = `receipt-${completedSale?.id}.png`;
                 link.href = canvas.toDataURL('image/png');
                 link.click();
-            });
+                toast.success("Image downloaded!", { id: toastId });
+            } catch (error) {
+                console.error("Error generating image:", error);
+                toast.error("Could not generate image.", { id: toastId });
+            }
         }
     };
 
-    const handleAddManualItem = () => {
-        const name = manualItemName.trim();
-        const price = parseFloat(manualItemPrice);
-        const quantity = parseInt(manualItemQuantity, 10);
-    
-        if (!name || !(price > 0) || !(quantity > 0)) {
-            toast.error("Please provide a valid name, price, and quantity.");
-            return;
-        }
-    
-        const newManualItem: CartItem = {
-            id: `manual-${uuidv4()}`,
-            name,
-            salePrice: price,
-            cartQuantity: quantity,
-            quantity: 9999, // Effectively infinite stock for manual items
-            purchasePrice: 0, // Assume no cost/profit for manual items unless specified
-            categoryId: 'manual',
-            subCategoryId: null,
-            manufacturer: 'Manual Entry',
-            location: '',
-            discount: 0,
-            discountType: 'fixed'
-        };
-    
-        setCart(prevCart => [...prevCart, newManualItem]);
-        toast.success(`${name} added to cart.`);
-        
-        // Reset and close
-        setManualItemModalOpen(false);
-        setManualItemName('');
-        setManualItemPrice('');
-        setManualItemQuantity('1');
-    };
-
-    const filteredInventory = useMemo(() => {
-        return inventory.filter(product => {
-            const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                product.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (product.barcode && product.barcode.includes(searchTerm));
-            const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory;
-            return matchesSearch && matchesCategory;
-        });
-    }, [inventory, searchTerm, selectedCategory]);
-
-    const shareReceiptAsImage = async (sale: Sale) => {
-        if (!receiptRef.current) {
-            toast.error("Receipt element not found. Cannot generate image.");
-            return;
-        }
-        if (!navigator.share) {
-            toast.error("Image sharing is not supported on this browser. Please save the image and share it manually.");
-            return;
-        }
-
-        const toastId = toast.loading('Generating receipt image...');
-
-        try {
-            const canvas = await html2canvas(receiptRef.current, { scale: 2, useCORS: true });
-            canvas.toBlob(async (blob) => {
-                if (!blob) {
-                    toast.error('Failed to create image file.', { id: toastId });
-                    return;
-                }
-
-                const file = new File([blob], `receipt-${sale.id}.png`, { type: 'image/png' });
-                const shareData = {
-                    files: [file],
-                    title: `Sale Receipt ${sale.id}`,
-                    text: `Here is the receipt for your purchase from ${shopInfo?.name || 'our shop'}.`,
-                };
-
-                if (navigator.canShare && navigator.canShare(shareData)) {
-                    try {
-                        await navigator.share(shareData);
-                        toast.success('Share dialog opened!', { id: toastId });
-                    } catch (error) {
-                        // This error is often thrown if the user cancels the share dialog, so we just dismiss the loading toast.
-                        console.log('Share was cancelled or failed', error);
-                        toast.dismiss(toastId);
-                    }
-                } else {
-                    toast.error('Cannot share this file type.', { id: toastId });
-                }
-            }, 'image/png');
-        } catch (error) {
-            console.error("Error generating receipt image:", error);
-            toast.error('Could not generate receipt image.', { id: toastId });
-        }
-    };
-    
-    const handleSendWhatsAppReceipt = () => {
+    const handleShareWhatsAppClick = () => {
         if (!completedSale) return;
-
-        if (!navigator.share) {
-            toast.error("Image sharing is not supported on this device. Please save the receipt as an image and share it manually.");
-            return;
-        }
-    
         const customer = customers.find(c => c.id === completedSale.customerId);
-        if (customer && customer.contactNumber) {
-            // We don't need the number for sharing via Web Share API, but its presence means we don't need to ask.
-            shareReceiptAsImage(completedSale);
+        setCustomerForReceipt(customer || null); // Store customer for later use
+        if (customer?.contactNumber) {
+            handleShareWhatsApp(customer.contactNumber);
         } else {
-            // We still ask for the number to save it for CRM purposes.
-            setWhatsAppNumber('');
-            setWhatsAppModalOpen(true);
+            setWhatsAppNumber(''); // Clear previous number
+            setShowWhatsAppInput(true);
         }
     };
 
-    const handleConfirmWhatsApp = async () => {
-        if (!completedSale) return;
+    const handleWhatsAppNumberSubmit = () => {
         if (!whatsAppNumber.trim()) {
-            toast.error("Please enter a valid phone number.");
+            toast.error("Please enter a valid number.");
             return;
         }
+        handleShareWhatsApp(whatsAppNumber);
         
-        const customer = customers.find(c => c.id === completedSale.customerId);
-        if (customer) {
-            updateCustomer(customer.id, {
-                id: customer.id,
-                name: customer.name,
-                contactNumber: whatsAppNumber.trim()
-            });
-            toast.success("Contact number saved to customer profile.");
+        // Attempt to save the number back to the customer profile
+        if (customerForReceipt && !customerForReceipt.contactNumber) {
+            updateCustomer(customerForReceipt.id, { ...customerForReceipt, contactNumber: whatsAppNumber });
+            toast.success(`Contact number saved for ${customerForReceipt.name}.`);
+        }
+
+        setShowWhatsAppInput(false);
+    };
+
+    const handleShareWhatsApp = async (number: string) => {
+        if (!completedSale || !receiptRef.current) {
+            toast.error("Receipt data not available.");
+            return;
+        }
+    
+        // 1. Format phone number
+        let formattedNumber = number.replace(/\D/g, '');
+        if (formattedNumber.startsWith('0')) {
+            formattedNumber = '92' + formattedNumber.substring(1);
+        } else if (!formattedNumber.startsWith('92')) {
+            // Assuming PK numbers if not starting with 92.
+            formattedNumber = '92' + formattedNumber;
         }
         
-        setWhatsAppModalOpen(false);
-        // Now trigger the share action after saving the number
-        await shareReceiptAsImage(completedSale);
+        const toastId = toast.loading("Generating receipt image...");
+    
+        try {
+            // 2. Generate HD image from the receipt element
+            const canvas = await html2canvas(receiptRef.current, {
+                scale: 3, // Higher scale for HD quality
+                useCORS: true,
+                backgroundColor: '#ffffff',
+            });
+            const dataUrl = canvas.toDataURL('image/png');
+    
+            // 3. Trigger download of the image
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `receipt-${completedSale.id}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            toast.success("Receipt downloaded. Opening WhatsApp...", { id: toastId, duration: 4000 });
+    
+            // 4. Open WhatsApp in a new tab without any pre-filled text
+            const whatsappUrl = `https://wa.me/${formattedNumber}`;
+            window.open(whatsappUrl, '_blank');
+    
+        } catch (error) {
+            console.error("Failed to generate or open WhatsApp:", error);
+            toast.error("Could not generate receipt image.", { id: toastId });
+        }
+    };
+    
+    const handleSelectCustomer = (customer: Customer) => {
+        setBikeNumber(customer.id);
+        setCustomerName(customer.name);
+        setContactNumber(customer.contactNumber || '');
+        setServiceFrequencyValue(customer.serviceFrequencyValue || '');
+        if(customer.serviceFrequencyUnit) setServiceFrequencyUnit(customer.serviceFrequencyUnit);
+    };
+
+    const handleClearCart = () => {
+        if (cart.length > 0 && window.confirm("Are you sure you want to clear the entire cart?")) {
+            setCart([]);
+            toast.success("Cart cleared.");
+        }
     };
 
     return (
-        <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] gap-4">
-            {/* Products Section */}
-            <div className="lg:w-2/3 flex flex-col bg-white p-4 rounded-lg shadow-md">
+        <div className="flex h-[calc(100vh-4rem)]"> {/* Full height minus header */}
+            {/* Main Content - Product Grid */}
+            <div className="flex-1 flex flex-col p-4">
                 <div className="flex flex-col md:flex-row gap-4 mb-4">
-                    <div className="flex-grow">
-                         <Input
-                            type="text"
-                            placeholder="Search products..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            icon={<Search className="w-5 h-5 text-gray-400"/>}
+                    <div className="relative flex-grow">
+                        <Input 
+                          placeholder="Search products..." 
+                          value={searchTerm} 
+                          onChange={e => setSearchTerm(e.target.value)}
+                          icon={<Search className="w-5 h-5 text-gray-400" />}
                         />
                     </div>
-                    <select
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(e.target.value)}
-                        className="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    >
-                        <option value="all">All Categories</option>
-                        {categories.filter(c => c.parentId === null).map(cat => (
-                            <option key={cat.id} value={cat.id}>{cat.name}</option>
-                        ))}
-                    </select>
-                     <Button onClick={() => setScannerOpen(true)} className="flex items-center justify-center gap-2">
-                        <ScanLine className="w-5 h-5" /> Scan
-                    </Button>
-                    <Button onClick={() => setManualItemModalOpen(true)} variant="secondary" className="flex items-center justify-center gap-2">
-                        <PlusCircle className="w-5 h-5" /> Add Manual Item
-                    </Button>
-                </div>
-                <div className="flex-grow overflow-y-auto pr-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {filteredInventory.map(product => (
-                        <ProductCard 
-                            key={product.id} 
-                            product={product} 
-                            onSelect={toggleProductSelection}
-                            isSelected={selectedProductIds.has(product.id)}
-                            categoryName={categoryMap.get(product.categoryId)}
-                        />
-                    ))}
-                </div>
-                {selectedProductIds.size > 0 && (
-                    <div className="mt-4 flex-shrink-0">
-                        <Button onClick={handleAddSelectedToCart} className="w-full text-lg justify-center">
-                            Add {selectedProductIds.size} Selected Item(s) to Cart
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={selectedCategory}
+                            onChange={e => setSelectedCategory(e.target.value)}
+                            className="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        >
+                            <option value="all">All Categories</option>
+                            {mainCategories.map(cat => (
+                                <optgroup label={cat.name} key={cat.id}>
+                                    <option value={cat.id}>{cat.name} (All)</option>
+                                    {categories.filter(sub => sub.parentId === cat.id).map(sub => (
+                                        <option key={sub.id} value={sub.id}>&nbsp;&nbsp;{sub.name}</option>
+                                    ))}
+                                </optgroup>
+                            ))}
+                        </select>
+                         <Button onClick={() => setScannerModalOpen(true)} variant="secondary" className="px-3" aria-label="Scan barcode">
+                            <ScanLine className="w-5 h-5" />
                         </Button>
                     </div>
-                )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto pr-2 -mr-2">
+                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        {filteredInventory.map(product => (
+                            <ProductCard 
+                                key={product.id} 
+                                product={product} 
+                                onSelect={addToCart} 
+                                isSelected={cart.some(item => item.id === product.id)}
+                                categoryName={categoryMap.get(product.subCategoryId || product.categoryId)}
+                            />
+                        ))}
+                    </div>
+                </div>
             </div>
 
-            {/* Cart Section */}
-            <div className="lg:w-1/3 flex flex-col bg-white p-4 rounded-lg shadow-md">
-                <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2"><ShoppingCart /> Cart</h2>
-                <div className="flex-grow overflow-y-auto border-t">
+            {/* Right Sidebar - Cart */}
+            <div className="w-full md:w-96 bg-white shadow-lg flex flex-col p-4 border-l">
+                <h2 className="text-2xl font-bold mb-4 text-gray-800 flex items-center justify-between">
+                    <span>Cart</span>
+                    <div className="flex items-center gap-2">
+                        {cart.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleClearCart}
+                                className="text-red-600 hover:bg-red-100 hover:text-red-700 px-2 py-1 flex items-center gap-1"
+                                aria-label="Clear cart"
+                            >
+                                <Trash2 size={14} /> Clear
+                            </Button>
+                        )}
+                        <span className="text-sm font-normal text-white bg-primary-600 rounded-full px-2 py-0.5">{cart.length} items</span>
+                    </div>
+                </h2>
+                
+                <div className="flex-1 overflow-y-auto -mr-2 pr-2 space-y-3">
                     {cart.length === 0 ? (
-                        <p className="text-gray-500 text-center mt-8">Your cart is empty.</p>
+                        <div className="text-center text-gray-500 pt-10">
+                            <ShoppingCart size={48} className="mx-auto text-gray-300" />
+                            <p>Your cart is empty</p>
+                            <p className="text-sm">Click on a product to add it.</p>
+                        </div>
                     ) : (
-                        <div className="divide-y divide-gray-200">
-                            {cart.map(item => (
-                                <div key={item.id} className="py-3 flex flex-col gap-2">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex-grow">
-                                            <p className="font-semibold text-sm">{item.name}</p>
+                        cart.map(item => {
+                            const lineItemTotal = (item.salePrice - (item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount / 100))) * item.cartQuantity;
+                            return (
+                                <div key={item.id} className="py-3 border-b border-gray-100">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <p className="font-semibold text-sm text-gray-800 leading-tight">{item.name}</p>
                                             <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
                                         </div>
-                                        <p className="font-semibold text-right">{formatCurrency((item.salePrice - (item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount / 100))) * item.cartQuantity)}</p>
-                                         <button onClick={() => updateCartQuantity(item.id, 0)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 ml-1">
-                                            <X size={18} />
-                                        </button>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <label className="text-xs">Qty:</label>
-                                            <input
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <Input
                                                 type="number"
                                                 value={item.cartQuantity}
-                                                onChange={(e) => updateCartQuantity(item.id, parseInt(e.target.value, 10) || 1)}
-                                                className="w-16 p-1 border rounded-md text-center"
+                                                onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))}
+                                                className="w-16 h-8 text-center"
                                                 min="1"
                                                 max={item.quantity}
+                                                aria-label={`Quantity for ${item.name}`}
                                             />
+                                            <button onClick={() => updateQuantity(item.id, 0)} className="text-red-500 hover:text-red-700 p-1" title="Remove"><X size={18} /></button>
                                         </div>
-                                         <div className="flex items-center gap-1">
-                                            <label className="text-xs text-gray-600">Disc:</label>
-                                            <div className="flex items-center border border-gray-300 rounded-md shadow-sm">
-                                                <input
-                                                    type="number"
-                                                    placeholder="0"
-                                                    value={item.discount > 0 ? item.discount : ''}
-                                                    onChange={(e) => updateItemDiscount(item.id, e.target.value)}
-                                                    className="w-16 p-1 border-0 rounded-l-md text-right focus:ring-0"
-                                                    min="0"
-                                                />
-                                                <select
-                                                    value={item.discountType}
-                                                    onChange={(e) => updateItemDiscount(item.id, String(item.discount), e.target.value as 'fixed' | 'percentage')}
-                                                    className="text-xs bg-gray-50 border-0 border-l border-gray-300 rounded-r-md py-1 pl-1 pr-2 focus:ring-0"
-                                                >
-                                                    <option value="fixed">Rs</option>
-                                                    <option value="percentage">%</option>
-                                                </select>
-                                            </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
+                                        <Input 
+                                            id={`discount-${item.id}`}
+                                            type="number"
+                                            value={item.discount || ''}
+                                            onChange={e => handleItemDiscountChange(item.id, e.target.value)}
+                                            className="w-20 h-8 text-xs p-1"
+                                            placeholder="0"
+                                            aria-label={`Discount for ${item.name}`}
+                                        />
+                                        <select
+                                            value={item.discountType}
+                                            onChange={e => handleItemDiscountTypeChange(item.id, e.target.value as 'fixed' | 'percentage')}
+                                            className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white focus:ring-primary-500 focus:border-primary-500"
+                                            aria-label={`Discount type for ${item.name}`}
+                                        >
+                                            <option value="fixed">Rs.</option>
+                                            <option value="percentage">%</option>
+                                        </select>
+                                        <div className="flex-grow text-right text-sm font-semibold">
+                                            {formatCurrency(lineItemTotal)}
                                         </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                            );
+                        })
                     )}
                 </div>
-                <div className="mt-auto pt-4 border-t space-y-2">
-                     <div className="flex justify-between text-md">
-                        <span>Subtotal:</span>
-                        <span>{formatCurrency(cartSubtotal)}</span>
+
+                <div className="border-t pt-4 mt-2 space-y-2 text-sm">
+                    <Button onClick={addManualItemToCart} variant="secondary" className="w-full mb-2 flex items-center justify-center gap-2"><PlusCircle size={16}/> Add Manual Item</Button>
+                    <div className="flex justify-between"><span>Subtotal</span> <span className="font-semibold">{formatCurrency(subtotal)}</span></div>
+                    {totalItemDiscount > 0 && <div className="flex justify-between text-red-600"><span>Item Discounts</span> <span className="font-semibold">-{formatCurrency(totalItemDiscount)}</span></div>}
+                     <div className="flex justify-between font-semibold border-t pt-2">
+                        <span>Subtotal after Item Discounts</span>
+                        <span>{formatCurrency(subtotalAfterItemDiscount)}</span>
                     </div>
-                    <div className="flex justify-between text-md text-red-600">
-                        <span>Item Discounts:</span>
-                        <span>- {formatCurrency(totalItemDiscounts)}</span>
-                    </div>
-                    <div className="flex justify-between text-md text-red-600">
-                        <span>Overall Discount:</span>
-                        <span>- {formatCurrency(totalOverallDiscount)}</span>
-                    </div>
-                     <div className="flex justify-between items-center text-md">
-                        <span className="text-gray-700">Apply Discount:</span>
-                        <div className="flex items-center border border-gray-300 rounded-md shadow-sm">
-                            <Input
+
+                    <div className="pt-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Overall Discount</label>
+                        <div className="flex items-center gap-2">
+                            <Input 
                                 type="number"
-                                placeholder="0"
-                                className="w-24 text-right font-semibold !py-1 !border-0 !rounded-r-none !shadow-none !ring-0"
+                                placeholder="e.g., 100 or 10"
                                 value={overallDiscount}
-                                onChange={(e) => setOverallDiscount(e.target.value)}
+                                onChange={e => setOverallDiscount(e.target.value)}
+                                className="flex-grow h-9"
                             />
-                            <select
+                            <select 
                                 value={overallDiscountType}
-                                onChange={(e) => setOverallDiscountType(e.target.value as 'fixed' | 'percentage')}
-                                className="text-sm bg-gray-50 focus:outline-none rounded-r-md p-2 border-l border-gray-300"
+                                onChange={e => setOverallDiscountType(e.target.value as 'fixed' | 'percentage')}
+                                className="p-2 h-9 border border-gray-300 rounded-md bg-white focus:ring-primary-500 focus:border-primary-500"
                             >
-                                <option value="fixed">Rs</option>
+                                <option value="fixed">Rs.</option>
                                 <option value="percentage">%</option>
                             </select>
                         </div>
+                        {overallDiscountAmount > 0 && <p className="text-sm text-red-600 text-right mt-1">Discount Applied: -{formatCurrency(overallDiscountAmount)}</p>}
                     </div>
-                    <div className="flex justify-between text-xl font-bold pt-2 border-t">
-                        <span>Total:</span>
-                        <span>{formatCurrency(cartTotal)}</span>
-                    </div>
-                    <Button onClick={handleInitiateCheckout} disabled={cart.length === 0} className="w-full text-lg justify-center">
-                        Checkout
-                    </Button>
-                </div>
-            </div>
 
-            <Modal isOpen={isScannerOpen} onClose={() => setScannerOpen(false)} title="Scan Barcode/QR Code">
-                <BarcodeScanner onScanSuccess={handleScanSuccess} />
-            </Modal>
-            
-            <Modal isOpen={!!completedSale} onClose={() => setCompletedSale(null)} title="Sale Complete">
-                {completedSale && <Receipt sale={completedSale} ref={receiptRef} />}
-                <div className="flex justify-end gap-2 mt-4 flex-wrap">
-                    <Button variant="secondary" onClick={() => setCompletedSale(null)}>Close</Button>
-                    <Button onClick={handlePrintReceipt} className="flex items-center gap-2"><Printer size={18}/> Print</Button>
-                    <Button onClick={handleSaveReceiptAsImage} className="flex items-center gap-2"><ImageDown size={18}/> Save</Button>
-                    <Button onClick={handleSendWhatsAppReceipt} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white focus:ring-green-500">
-                        <MessageSquare size={18}/> Share Receipt
-                    </Button>
+                    <div className="text-xl font-bold flex justify-between pt-2 border-t text-primary-700"><span>TOTAL</span> <span>{formatCurrency(total)}</span></div>
                 </div>
-            </Modal>
+
+                <Button onClick={() => setCheckoutModalOpen(true)} disabled={cart.length === 0} className="w-full mt-4 text-lg">
+                    Checkout
+                </Button>
+            </div>
             
-            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Customer & Checkout" footer={
-                <div className="flex justify-end gap-2">
-                    <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
-                    <Button onClick={handleConfirmCheckout}>Confirm Sale</Button>
-                </div>
-            }>
-                <div className="space-y-4">
-                     <Input
-                        label="Bike Number"
-                        placeholder="e.g., RIP555"
-                        value={bikeNumber}
-                        onChange={(e) => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())}
-                        required
-                    />
-                    <Input
-                        label="Customer Name"
-                        placeholder="e.g., Jack (Optional)"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                    />
-                     <Input
-                        label="Contact Number (Optional)"
-                        type="tel"
-                        placeholder="e.g., 03001234567"
-                        value={contactNumber}
-                        onChange={(e) => setContactNumber(e.target.value)}
-                    />
-                     {customerForCheckout && (
-                         <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-md space-y-3">
-                             <div className="flex justify-between items-center">
-                                 <h4 className="font-semibold text-indigo-800 flex items-center gap-2"><Star size={16}/> Loyalty Points</h4>
-                                 <span className="font-bold text-indigo-800">{customerForCheckout.loyaltyPoints} pts</span>
+            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Sale" size="lg">
+                 <div className="space-y-4">
+                     <div className="p-4 bg-gray-50 rounded-lg">
+                        <div className="flex justify-between items-center text-xl font-bold">
+                            <span>TOTAL DUE</span>
+                            <span className="text-primary-600">{formatCurrency(total)}</span>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2"><UserPlus size={20}/> Customer Information</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Bike Number (ID) <span className="text-red-500">*</span></label>
+                                <div className="flex">
+                                    <Input value={bikeNumber} onChange={e => setBikeNumber(e.target.value)} required placeholder="e.g., KHI-1234"/>
+                                    <Button type="button" variant="ghost" onClick={() => setCustomerLookupOpen(true)} className="ml-2" title="Find Customer">
+                                        <FileSearch />
+                                    </Button>
+                                </div>
                             </div>
-                            {customerForCheckout.loyaltyPoints > 0 && (
-                                <div className="flex items-end gap-2">
-                                <Input
-                                    label="Redeem Points"
-                                    type="number"
-                                    placeholder="0"
-                                    min="0"
-                                    max={customerForCheckout.loyaltyPoints}
-                                    value={pointsToRedeem}
-                                    onChange={(e) => {
-                                        const val = parseInt(e.target.value, 10);
-                                        if (val > customerForCheckout.loyaltyPoints) {
-                                            setPointsToRedeem(String(customerForCheckout.loyaltyPoints));
-                                            toast.error(`Max ${customerForCheckout.loyaltyPoints} points can be redeemed.`);
-                                        } else {
-                                            setPointsToRedeem(e.target.value);
-                                        }
-                                    }}
-                                />
-                                <Button size="sm" variant="ghost" onClick={() => setPointsToRedeem(String(customerForCheckout.loyaltyPoints))}>Max</Button>
-                               </div>
-                            )}
+                            <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} required placeholder="e.g., John Doe"/>
+                            <Input label="Contact Number" type="tel" value={contactNumber} onChange={e => setContactNumber(e.target.value)} placeholder="For receipts & reminders"/>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Service Frequency</label>
+                                <div className="flex items-center gap-2">
+                                    <Input type="number" placeholder="e.g., 3" min="1" value={serviceFrequencyValue} onChange={(e) => setServiceFrequencyValue(e.target.value)} className="w-1/3" />
+                                    <select value={serviceFrequencyUnit} onChange={(e) => setServiceFrequencyUnit(e.target.value as 'days' | 'months' | 'years')} className="flex-grow p-2 border border-gray-300 rounded-md">
+                                        <option value="days">Days</option>
+                                        <option value="months">Months</option>
+                                        <option value="years">Years</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {currentCustomer && (
+                         <div className="pt-4 border-t">
+                             <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2"><Star size={20}/> Loyalty Points</h3>
+                             <div className="p-3 bg-indigo-50 rounded-md text-center">
+                                <p className="text-sm text-indigo-700">
+                                    <span className="font-semibold">{currentCustomer.name}</span> has <span className="font-bold text-lg">{currentCustomer.loyaltyPoints}</span> points available.
+                                    {customerTier && <span className="ml-2 px-2 py-0.5 bg-indigo-200 text-indigo-800 text-xs rounded-full font-semibold">{customerTier.name} Tier</span>}
+                                </p>
+                                <p className="text-xs text-indigo-500 mt-1">
+                                    Rule: {redemptionRule.points} pts = {redemptionRule.method === 'fixedValue' ? `${formatCurrency(redemptionRule.value)} off` : `${redemptionRule.value}% off`}
+                                </p>
+                             </div>
+                             <div className="flex items-end gap-2 mt-2">
+                                <Input label="Points to Redeem" type="number" placeholder="e.g., 500" value={pointsToRedeem} onChange={e => setPointsToRedeem(e.target.value)} max={currentCustomer.loyaltyPoints}/>
+                             </div>
+                             {loyaltyDiscountAmount > 0 && <p className="text-sm text-green-600 text-right font-semibold">Loyalty Discount: {formatCurrency(loyaltyDiscountAmount)}</p>}
+                             {Number(pointsToRedeem) > currentCustomer.loyaltyPoints && <p className="text-sm text-red-500 text-right">Cannot redeem more points than available.</p>}
                          </div>
                     )}
 
-                    <div className="p-4 border-t space-y-2 mt-4">
-                        <div className="flex justify-between text-md">
-                            <span>Total</span>
-                            <span>{formatCurrency(cartTotal)}</span>
-                        </div>
-                        {loyaltyDiscount > 0 && (
-                            <div className="flex justify-between text-md text-green-600">
-                                <span>Loyalty Discount:</span>
-                                <span>- {formatCurrency(loyaltyDiscount)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between text-xl font-bold pt-2 border-t">
-                            <span>To Pay:</span>
-                            <span>{formatCurrency(cartTotal - loyaltyDiscount)}</span>
-                        </div>
-                    </div>
-
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Service Frequency (Optional)</label>
-                        <div className="flex items-center gap-2">
-                            <Input
-                                type="number"
-                                placeholder="e.g., 3"
-                                min="1"
-                                value={serviceFrequencyValue}
-                                onChange={(e) => setServiceFrequencyValue(e.target.value)}
-                                className="w-1/3"
-                            />
-                            <select
-                                value={serviceFrequencyUnit}
-                                onChange={(e) => setServiceFrequencyUnit(e.target.value as 'days' | 'months' | 'years')}
-                                className="flex-grow p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                            >
-                                <option value="days">Days</option>
-                                <option value="months">Months</option>
-                                <option value="years">Years</option>
-                            </select>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">Set a recurring service reminder for this customer.</p>
-                    </div>
-                </div>
+                 </div>
+                 <div className="flex justify-end gap-2 pt-6 mt-4 border-t">
+                     <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
+                     <Button onClick={handleCheckout} disabled={!bikeNumber.trim() || !customerName.trim()}>Confirm Sale</Button>
+                 </div>
             </Modal>
-
-            <Modal isOpen={isManualItemModalOpen} onClose={() => setManualItemModalOpen(false)} title="Add Manual Item to Cart" footer={
-                <div className="flex justify-end gap-2">
-                    <Button variant="secondary" onClick={() => setManualItemModalOpen(false)}>Cancel</Button>
-                    <Button onClick={handleAddManualItem}>Add Item</Button>
-                </div>
-            }>
-                <div className="space-y-4">
-                    <Input
-                        label="Item Name"
-                        value={manualItemName}
-                        onChange={e => setManualItemName(e.target.value)}
-                        required
-                        placeholder="e.g., Bike Wash, Service Charge"
-                    />
-                    <Input
-                        label="Sale Price (per item)"
-                        type="number"
-                        value={manualItemPrice}
-                        onChange={e => setManualItemPrice(e.target.value)}
-                        required
-                        min="0.01"
-                        placeholder="e.g., 500"
-                    />
-                    <Input
-                        label="Quantity"
-                        type="number"
-                        value={manualItemQuantity}
-                        onChange={e => setManualItemQuantity(e.target.value)}
-                        required
-                        min="1"
-                    />
-                </div>
+            
+            <Modal isOpen={isScannerModalOpen} onClose={() => setScannerModalOpen(false)} title="Scan Product Barcode">
+                <BarcodeScanner onScanSuccess={handleBarcodeScan} />
             </Modal>
+            
+            <CustomerLookupModal 
+                isOpen={isCustomerLookupOpen}
+                onClose={() => setCustomerLookupOpen(false)}
+                onSelectCustomer={handleSelectCustomer}
+            />
 
-            <Modal 
-                isOpen={isWhatsAppModalOpen} 
-                onClose={() => setWhatsAppModalOpen(false)} 
-                title="Share Receipt"
-                footer={
-                    <div className="flex justify-end gap-2">
-                        <Button variant="secondary" onClick={() => setWhatsAppModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleConfirmWhatsApp}>Share & Save Number</Button>
+            {completedSale && (
+                <Modal 
+                    isOpen={isSaleCompleteModalOpen} 
+                    onClose={() => {
+                        setCompletedSale(null);
+                        setIsSaleCompleteModalOpen(false);
+                    }} 
+                    title="Sale Successful!"
+                    size="sm"
+                >
+                    <div ref={receiptRef} className="bg-white p-1">
+                        <Receipt sale={completedSale} />
                     </div>
-                }
-            >
+                    <div className="grid grid-cols-2 gap-2 pt-4 border-t mt-4">
+                         <Button onClick={handlePrintReceipt} className="w-full flex items-center justify-center gap-2">
+                            <Printer size={18} /> Print
+                        </Button>
+                        <Button onClick={handleDownloadImage} className="w-full flex items-center justify-center gap-2">
+                            <ImageDown size={18} /> Download Image
+                        </Button>
+                         <Button
+                            onClick={handleShareWhatsAppClick}
+                            className="w-full flex items-center justify-center gap-2 col-span-2 bg-green-500 hover:bg-green-600 text-white"
+                        >
+                            <MessageSquare size={18} /> Send via WhatsApp
+                        </Button>
+                    </div>
+                </Modal>
+            )}
+
+            <Modal isOpen={showWhatsAppInput} onClose={() => setShowWhatsAppInput(false)} title="Enter WhatsApp Number">
                 <div className="space-y-4">
-                    <p className="text-sm text-gray-600">
-                        No contact number found for this customer. Please enter a number to continue. The number will be saved to the customer's profile for future use.
-                    </p>
+                    <p>This customer does not have a saved contact number. Please enter their WhatsApp number to proceed. The number will be saved to their profile.</p>
                     <Input 
-                        label="Contact Number"
+                        type="tel"
                         placeholder="e.g., 03001234567"
                         value={whatsAppNumber}
                         onChange={(e) => setWhatsAppNumber(e.target.value)}
-                        type="tel"
-                        required
+                        autoFocus
                     />
+                    <div className="flex justify-end gap-2">
+                        <Button variant="secondary" onClick={() => setShowWhatsAppInput(false)}>Cancel</Button>
+                        <Button onClick={handleWhatsAppNumberSubmit}>
+                            Download & Open WhatsApp
+                        </Button>
+                    </div>
                 </div>
             </Modal>
 
