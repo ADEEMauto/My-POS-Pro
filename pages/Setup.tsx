@@ -3,17 +3,35 @@ import React, { useState } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
-import { Building, MapPin } from 'lucide-react';
+import { Building, MapPin, Upload, X } from 'lucide-react';
+import { compressImage } from '../utils/helpers';
+import toast from 'react-hot-toast';
 
 const Setup: React.FC = () => {
     const { saveShopInfo } = useAppContext();
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
+    const [logo, setLogo] = useState<string | undefined>(undefined);
+
+    const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const toastId = toast.loading('Processing image...');
+            try {
+                const compressedLogo = await compressImage(file);
+                setLogo(compressedLogo);
+                toast.success('Logo uploaded!', { id: toastId });
+            } catch (error) {
+                console.error("Error compressing image:", error);
+                toast.error("Failed to process image.", { id: toastId });
+            }
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (name.trim() && address.trim()) {
-            saveShopInfo({ name, address });
+            saveShopInfo({ name, address, logoUrl: logo });
         }
     };
 
@@ -52,6 +70,34 @@ const Setup: React.FC = () => {
                             onChange={(e) => setAddress(e.target.value)}
                             icon={<MapPin className="h-5 w-5 text-gray-400" />}
                         />
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Shop Logo (Optional)</label>
+                            {logo ? (
+                                <div className="flex items-center gap-4">
+                                    <img src={logo} alt="Logo Preview" className="h-16 w-16 object-cover rounded-md shadow-sm" />
+                                    <Button type="button" variant="secondary" size="sm" onClick={() => setLogo(undefined)}>
+                                        <X className="h-4 w-4 mr-2" /> Remove
+                                    </Button>
+                                </div>
+                            ) : (
+                                <>
+                                    <input
+                                        type="file"
+                                        id="logo-upload"
+                                        className="hidden"
+                                        accept="image/png, image/jpeg, image/webp"
+                                        onChange={handleLogoChange}
+                                    />
+                                    <label
+                                        htmlFor="logo-upload"
+                                        className="cursor-pointer flex items-center justify-center w-full px-4 py-6 border-2 border-gray-300 border-dashed rounded-md text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                                    >
+                                        <Upload className="h-5 w-5 mr-2" />
+                                        Click to upload an image
+                                    </label>
+                                </>
+                            )}
+                        </div>
                     </div>
 
                     <div>

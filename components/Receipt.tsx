@@ -54,8 +54,14 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
     return (
         <div ref={ref} className="p-4 bg-white text-black font-mono text-sm max-w-sm mx-auto">
             {/* 1 & 2. Shop Info */}
-            <div className="text-center mb-2">
-                <h2 className="text-lg font-bold">{shopInfo?.name}</h2>
+            <div className="mb-2 text-center">
+                {shopInfo?.logoUrl && (
+                    <img 
+                        src={shopInfo.logoUrl} 
+                        alt="Shop Logo" 
+                        className="w-full max-w-full h-auto object-contain mx-auto mb-2"
+                    />
+                )}
                 <p>{shopInfo?.address}</p>
             </div>
             

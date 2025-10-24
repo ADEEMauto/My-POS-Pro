@@ -99,10 +99,15 @@ const Dashboard: React.FC = () => {
                     <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
                 </tr>
             `).join('');
+            
+            const logoHtml = shopInfo?.logoUrl 
+                ? `<img src="${shopInfo.logoUrl}" alt="Shop Logo" style="height: 50px; width: auto; margin: 0 auto 10px auto; display: block; object-fit: contain;" />`
+                : '';
 
             pdfContainer.innerHTML = `
                 <div>
                     <div style="text-align: center; margin-bottom: 20px;">
+                        ${logoHtml}
                         <h1 style="font-size: 24px; margin: 0;">${shopInfo?.name || 'Inventory'}</h1>
                         <p style="font-size: 12px; margin: 0;">${shopInfo?.address || ''}</p>
                     </div>
@@ -200,10 +205,15 @@ const Dashboard: React.FC = () => {
                     <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top;">${product.barcode || 'N/A'}</td>
                 </tr>
             `).join('');
+            
+            const logoHtml = shopInfo?.logoUrl 
+                ? `<img src="${shopInfo.logoUrl}" alt="Shop Logo" style="height: 50px; width: auto; margin: 0 auto 10px auto; display: block; object-fit: contain;" />`
+                : '';
 
             pdfContainer.innerHTML = `
                 <div>
                     <div style="text-align: center; margin-bottom: 20px;">
+                        ${logoHtml}
                         <h1 style="font-size: 24px; margin: 0;">${shopInfo?.name || 'Inventory'}</h1>
                         <p style="font-size: 12px; margin: 0;">${shopInfo?.address || ''}</p>
                     </div>

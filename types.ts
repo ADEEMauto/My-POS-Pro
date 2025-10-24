@@ -1,6 +1,7 @@
 export interface ShopInfo {
     name: string;
     address: string;
+    logoUrl?: string;
 }
 
 export type UserRole = 'master' | 'sub';

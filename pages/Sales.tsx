@@ -282,9 +282,14 @@ const Sales: React.FC = () => {
                 `;
             }).join('');
 
+            const logoHtml = shopInfo?.logoUrl 
+                ? `<img src="${shopInfo.logoUrl}" alt="Shop Logo" style="height: 50px; width: auto; margin: 0 auto 10px auto; display: block; object-fit: contain;" />`
+                : '';
+
             pdfContainer.innerHTML = `
                 <div>
                     <div style="text-align: center; margin-bottom: 20px;">
+                        ${logoHtml}
                         <h1 style="font-size: 24px; margin: 0;">${shopInfo?.name || 'Sales Report'}</h1>
                         <p style="font-size: 12px; margin: 0;">${shopInfo?.address || ''}</p>
                     </div>
