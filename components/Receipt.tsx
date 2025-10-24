@@ -59,7 +59,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                     <img 
                         src={shopInfo.logoUrl} 
                         alt="Shop Logo" 
-                        className="w-full max-w-full h-auto object-contain mx-auto mb-2"
+                        className="w-36 h-auto object-contain mx-auto mb-2"
                     />
                 )}
                 <p>{shopInfo?.address}</p>

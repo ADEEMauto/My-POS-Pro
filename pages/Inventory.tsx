@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
 import { formatCurrency, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye, PackagePlus } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -197,6 +197,127 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
     );
 };
 
+const AddStockModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+}> = ({ isOpen, onClose }) => {
+    const { inventory, addStock } = useAppContext();
+    const [step, setStep] = useState(1); // 1 for selection, 2 for details
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [search, setSearch] = useState('');
+    const [quantityToAdd, setQuantityToAdd] = useState('');
+    const [newSalePrice, setNewSalePrice] = useState('');
+
+    const filteredProducts = useMemo(() => {
+        if (!search) return inventory;
+        return inventory.filter(p => 
+            p.name.toLowerCase().includes(search.toLowerCase()) ||
+            (p.barcode && p.barcode.toLowerCase().includes(search.toLowerCase()))
+        );
+    }, [inventory, search]);
+
+    const handleSelectProduct = (product: Product) => {
+        setSelectedProduct(product);
+        setStep(2);
+    };
+
+    const handleSaveChanges = () => {
+        if (!selectedProduct) return;
+        const qty = parseInt(quantityToAdd, 10);
+        if (isNaN(qty) || qty <= 0) {
+            toast.error("Please enter a valid quantity to add.");
+            return;
+        }
+
+        const price = newSalePrice.trim() !== '' ? parseFloat(newSalePrice) : undefined;
+        if (price !== undefined && (isNaN(price) || price < 0)) {
+            toast.error("Please enter a valid sale price or leave it blank.");
+            return;
+        }
+
+        addStock(selectedProduct.id, qty, price);
+        handleClose();
+    };
+
+    const handleClose = () => {
+        setStep(1);
+        setSelectedProduct(null);
+        setSearch('');
+        setQuantityToAdd('');
+        setNewSalePrice('');
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={handleClose} title="Add Stock / Update Price" size="lg">
+            {step === 1 && (
+                <div className="space-y-4">
+                    <Input 
+                        placeholder="Search for a product by name or barcode..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        icon={<Search className="w-5 h-5 text-gray-400" />}
+                    />
+                    <div className="max-h-80 overflow-y-auto border rounded-md divide-y">
+                        {filteredProducts.length > 0 ? filteredProducts.map(p => (
+                            <div 
+                                key={p.id} 
+                                className="p-3 flex justify-between items-center cursor-pointer hover:bg-gray-50"
+                                onClick={() => handleSelectProduct(p)}
+                            >
+                                <div>
+                                    <p className="font-semibold">{p.name}</p>
+                                    <p className="text-xs text-gray-500">{p.manufacturer}</p>
+                                </div>
+                                <span className="text-sm text-gray-600">Stock: {p.quantity}</span>
+                            </div>
+                        )) : (
+                            <p className="text-center text-gray-500 p-4">No products found.</p>
+                        )}
+                    </div>
+                </div>
+            )}
+            {step === 2 && selectedProduct && (
+                <div className="space-y-4">
+                    <div>
+                         <button onClick={() => setStep(1)} className="text-sm text-primary-600 hover:underline mb-2">&larr; Back to product list</button>
+                         <div className="p-3 bg-gray-100 rounded-md">
+                            <p className="font-bold text-lg">{selectedProduct.name}</p>
+                            <div className="flex justify-between text-sm">
+                                <span>Current Stock: <span className="font-semibold">{selectedProduct.quantity}</span></span>
+                                <span>Current Sale Price: <span className="font-semibold">{formatCurrency(selectedProduct.salePrice)}</span></span>
+                            </div>
+                         </div>
+                    </div>
+
+                    <Input 
+                        label="Quantity to Add"
+                        type="number"
+                        value={quantityToAdd}
+                        onChange={e => setQuantityToAdd(e.target.value)}
+                        required
+                        min="1"
+                        placeholder="e.g., 12"
+                    />
+                     <Input 
+                        label="New Sale Price (Optional)"
+                        type="number"
+                        value={newSalePrice}
+                        onChange={e => setNewSalePrice(e.target.value)}
+                        min="0"
+                        placeholder={`Leave blank to keep ${formatCurrency(selectedProduct.salePrice)}`}
+                    />
+
+                    <div className="flex justify-end gap-2 pt-4 border-t">
+                        <Button variant="secondary" onClick={handleClose}>Cancel</Button>
+                        <Button onClick={handleSaveChanges}>Save Changes</Button>
+                    </div>
+                </div>
+            )}
+        </Modal>
+    );
+};
+
 
 const Inventory: React.FC = () => {
     const { inventory, categories, sales, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel, shopInfo } = useAppContext();
@@ -207,6 +328,7 @@ const Inventory: React.FC = () => {
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isSampleViewOpen, setSampleViewOpen] = useState(false);
+    const [isAddStockModalOpen, setAddStockModalOpen] = useState(false);
 
     const isMaster = currentUser?.role === 'master';
 
@@ -482,6 +604,7 @@ const Inventory: React.FC = () => {
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className='gap-2'><Upload size={18}/> Import</Button>
                     <Button onClick={handleDownloadInventory} variant="secondary" className='gap-2'><Download size={18}/> Export Excel</Button>
                     <Button onClick={handleDownloadPdf} variant="secondary" className='gap-2'><FileText size={18}/> Download PDF</Button>
+                    <Button onClick={() => setAddStockModalOpen(true)} variant="secondary" className='gap-2'><PackagePlus size={18}/> Add Stock</Button>
                     <Button onClick={() => { setEditingProduct(undefined); setModalOpen(true); }} className='gap-2'><Plus size={18}/> Add Product</Button>
                 </div>
             </div>
@@ -669,6 +792,7 @@ const Inventory: React.FC = () => {
                     </div>
                 </div>
             </Modal>
+            <AddStockModal isOpen={isAddStockModalOpen} onClose={() => setAddStockModalOpen(false)} />
         </div>
     );
 };

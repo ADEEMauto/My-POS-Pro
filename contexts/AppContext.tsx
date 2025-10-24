@@ -43,6 +43,7 @@ interface AppContextType {
     findProductByBarcode: (barcode: string) => Product | undefined;
     addSampleData: () => void;
     importFromExcel: (data: any[]) => void;
+    addStock: (productId: string, quantityToAdd: number, newSalePrice?: number) => void;
 
     categories: Category[];
     addCategory: (name: string, parentId: string | null) => void;
@@ -324,6 +325,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         setInventory([...inventory, ...newProducts]);
         toast.success(`${newProducts.length} products imported successfully!`);
+    };
+
+    const addStock = (productId: string, quantityToAdd: number, newSalePrice?: number) => {
+        const productIndex = inventory.findIndex(p => p.id === productId);
+        if (productIndex === -1) {
+            toast.error("Product not found.");
+            return;
+        }
+
+        if (isNaN(quantityToAdd) || quantityToAdd <= 0) {
+            toast.error("Quantity to add must be a positive number.");
+            return;
+        }
+
+        const updatedInventory = [...inventory];
+        const productToUpdate = { ...updatedInventory[productIndex] };
+
+        productToUpdate.quantity += quantityToAdd;
+
+        if (newSalePrice !== undefined && newSalePrice !== null && !isNaN(newSalePrice) && newSalePrice >= 0) {
+            productToUpdate.salePrice = newSalePrice;
+        }
+
+        updatedInventory[productIndex] = productToUpdate;
+        setInventory(updatedInventory);
+        toast.success(`Stock for ${productToUpdate.name} updated successfully!`);
     };
 
     const addCategory = (name: string, parentId: string | null) => {
@@ -811,7 +838,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return (
         <AppContext.Provider value={{
             loading, shopInfo, saveShopInfo, currentUser, users, signUp, login, logout, updateUser, addUser, deleteUser,
-            inventory, addProduct, updateProduct, deleteProduct, findProductByBarcode, addSampleData, importFromExcel,
+            inventory, addProduct, updateProduct, deleteProduct, findProductByBarcode, addSampleData, importFromExcel, addStock,
             categories, addCategory, updateCategory, deleteCategory,
             sales, createSale, reverseSale,
             customers, updateCustomer,
