@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale, Customer } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag, PlusCircle, Star } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, Tag, PlusCircle, Star, MessageSquare } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -44,7 +44,7 @@ const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) =>
 };
 
 const POS: React.FC = () => {
-    const { inventory, categories, findProductByBarcode, createSale, customers, redemptionRule } = useAppContext();
+    const { inventory, categories, findProductByBarcode, createSale, customers, redemptionRule, shopInfo, updateCustomer } = useAppContext();
     const [cart, setCart] = useState<CartItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
@@ -68,6 +68,10 @@ const POS: React.FC = () => {
     const [manualItemName, setManualItemName] = useState('');
     const [manualItemPrice, setManualItemPrice] = useState('');
     const [manualItemQuantity, setManualItemQuantity] = useState('1');
+
+    // WhatsApp states
+    const [isWhatsAppModalOpen, setWhatsAppModalOpen] = useState(false);
+    const [whatsAppNumber, setWhatsAppNumber] = useState('');
 
 
     const receiptRef = useRef<HTMLDivElement>(null);
@@ -337,7 +341,7 @@ const POS: React.FC = () => {
 
     const handleSaveReceiptAsImage = () => {
         if(receiptRef.current) {
-            html2canvas(receiptRef.current).then((canvas: any) => {
+            html2canvas(receiptRef.current, { scale: 2, useCORS: true }).then((canvas: any) => {
                 const link = document.createElement('a');
                 link.download = `receipt-${completedSale?.id}.png`;
                 link.href = canvas.toDataURL('image/png');
@@ -390,6 +394,93 @@ const POS: React.FC = () => {
             return matchesSearch && matchesCategory;
         });
     }, [inventory, searchTerm, selectedCategory]);
+
+    const shareReceiptAsImage = async (sale: Sale) => {
+        if (!receiptRef.current) {
+            toast.error("Receipt element not found. Cannot generate image.");
+            return;
+        }
+        if (!navigator.share) {
+            toast.error("Image sharing is not supported on this browser. Please save the image and share it manually.");
+            return;
+        }
+
+        const toastId = toast.loading('Generating receipt image...');
+
+        try {
+            const canvas = await html2canvas(receiptRef.current, { scale: 2, useCORS: true });
+            canvas.toBlob(async (blob) => {
+                if (!blob) {
+                    toast.error('Failed to create image file.', { id: toastId });
+                    return;
+                }
+
+                const file = new File([blob], `receipt-${sale.id}.png`, { type: 'image/png' });
+                const shareData = {
+                    files: [file],
+                    title: `Sale Receipt ${sale.id}`,
+                    text: `Here is the receipt for your purchase from ${shopInfo?.name || 'our shop'}.`,
+                };
+
+                if (navigator.canShare && navigator.canShare(shareData)) {
+                    try {
+                        await navigator.share(shareData);
+                        toast.success('Share dialog opened!', { id: toastId });
+                    } catch (error) {
+                        // This error is often thrown if the user cancels the share dialog, so we just dismiss the loading toast.
+                        console.log('Share was cancelled or failed', error);
+                        toast.dismiss(toastId);
+                    }
+                } else {
+                    toast.error('Cannot share this file type.', { id: toastId });
+                }
+            }, 'image/png');
+        } catch (error) {
+            console.error("Error generating receipt image:", error);
+            toast.error('Could not generate receipt image.', { id: toastId });
+        }
+    };
+    
+    const handleSendWhatsAppReceipt = () => {
+        if (!completedSale) return;
+
+        if (!navigator.share) {
+            toast.error("Image sharing is not supported on this device. Please save the receipt as an image and share it manually.");
+            return;
+        }
+    
+        const customer = customers.find(c => c.id === completedSale.customerId);
+        if (customer && customer.contactNumber) {
+            // We don't need the number for sharing via Web Share API, but its presence means we don't need to ask.
+            shareReceiptAsImage(completedSale);
+        } else {
+            // We still ask for the number to save it for CRM purposes.
+            setWhatsAppNumber('');
+            setWhatsAppModalOpen(true);
+        }
+    };
+
+    const handleConfirmWhatsApp = async () => {
+        if (!completedSale) return;
+        if (!whatsAppNumber.trim()) {
+            toast.error("Please enter a valid phone number.");
+            return;
+        }
+        
+        const customer = customers.find(c => c.id === completedSale.customerId);
+        if (customer) {
+            updateCustomer(customer.id, {
+                id: customer.id,
+                name: customer.name,
+                contactNumber: whatsAppNumber.trim()
+            });
+            toast.success("Contact number saved to customer profile.");
+        }
+        
+        setWhatsAppModalOpen(false);
+        // Now trigger the share action after saving the number
+        await shareReceiptAsImage(completedSale);
+    };
 
     return (
         <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] gap-4">
@@ -554,6 +645,9 @@ const POS: React.FC = () => {
                     <Button variant="secondary" onClick={() => setCompletedSale(null)}>Close</Button>
                     <Button onClick={handlePrintReceipt} className="flex items-center gap-2"><Printer size={18}/> Print</Button>
                     <Button onClick={handleSaveReceiptAsImage} className="flex items-center gap-2"><ImageDown size={18}/> Save</Button>
+                    <Button onClick={handleSendWhatsAppReceipt} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white focus:ring-green-500">
+                        <MessageSquare size={18}/> Share Receipt
+                    </Button>
                 </div>
             </Modal>
             
@@ -689,6 +783,32 @@ const POS: React.FC = () => {
                         onChange={e => setManualItemQuantity(e.target.value)}
                         required
                         min="1"
+                    />
+                </div>
+            </Modal>
+
+            <Modal 
+                isOpen={isWhatsAppModalOpen} 
+                onClose={() => setWhatsAppModalOpen(false)} 
+                title="Share Receipt"
+                footer={
+                    <div className="flex justify-end gap-2">
+                        <Button variant="secondary" onClick={() => setWhatsAppModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleConfirmWhatsApp}>Share & Save Number</Button>
+                    </div>
+                }
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-600">
+                        No contact number found for this customer. Please enter a number to continue. The number will be saved to the customer's profile for future use.
+                    </p>
+                    <Input 
+                        label="Contact Number"
+                        placeholder="e.g., 03001234567"
+                        value={whatsAppNumber}
+                        onChange={(e) => setWhatsAppNumber(e.target.value)}
+                        type="tel"
+                        required
                     />
                 </div>
             </Modal>

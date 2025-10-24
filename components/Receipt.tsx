@@ -63,7 +63,6 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         style={{ width: `${shopInfo.receiptLogoSize ?? 9}rem` }}
                     />
                 )}
-                <p>{shopInfo?.address}</p>
             </div>
             
             {/* 3. Sale ID */}
