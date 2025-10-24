@@ -2,6 +2,7 @@ export interface ShopInfo {
     name: string;
     address: string;
     logoUrl?: string;
+    receiptLogoSize?: number;
 }
 
 export type UserRole = 'master' | 'sub';

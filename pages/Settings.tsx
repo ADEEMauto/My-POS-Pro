@@ -12,10 +12,11 @@ const Settings: React.FC = () => {
     const { currentUser, shopInfo, saveShopInfo } = useAppContext();
     const restoreInputRef = useRef<HTMLInputElement>(null);
     const [backupFrequency, setBackupFrequency] = useLocalStorage('backupFrequency', 'daily');
-    const [shopDetails, setShopDetails] = useState<ShopInfo>({
+    const [shopDetails, setShopDetails] = useState<ShopInfo & { receiptLogoSize: number }>({
         name: '',
         address: '',
         logoUrl: undefined,
+        receiptLogoSize: 9,
     });
 
     const isMaster = currentUser?.role === 'master';
@@ -25,7 +26,8 @@ const Settings: React.FC = () => {
             setShopDetails({
                 name: shopInfo.name,
                 address: shopInfo.address,
-                logoUrl: shopInfo.logoUrl
+                logoUrl: shopInfo.logoUrl,
+                receiptLogoSize: shopInfo.receiptLogoSize ?? 9,
             });
         }
     }, [shopInfo]);
@@ -81,7 +83,11 @@ const Settings: React.FC = () => {
     };
 
     const handleDetailsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setShopDetails({ ...shopDetails, [e.target.name]: e.target.value });
+        const { name, value, type } = e.target;
+        setShopDetails(prev => ({
+            ...prev,
+            [name]: type === 'range' ? Number(value) : value
+        }));
     };
 
     const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,6 +112,7 @@ const Settings: React.FC = () => {
                 name: shopDetails.name.trim(),
                 address: shopDetails.address.trim(),
                 logoUrl: shopDetails.logoUrl,
+                receiptLogoSize: shopDetails.receiptLogoSize,
             });
             toast.success("Shop details updated successfully!");
         } else {
@@ -165,7 +172,29 @@ const Settings: React.FC = () => {
                                 </>
                             )}
                         </div>
-                        <div className="flex justify-end">
+
+                        <div>
+                            <label htmlFor="logo-size-slider" className="block text-sm font-medium text-gray-700 mb-2">
+                                Receipt Logo Size: <span className="font-bold">{shopDetails.receiptLogoSize}rem</span>
+                            </label>
+                            <input
+                                id="logo-size-slider"
+                                type="range"
+                                name="receiptLogoSize"
+                                min="2"
+                                max="24"
+                                step="1"
+                                value={shopDetails.receiptLogoSize}
+                                onChange={handleDetailsChange}
+                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                             <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>Small</span>
+                                <span>Large</span>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-2 border-t">
                             <Button type="submit" className="flex items-center gap-2">
                                 <Save size={18} /> Save Changes
                             </Button>

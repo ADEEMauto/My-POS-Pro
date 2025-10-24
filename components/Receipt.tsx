@@ -59,7 +59,8 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                     <img 
                         src={shopInfo.logoUrl} 
                         alt="Shop Logo" 
-                        className="w-36 h-auto object-contain mx-auto mb-2"
+                        className="h-auto object-contain mx-auto mb-2"
+                        style={{ width: `${shopInfo.receiptLogoSize ?? 9}rem` }}
                     />
                 )}
                 <p>{shopInfo?.address}</p>
