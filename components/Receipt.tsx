@@ -13,7 +13,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
     const formatNumberForReceipt = (amount: number) => Math.round(amount).toLocaleString('en-IN');
     
     const calculatedOverallDiscount = sale.overallDiscount > 0
-        ? Math.max(0, sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total)
+        ? Math.max(0, sale.subtotal - sale.totalItemDiscounts + (sale.laborCharges || 0) - (sale.loyaltyDiscount || 0) - sale.total)
         : 0;
         
     // By rounding the calculated discounts before checking, we avoid showing a line for amounts < 0.5 that would round to "Rs. 0".
@@ -117,6 +117,23 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             )}
                         </tr>
                     ))}
+                    {sale.laborCharges && sale.laborCharges > 0 && (
+                        <tr className="align-top text-xs font-semibold">
+                            {hasItemDiscounts ? (
+                                <>
+                                    <td className="text-center pt-1 px-1"></td>
+                                    <td colSpan={3} className="text-left pt-1 px-1">Labor Charges</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges)}</td>
+                                </>
+                            ) : (
+                                <>
+                                    <td className="text-center pt-1 px-1"></td>
+                                    <td className="text-left pt-1 px-1">Labor Charges</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges)}</td>
+                                </>
+                            )}
+                        </tr>
+                    )}
                 </tbody>
             </table>
 
@@ -125,7 +142,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
             
             {/* 9 & 10. Totals */}
             <div className="space-y-1 text-xs">
-                 {hasAnyDiscount ? (
+                 {hasAnyDiscount || (sale.laborCharges && sale.laborCharges > 0) ? (
                     <>
                         <div className="flex justify-between">
                             <span>Subtotal</span>

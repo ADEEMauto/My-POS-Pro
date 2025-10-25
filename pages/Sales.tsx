@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-import { Sale, SaleItem } from '../types';
+import { Sale, SaleItem, Product } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { Eye, Trash2, FileText, Star } from 'lucide-react';
+import { Eye, Trash2, FileText, Star, ShoppingBag } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import toast from 'react-hot-toast';
@@ -20,7 +20,7 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
     }, 0);
     
     const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0 || (sale.loyaltyDiscount || 0) > 0;
-    const calculatedOverallDiscount = sale.subtotal - sale.totalItemDiscounts - (sale.loyaltyDiscount || 0) - sale.total;
+    const calculatedOverallDiscount = Math.max(0, sale.subtotal - sale.totalItemDiscounts + (sale.laborCharges || 0) - (sale.loyaltyDiscount || 0) - sale.total);
 
     return (
         <Modal isOpen={true} onClose={onClose} title={`Sale Details - ID: ${sale.id}`} size="lg">
@@ -76,6 +76,12 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
                          <div className="flex justify-between items-baseline text-sm text-red-600">
                             <p><strong>Item Discounts:</strong></p>
                             <p>- {formatCurrency(sale.totalItemDiscounts)}</p>
+                        </div>
+                    )}
+                    {(sale.laborCharges || 0) > 0 && (
+                        <div className="flex justify-between items-baseline text-sm text-blue-600">
+                            <p><strong>Labor Charges:</strong></p>
+                            <p>+ {formatCurrency(sale.laborCharges!)}</p>
                         </div>
                     )}
                     {(sale.overallDiscount || 0) > 0 && (
@@ -203,6 +209,8 @@ const Sales: React.FC = () => {
     const { sales, reverseSale, currentUser, inventory, categories, shopInfo } = useAppContext();
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
     const [saleToReverse, setSaleToReverse] = useState<Sale | null>(null);
+    const [sortBy, setSortBy] = useState('date_desc');
+    const [soldItemsSortBy, setSoldItemsSortBy] = useState('most_selling');
 
     const isMaster = currentUser?.role === 'master';
 
@@ -213,6 +221,118 @@ const Sales: React.FC = () => {
         });
         return map;
     }, [categories]);
+
+    const productMap = useMemo(() => {
+        const map = new Map<string, Product>();
+        inventory.forEach(p => map.set(p.id, p));
+        return map;
+    }, [inventory]);
+
+    const aggregatedSoldItems = useMemo(() => {
+        const itemsMap = new Map<string, { product: Product, quantity: number, totalRevenue: number }>();
+        
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                const product = productMap.get(item.productId);
+                if (product) {
+                    const existing = itemsMap.get(item.productId);
+                    if (existing) {
+                        existing.quantity += item.quantity;
+                        existing.totalRevenue += item.price * item.quantity;
+                    } else {
+                        itemsMap.set(item.productId, { 
+                            product, 
+                            quantity: item.quantity,
+                            totalRevenue: item.price * item.quantity
+                        });
+                    }
+                }
+            });
+        });
+
+        const sortedItems = Array.from(itemsMap.values());
+
+        sortedItems.sort((a, b) => {
+            switch (soldItemsSortBy) {
+                case 'most_selling':
+                    return b.quantity - a.quantity;
+                case 'least_selling':
+                    return a.quantity - b.quantity;
+                case 'price_desc':
+                    return b.totalRevenue - a.totalRevenue;
+                case 'price_asc':
+                    return a.totalRevenue - b.totalRevenue;
+                case 'name_asc':
+                    return a.product.name.localeCompare(b.product.name);
+                case 'name_desc':
+                    return b.product.name.localeCompare(a.product.name);
+                case 'manufacturer_asc':
+                    return a.product.manufacturer.localeCompare(b.product.manufacturer);
+                case 'category_asc':
+                    const catA = categoryMap.get(a.product.categoryId) || '';
+                    const catB = categoryMap.get(b.product.categoryId) || '';
+                    return catA.localeCompare(catB);
+                default:
+                    return 0;
+            }
+        });
+
+        return sortedItems;
+    }, [sales, productMap, categoryMap, soldItemsSortBy]);
+
+    const getDominantProperty = (sale: Sale, property: 'manufacturer' | 'categoryId'): string => {
+        const propertyValues: { [key: string]: number } = {};
+        sale.items.forEach(item => {
+            const product = productMap.get(item.productId);
+            if (product) {
+                const value = property === 'categoryId'
+                    ? (categoryMap.get(product.categoryId) || 'Uncategorized')
+                    : product[property];
+                propertyValues[value] = (propertyValues[value] || 0) + item.price * item.quantity;
+            }
+        });
+
+        if (Object.keys(propertyValues).length === 0) return '';
+
+        return Object.entries(propertyValues).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+    };
+
+    const sortedSales = useMemo(() => {
+        const salesToSort = [...sales];
+        salesToSort.sort((a, b) => {
+            const [key, dir] = sortBy.split('_');
+            const direction = dir === 'asc' ? 1 : -1;
+            switch (key) {
+                case 'date':
+                    return (new Date(a.date).getTime() - new Date(b.date).getTime()) * direction;
+                case 'total':
+                    return (a.total - b.total) * direction;
+                case 'name': {
+                    const nameA = a.items[0]?.name || '';
+                    const nameB = b.items[0]?.name || '';
+                    return nameA.localeCompare(nameB) * direction;
+                }
+                case 'manufacturer': {
+                    const manufA = getDominantProperty(a, 'manufacturer');
+                    const manufB = getDominantProperty(b, 'manufacturer');
+                    return manufA.localeCompare(manufB) * direction;
+                }
+                case 'category': {
+                    const catA = getDominantProperty(a, 'categoryId');
+                    const catB = getDominantProperty(b, 'categoryId');
+                    return catA.localeCompare(catB) * direction;
+                }
+                case 'price': {
+                    const maxPriceA = Math.max(0, ...a.items.map(i => i.price));
+                    const maxPriceB = Math.max(0, ...b.items.map(i => i.price));
+                    return (maxPriceA - maxPriceB) * direction;
+                }
+                default:
+                    return 0;
+            }
+        });
+        return salesToSort;
+    }, [sales, sortBy, productMap, categoryMap]);
 
     const handleConfirmReversal = (itemsToReturn: SaleItem[]) => {
         if (saleToReverse) {
@@ -359,76 +479,177 @@ const Sales: React.FC = () => {
     }
     
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales History</h1>
-                <Button onClick={handleDownloadPdf} className="flex items-center gap-2" disabled={sales.length === 0}>
-                    <FileText size={18} /> Download Sales Report
-                </Button>
-            </div>
-            
-            {sales.length === 0 ? (
-                 <div className="text-center py-10 bg-white rounded-lg shadow">
-                    <p className="text-gray-500">No sales have been recorded yet.</p>
+        <div className="space-y-8">
+             <div className="space-y-6">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sold Items Summary</h1>
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <label htmlFor="sort-sold-items" className="text-sm font-medium text-gray-600 shrink-0">Sort by:</label>
+                        <select
+                            id="sort-sold-items"
+                            value={soldItemsSortBy}
+                            onChange={e => setSoldItemsSortBy(e.target.value)}
+                            className="w-full sm:w-auto p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        >
+                            <option value="most_selling">Most Selling</option>
+                            <option value="least_selling">Least Selling</option>
+                            <option value="price_desc">Total Price (High to Low)</option>
+                            <option value="price_asc">Total Price (Low to High)</option>
+                            <option value="name_asc">Name (A-Z)</option>
+                            <option value="name_desc">Name (Z-A)</option>
+                            <option value="manufacturer_asc">Manufacturer (A-Z)</option>
+                            <option value="category_asc">Category (A-Z)</option>
+                        </select>
+                    </div>
                 </div>
-            ) : (
-                <>
-                {/* Table for medium screens and up */}
-                <div className="hidden md:block bg-white rounded-lg shadow-md overflow-x-auto">
-                    <table className="w-full text-sm text-left text-gray-500">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                            <tr>
-                                <th scope="col" className="px-6 py-3">Sale ID</th>
-                                <th scope="col" className="px-6 py-3">Date</th>
-                                <th scope="col" className="px-6 py-3 text-center">Items</th>
-                                <th scope="col" className="px-6 py-3 text-right">Total Amount</th>
-                                <th scope="col" className="px-6 py-3 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sales.map(sale => (
-                                <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4 font-mono text-xs text-gray-700">{sale.id}</td>
-                                    <td className="px-6 py-4">{formatDate(sale.date)}</td>
-                                    <td className="px-6 py-4 text-center">{sale.items.reduce((acc, item) => acc + item.quantity, 0)}</td>
-                                    <td className="px-6 py-4 text-right font-semibold">{formatCurrency(sale.total)}</td>
-                                    <td className="px-6 py-4 text-center">
-                                        <div className="flex justify-center space-x-3">
-                                            <button onClick={() => setSelectedSale(sale)} className="text-blue-600 hover:text-blue-800" title="View Details"><Eye size={18}/></button>
-                                            <button onClick={() => setSaleToReverse(sale)} className="text-red-600 hover:text-red-800" title="Reverse Sale"><Trash2 size={18}/></button>
-                                        </div>
-                                    </td>
+                 {aggregatedSoldItems.length === 0 ? (
+                    <div className="text-center py-6 bg-white rounded-lg shadow">
+                        <p className="text-gray-500">No items have been sold yet.</p>
+                    </div>
+                 ) : (
+                    <>
+                    <div className="hidden md:block bg-white rounded-lg shadow-md overflow-x-auto">
+                        <table className="w-full text-sm text-left text-gray-500">
+                            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" className="px-6 py-3">Product</th>
+                                    <th scope="col" className="px-6 py-3">Category</th>
+                                    <th scope="col" className="px-6 py-3">Manufacturer</th>
+                                    <th scope="col" className="px-6 py-3 text-center">Total Sold</th>
+                                    <th scope="col" className="px-6 py-3 text-right">Total Price</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody>
+                                {aggregatedSoldItems.map(({ product, quantity, totalRevenue }) => (
+                                    <tr key={product.id} className="bg-white border-b hover:bg-gray-50">
+                                        <td className="px-6 py-4 font-medium text-gray-900">{product.name}</td>
+                                        <td className="px-6 py-4">{categoryMap.get(product.categoryId)}</td>
+                                        <td className="px-6 py-4">{product.manufacturer}</td>
+                                        <td className="px-6 py-4 text-center font-bold text-lg text-primary-600">{quantity}</td>
+                                        <td className="px-6 py-4 text-right font-semibold text-green-600">{formatCurrency(totalRevenue)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                     <div className="md:hidden grid grid-cols-1 gap-4">
+                        {aggregatedSoldItems.map(({ product, quantity, totalRevenue }) => (
+                            <div key={product.id} className="bg-white rounded-lg shadow-md p-4 space-y-2">
+                                <h3 className="font-bold text-gray-800">{product.name}</h3>
+                                <p className="text-sm text-gray-600"><strong>Category:</strong> {categoryMap.get(product.categoryId)}</p>
+                                <p className="text-sm text-gray-600"><strong>Manufacturer:</strong> {product.manufacturer}</p>
+                                <div className="flex justify-between items-center pt-2 border-t mt-2">
+                                    <div className="text-left">
+                                        <p className="text-xs text-gray-500">Total Sold</p>
+                                        <p className="font-bold text-xl text-primary-600">{quantity}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs text-gray-500">Total Revenue</p>
+                                        <p className="font-bold text-lg text-green-600">{formatCurrency(totalRevenue)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    </>
+                 )}
+            </div>
 
-                {/* Cards for small screens */}
-                <div className="md:hidden grid grid-cols-1 gap-4">
-                     {sales.map(sale => (
-                         <div key={sale.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
-                             <div className="flex justify-between items-start">
-                                 <div>
-                                    <p className="text-sm font-semibold">Sale ID: <span className="font-mono text-xs">{sale.id}</span></p>
-                                    <p className="text-xs text-gray-500">{formatDate(sale.date)}</p>
-                                 </div>
-                                 <p className="text-lg font-bold text-primary-600">{formatCurrency(sale.total)}</p>
-                             </div>
-                             <div className="flex justify-between items-center text-sm border-t pt-3">
-                                <div>
-                                    <strong>Total Items:</strong> {sale.items.reduce((acc, item) => acc + item.quantity, 0)}
-                                </div>
-                                <div className="flex items-center space-x-3">
-                                    <Button onClick={() => setSelectedSale(sale)} variant="ghost" size="sm" className="flex items-center gap-1"><Eye size={16}/> View</Button>
-                                    <Button onClick={() => setSaleToReverse(sale)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Reverse</Button>
-                                </div>
-                             </div>
-                         </div>
-                     ))}
+            <div className="space-y-6 pt-8 border-t">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales History</h1>
+                    <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                        <div className="flex items-center gap-2 w-full">
+                            <label htmlFor="sort-sales" className="text-sm font-medium text-gray-600 shrink-0">Sort by:</label>
+                            <select
+                                id="sort-sales"
+                                value={sortBy}
+                                onChange={e => setSortBy(e.target.value)}
+                                className="w-full sm:w-auto p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            >
+                                <option value="date_desc">Date (Newest First)</option>
+                                <option value="date_asc">Date (Oldest First)</option>
+                                <option value="total_desc">Total (High to Low)</option>
+                                <option value="total_asc">Total (Low to High)</option>
+                                <option value="name_asc">Item Name (A-Z)</option>
+                                <option value="manufacturer_asc">Manufacturer (A-Z)</option>
+                                <option value="category_asc">Category (A-Z)</option>
+                                <option value="price_desc">Item Price (High to Low)</option>
+                            </select>
+                        </div>
+                        <Button onClick={handleDownloadPdf} className="flex items-center gap-2 w-full sm:w-auto justify-center" disabled={sales.length === 0}>
+                            <FileText size={18} /> Download Sales Report
+                        </Button>
+                    </div>
                 </div>
-                </>
-            )}
+                
+                {sales.length === 0 ? (
+                    <div className="text-center py-10 bg-white rounded-lg shadow">
+                        <ShoppingBag className="mx-auto h-12 w-12 text-gray-300" />
+                        <p className="mt-2 text-gray-500">No sales have been recorded yet.</p>
+                    </div>
+                ) : (
+                    <>
+                    {/* Table for medium screens and up */}
+                    <div className="hidden md:block bg-white rounded-lg shadow-md overflow-x-auto">
+                        <table className="w-full text-sm text-left text-gray-500">
+                            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" className="px-6 py-3">Sale ID</th>
+                                    <th scope="col" className="px-6 py-3">Date</th>
+                                    <th scope="col" className="px-6 py-3">Customer</th>
+                                    <th scope="col" className="px-6 py-3 text-center">Items</th>
+                                    <th scope="col" className="px-6 py-3 text-right">Total Amount</th>
+                                    <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedSales.map(sale => (
+                                    <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
+                                        <td className="px-6 py-4 font-mono text-xs text-gray-700">{sale.id}</td>
+                                        <td className="px-6 py-4">{formatDate(sale.date)}</td>
+                                        <td className="px-6 py-4">{sale.customerName} ({sale.customerId})</td>
+                                        <td className="px-6 py-4 text-center">{sale.items.reduce((acc, item) => acc + item.quantity, 0)}</td>
+                                        <td className="px-6 py-4 text-right font-semibold">{formatCurrency(sale.total)}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <div className="flex justify-center space-x-3">
+                                                <button onClick={() => setSelectedSale(sale)} className="text-blue-600 hover:text-blue-800" title="View Details"><Eye size={18}/></button>
+                                                <button onClick={() => setSaleToReverse(sale)} className="text-red-600 hover:text-red-800" title="Reverse Sale"><Trash2 size={18}/></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Cards for small screens */}
+                    <div className="md:hidden grid grid-cols-1 gap-4">
+                        {sortedSales.map(sale => (
+                            <div key={sale.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="text-sm font-semibold">Sale ID: <span className="font-mono text-xs">{sale.id}</span></p>
+                                        <p className="text-xs text-gray-500">{formatDate(sale.date)}</p>
+                                        <p className="text-sm text-gray-700">{sale.customerName} ({sale.customerId})</p>
+                                    </div>
+                                    <p className="text-lg font-bold text-primary-600">{formatCurrency(sale.total)}</p>
+                                </div>
+                                <div className="flex justify-between items-center text-sm border-t pt-3">
+                                    <div>
+                                        <strong>Total Items:</strong> {sale.items.reduce((acc, item) => acc + item.quantity, 0)}
+                                    </div>
+                                    <div className="flex items-center space-x-3">
+                                        <Button onClick={() => setSelectedSale(sale)} variant="ghost" size="sm" className="flex items-center gap-1"><Eye size={16}/> View</Button>
+                                        <Button onClick={() => setSaleToReverse(sale)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Reverse</Button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    </>
+                )}
+            </div>
 
             {selectedSale && <SaleDetailsModal sale={selectedSale} onClose={() => setSelectedSale(null)} />}
 

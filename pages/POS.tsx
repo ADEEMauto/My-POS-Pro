@@ -1,10 +1,9 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale, Customer } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, UserPlus, FileSearch } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, UserPlus, FileSearch, ArrowUpDown } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -98,14 +97,16 @@ const CustomerLookupModal: React.FC<{
 
 
 const POS: React.FC = () => {
-    const { inventory, categories, createSale, findProductByBarcode, customers, redemptionRule, updateCustomer, shopInfo, customerTiers } = useAppContext();
+    const { inventory, sales, categories, createSale, findProductByBarcode, customers, redemptionRule, updateCustomer, shopInfo, customerTiers } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [sortBy, setSortBy] = useState('name_asc');
     const [cart, setCart] = useState<CartItem[]>([]);
     
     const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
     const [overallDiscount, setOverallDiscount] = useState<number | string>('');
     const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+    const [laborCharges, setLaborCharges] = useState<number | string>('');
     
     const [isSaleCompleteModalOpen, setIsSaleCompleteModalOpen] = useState(false);
     const [completedSale, setCompletedSale] = useState<Sale | null>(null);
@@ -142,14 +143,62 @@ const POS: React.FC = () => {
         categories.forEach(c => map.set(c.id, c.name));
         return map;
     }, [categories]);
+    
+    const productSales = useMemo(() => {
+        const salesCount = new Map<string, number>();
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                // FIX: SaleItem has 'productId', not 'id'. This check is to exclude manually added items from sales stats.
+                if (!item.productId.startsWith('manual-')) {
+                    salesCount.set(item.productId, (salesCount.get(item.productId) || 0) + item.quantity);
+                }
+            });
+        });
+        return salesCount;
+    }, [sales]);
 
     const filteredInventory = useMemo(() => {
-        return inventory.filter(product => {
+        const filtered = inventory.filter(product => {
             const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory || product.subCategoryId === selectedCategory;
             const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
             return matchesCategory && matchesSearch;
         });
-    }, [inventory, searchTerm, selectedCategory]);
+        
+        filtered.sort((a, b) => {
+            switch (sortBy) {
+                case 'name_asc':
+                    return a.name.localeCompare(b.name);
+                case 'name_desc':
+                    return b.name.localeCompare(a.name);
+                case 'price_desc':
+                    return b.salePrice - a.salePrice;
+                case 'price_asc':
+                    return a.salePrice - b.salePrice;
+                case 'most_selling':
+                    return (productSales.get(b.id) || 0) - (productSales.get(a.id) || 0);
+                case 'least_selling':
+                    return (productSales.get(a.id) || 0) - (productSales.get(b.id) || 0);
+                case 'category_asc': {
+                    const catA = categoryMap.get(a.categoryId) || '';
+                    const catB = categoryMap.get(b.categoryId) || '';
+                    if (catA.localeCompare(catB) !== 0) {
+                        return catA.localeCompare(catB);
+                    }
+                    const subCatA = a.subCategoryId ? categoryMap.get(a.subCategoryId) || '' : '';
+                    const subCatB = b.subCategoryId ? categoryMap.get(b.subCategoryId) || '' : '';
+                    return subCatA.localeCompare(subCatB);
+                }
+                case 'manufacturer_asc':
+                    return a.manufacturer.localeCompare(b.manufacturer);
+                case 'location_asc':
+                    return (a.location || '').localeCompare(b.location || '');
+                default:
+                    return 0;
+            }
+        });
+
+        return filtered;
+    }, [inventory, searchTerm, selectedCategory, sortBy, productSales, categoryMap]);
 
     const mainCategories = useMemo(() => categories.filter(c => c.parentId === null), [categories]);
 
@@ -242,6 +291,7 @@ const POS: React.FC = () => {
     };
 
     const subtotal = useMemo(() => cart.reduce((acc, item) => acc + (item.salePrice * item.cartQuantity), 0), [cart]);
+    
     const totalItemDiscount = useMemo(() => {
         return cart.reduce((acc, item) => {
             const discount = item.discountType === 'fixed'
@@ -253,11 +303,16 @@ const POS: React.FC = () => {
     
     const subtotalAfterItemDiscount = subtotal - totalItemDiscount;
 
+    const subtotalWithLabor = useMemo(() => {
+        const numericLaborCharges = parseFloat(String(laborCharges)) || 0;
+        return subtotalAfterItemDiscount + numericLaborCharges;
+    }, [subtotalAfterItemDiscount, laborCharges]);
+
     const overallDiscountAmount = useMemo(() => {
         const value = parseFloat(String(overallDiscount));
         if (isNaN(value) || value < 0) return 0;
-        return overallDiscountType === 'fixed' ? value : (subtotalAfterItemDiscount * value) / 100;
-    }, [overallDiscount, overallDiscountType, subtotalAfterItemDiscount]);
+        return overallDiscountType === 'fixed' ? value : (subtotalWithLabor * value) / 100;
+    }, [overallDiscount, overallDiscountType, subtotalWithLabor]);
 
     const loyaltyDiscountAmount = useMemo(() => {
         if (!currentCustomer || !pointsToRedeem) return 0;
@@ -265,20 +320,20 @@ const POS: React.FC = () => {
         if (isNaN(points) || points <= 0 || points > currentCustomer.loyaltyPoints) return 0;
         
         let discount = 0;
+        const amountToApplyPercentageOn = subtotalWithLabor - overallDiscountAmount;
         if (redemptionRule.method === 'fixedValue') {
             discount = (points / redemptionRule.points) * redemptionRule.value;
         } else { // percentage
             const percentage = (points / redemptionRule.points) * redemptionRule.value;
-            const amountToApplyPercentageOn = subtotalAfterItemDiscount - overallDiscountAmount;
             discount = (amountToApplyPercentageOn * percentage) / 100;
         }
-        return discount;
-    }, [pointsToRedeem, currentCustomer, redemptionRule, subtotalAfterItemDiscount, overallDiscountAmount]);
+        return discount > amountToApplyPercentageOn ? amountToApplyPercentageOn : discount;
+    }, [pointsToRedeem, currentCustomer, redemptionRule, subtotalWithLabor, overallDiscountAmount]);
 
     const total = useMemo(() => {
-        const finalTotal = subtotalAfterItemDiscount - overallDiscountAmount - loyaltyDiscountAmount;
+        const finalTotal = subtotalWithLabor - overallDiscountAmount - loyaltyDiscountAmount;
         return finalTotal > 0 ? finalTotal : 0;
-    }, [subtotalAfterItemDiscount, overallDiscountAmount, loyaltyDiscountAmount]);
+    }, [subtotalWithLabor, overallDiscountAmount, loyaltyDiscountAmount]);
 
     const handleCheckout = () => {
         if (!bikeNumber.trim()) {
@@ -291,11 +346,12 @@ const POS: React.FC = () => {
         }
 
         const sale = createSale(
-            cart, 
+            cart,
             parseFloat(String(overallDiscount)) || 0,
             overallDiscountType,
             { customerName, bikeNumber, contactNumber, serviceFrequencyValue: Number(serviceFrequencyValue) || undefined, serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined },
-            Number(pointsToRedeem) || 0
+            Number(pointsToRedeem) || 0,
+            parseFloat(String(laborCharges)) || 0
         );
 
         if (sale) {
@@ -305,6 +361,7 @@ const POS: React.FC = () => {
             // Reset state for next sale
             setCart([]);
             setOverallDiscount('');
+            setLaborCharges('');
             setCustomerName('');
             setBikeNumber('');
             setContactNumber('');
@@ -443,7 +500,7 @@ const POS: React.FC = () => {
                           icon={<Search className="w-5 h-5 text-gray-400" />}
                         />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <select
                             value={selectedCategory}
                             onChange={e => setSelectedCategory(e.target.value)}
@@ -458,6 +515,22 @@ const POS: React.FC = () => {
                                     ))}
                                 </optgroup>
                             ))}
+                        </select>
+                        <select
+                            value={sortBy}
+                            onChange={e => setSortBy(e.target.value)}
+                            className="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            aria-label="Sort by"
+                        >
+                            <option value="name_asc">Alphabetical (A-Z)</option>
+                            <option value="name_desc">Alphabetical (Z-A)</option>
+                            <option value="price_desc">Price: High to Low</option>
+                            <option value="price_asc">Price: Low to High</option>
+                            <option value="most_selling">Most Selling</option>
+                            <option value="least_selling">Least Selling</option>
+                            <option value="category_asc">Category</option>
+                            <option value="manufacturer_asc">Manufacturer</option>
+                            <option value="location_asc">Location</option>
                         </select>
                          <Button onClick={() => setScannerModalOpen(true)} variant="secondary" className="px-3" aria-label="Scan barcode">
                             <ScanLine className="w-5 h-5" />
@@ -570,6 +643,17 @@ const POS: React.FC = () => {
                     </div>
 
                     <div className="pt-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Labor Charges (Optional)</label>
+                        <Input
+                            type="number"
+                            placeholder="e.g., 500"
+                            value={laborCharges}
+                            onChange={e => setLaborCharges(e.target.value)}
+                            className="h-9"
+                        />
+                    </div>
+
+                    <div className="pt-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Overall Discount</label>
                         <div className="flex items-center gap-2">
                             <Input 
@@ -590,7 +674,7 @@ const POS: React.FC = () => {
                         </div>
                         {overallDiscountAmount > 0 && <p className="text-sm text-red-600 text-right mt-1">Discount Applied: -{formatCurrency(overallDiscountAmount)}</p>}
                     </div>
-
+                    
                     <div className="text-xl font-bold flex justify-between pt-2 border-t text-primary-700"><span>TOTAL</span> <span>{formatCurrency(total)}</span></div>
                 </div>
 
@@ -708,7 +792,7 @@ const POS: React.FC = () => {
                     <p>This customer does not have a saved contact number. Please enter their WhatsApp number to proceed. The number will be saved to their profile.</p>
                     <Input 
                         type="tel"
-                        placeholder="e.g., 03001234567"
+                        placeholder="e.g., 55555555"
                         value={whatsAppNumber}
                         onChange={(e) => setWhatsAppNumber(e.target.value)}
                         autoFocus

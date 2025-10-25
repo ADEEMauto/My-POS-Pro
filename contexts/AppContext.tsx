@@ -51,7 +51,7 @@ interface AppContextType {
     deleteCategory: (id: string) => void;
 
     sales: Sale[];
-    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number) => Sale | null;
+    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number) => Sale | null;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     customers: Customer[];
@@ -378,7 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Category and its sub-categories deleted.");
     };
 
-    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number): Sale | null => {
+    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number): Sale | null => {
         if (cartItems.length === 0) {
             toast.error("Cart is empty.");
             return null;
@@ -406,9 +406,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         const subtotal = saleItems.reduce((acc, item) => acc + item.originalPrice * item.quantity, 0);
         const totalItemDiscounts = saleItems.reduce((acc, item) => acc + (item.originalPrice - item.price) * item.quantity, 0);
+        
         const subtotalAfterItemDiscounts = subtotal - totalItemDiscounts;
-        const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (subtotalAfterItemDiscounts * overallDiscountValue) / 100;
-        const totalBeforeLoyalty = subtotalAfterItemDiscounts - overallDiscountAmount;
+        const totalWithLabor = subtotalAfterItemDiscounts + laborCharges;
+        const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (totalWithLabor * overallDiscountValue) / 100;
+        const totalBeforeLoyalty = totalWithLabor - overallDiscountAmount;
 
         const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
         let customer = customers.find(c => c.id === customerId);
@@ -508,7 +510,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newSale: Sale = {
             id: newSaleId, customerId, customerName: customerInfo.customerName.trim(), items: saleItems,
             subtotal, totalItemDiscounts, overallDiscount: overallDiscountValue, overallDiscountType,
-            loyaltyDiscount: Math.round(loyaltyDiscount), total: Math.round(total), date: now.toISOString(),
+            loyaltyDiscount: Math.round(loyaltyDiscount),
+            laborCharges: laborCharges > 0 ? laborCharges : undefined,
+            total: Math.round(total), date: now.toISOString(),
             redeemedPoints, pointsEarned, finalLoyaltyPoints, promotionApplied, tierApplied,
         };
 
