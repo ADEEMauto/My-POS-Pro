@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
@@ -158,9 +159,11 @@ const POS: React.FC = () => {
     }, [sales]);
 
     const filteredInventory = useMemo(() => {
+        const lowercasedSearchTerm = searchTerm.toLowerCase();
         const filtered = inventory.filter(product => {
             const matchesCategory = selectedCategory === 'all' || product.categoryId === selectedCategory || product.subCategoryId === selectedCategory;
-            const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = product.name.toLowerCase().includes(lowercasedSearchTerm) || 
+                                  (product.barcode && product.barcode.toLowerCase().includes(lowercasedSearchTerm));
             return matchesCategory && matchesSearch;
         });
         
@@ -494,7 +497,7 @@ const POS: React.FC = () => {
                 <div className="flex flex-col md:flex-row gap-4 mb-4">
                     <div className="relative flex-grow">
                         <Input 
-                          placeholder="Search products..." 
+                          placeholder="Search by name or barcode..." 
                           value={searchTerm} 
                           onChange={e => setSearchTerm(e.target.value)}
                           icon={<Search className="w-5 h-5 text-gray-400" />}

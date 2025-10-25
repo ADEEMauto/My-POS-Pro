@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 // FIX: Changed react-router-dom import to use namespace import to resolve module export error.
@@ -39,6 +40,29 @@ const Dashboard: React.FC = () => {
 
     const [isLowStockModalOpen, setLowStockModalOpen] = useState(false);
     const [isOutOfStockModalOpen, setOutOfStockModalOpen] = useState(false);
+
+    const { todaysSalesTotal, todaysLaborCharges } = useMemo(() => {
+        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format, safe from timezone issues
+        let salesTotal = 0;
+        let laborCharges = 0;
+        sales.forEach(sale => {
+            if (new Date(sale.date).toLocaleDateString('en-CA') === todayStr) {
+                const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
+                const labor = sale.laborCharges || 0;
+                const totalWithLabor = subtotalAfterItemDiscounts + labor;
+
+                if (totalWithLabor > 0) {
+                    const itemRatio = subtotalAfterItemDiscounts / totalWithLabor;
+                    salesTotal += sale.total * itemRatio;
+                } else if (labor === 0) {
+                    salesTotal += sale.total;
+                }
+                
+                laborCharges += labor;
+            }
+        });
+        return { todaysSalesTotal: salesTotal, todaysLaborCharges: laborCharges };
+    }, [sales]);
 
     const soldProductIds = useMemo(() => {
         const ids = new Set<string>();
@@ -280,17 +304,39 @@ const Dashboard: React.FC = () => {
 
 
     const totalInvestment = inventory.reduce((acc, p) => acc + p.purchasePrice * p.quantity, 0);
-    const totalSales = sales.reduce((acc, s) => acc + s.total, 0);
+    const totalSales = useMemo(() => {
+        return sales.reduce((acc, sale) => {
+            const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
+            const labor = sale.laborCharges || 0;
+            const totalWithLabor = subtotalAfterItemDiscounts + labor;
+
+            if (totalWithLabor > 0) {
+                const itemRatio = subtotalAfterItemDiscounts / totalWithLabor;
+                return acc + (sale.total * itemRatio);
+            }
+            if (labor === 0) {
+                return acc + sale.total;
+            }
+            return acc;
+        }, 0);
+    }, [sales]);
+    const totalLaborCharges = sales.reduce((total, sale) => total + (sale.laborCharges || 0), 0);
 
     return (
         <div className="space-y-8">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Welcome, {currentUser?.username}!</h1>
 
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <StatCard title="Today's Sale" value={formatCurrency(todaysSalesTotal)} icon={<DollarSign className="w-6 h-6 text-white" />} color="bg-green-500" />
+                <StatCard title="Today's Labor Charges" value={formatCurrency(todaysLaborCharges)} icon={<FileText className="w-6 h-6 text-white" />} color="bg-cyan-500" />
+            </div>
+
             {isMaster && (
                 <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         <StatCard title="Total Investment" value={formatCurrency(totalInvestment)} icon={<DollarSign className="w-6 h-6 text-white" />} color="bg-blue-500" />
                         <StatCard title="Total Sales" value={formatCurrency(totalSales)} icon={<ShoppingCart className="w-6 h-6 text-white" />} color="bg-green-500" />
+                        <StatCard title="Total Labor Charges" value={formatCurrency(totalLaborCharges)} icon={<FileText className="w-6 h-6 text-white" />} color="bg-cyan-500" />
                         <StatCard title="Total Products" value={inventory.length} icon={<Package className="w-6 h-6 text-white" />} color="bg-purple-500" />
                         <StatCard title="Low Stock Items" value={lowStockProducts.length} icon={<AlertTriangle className="w-6 h-6 text-white" />} color="bg-yellow-500" />
                     </div>

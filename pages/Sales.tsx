@@ -252,6 +252,21 @@ const Sales: React.FC = () => {
 
         const sortedItems = Array.from(itemsMap.values());
 
+        const totalLaborCharges = sales.reduce((acc, sale) => acc + (sale.laborCharges || 0), 0);
+        const totalLaborCount = sales.filter(sale => (sale.laborCharges || 0) > 0).length;
+
+        if (totalLaborCharges > 0) {
+            sortedItems.push({
+                product: {
+                    id: 'LABOR_CHARGES', name: 'Labor Charges', manufacturer: 'Shop Service',
+                    categoryId: 'Service', subCategoryId: null, location: '', quantity: 0,
+                    purchasePrice: 0, salePrice: 0,
+                } as Product,
+                quantity: totalLaborCount,
+                totalRevenue: totalLaborCharges,
+            });
+        }
+
         sortedItems.sort((a, b) => {
             switch (soldItemsSortBy) {
                 case 'most_selling':
@@ -269,8 +284,8 @@ const Sales: React.FC = () => {
                 case 'manufacturer_asc':
                     return a.product.manufacturer.localeCompare(b.product.manufacturer);
                 case 'category_asc':
-                    const catA = categoryMap.get(a.product.categoryId) || '';
-                    const catB = categoryMap.get(b.product.categoryId) || '';
+                    const catA = a.product.id === 'LABOR_CHARGES' ? 'Service' : (categoryMap.get(a.product.categoryId) || '');
+                    const catB = b.product.id === 'LABOR_CHARGES' ? 'Service' : (categoryMap.get(b.product.categoryId) || '');
                     return catA.localeCompare(catB);
                 default:
                     return 0;
@@ -333,6 +348,19 @@ const Sales: React.FC = () => {
         });
         return salesToSort;
     }, [sales, sortBy, productMap, categoryMap]);
+    
+    const groupedSales = useMemo(() => {
+        return sortedSales.reduce((acc, sale) => {
+            const saleDate = new Date(sale.date).toLocaleDateString('en-CA'); // YYYY-MM-DD format
+            if (!acc[saleDate]) {
+                acc[saleDate] = { sales: [], dailyTotal: 0 };
+            }
+            acc[saleDate].sales.push(sale);
+            acc[saleDate].dailyTotal += sale.total;
+            return acc;
+        }, {} as Record<string, { sales: Sale[], dailyTotal: number }>);
+    }, [sortedSales]);
+
 
     const handleConfirmReversal = (itemsToReturn: SaleItem[]) => {
         if (saleToReverse) {
@@ -523,7 +551,7 @@ const Sales: React.FC = () => {
                                 {aggregatedSoldItems.map(({ product, quantity, totalRevenue }) => (
                                     <tr key={product.id} className="bg-white border-b hover:bg-gray-50">
                                         <td className="px-6 py-4 font-medium text-gray-900">{product.name}</td>
-                                        <td className="px-6 py-4">{categoryMap.get(product.categoryId)}</td>
+                                        <td className="px-6 py-4">{product.id === 'LABOR_CHARGES' ? 'Service' : categoryMap.get(product.categoryId)}</td>
                                         <td className="px-6 py-4">{product.manufacturer}</td>
                                         <td className="px-6 py-4 text-center font-bold text-lg text-primary-600">{quantity}</td>
                                         <td className="px-6 py-4 text-right font-semibold text-green-600">{formatCurrency(totalRevenue)}</td>
@@ -536,7 +564,7 @@ const Sales: React.FC = () => {
                         {aggregatedSoldItems.map(({ product, quantity, totalRevenue }) => (
                             <div key={product.id} className="bg-white rounded-lg shadow-md p-4 space-y-2">
                                 <h3 className="font-bold text-gray-800">{product.name}</h3>
-                                <p className="text-sm text-gray-600"><strong>Category:</strong> {categoryMap.get(product.categoryId)}</p>
+                                <p className="text-sm text-gray-600"><strong>Category:</strong> {product.id === 'LABOR_CHARGES' ? 'Service' : categoryMap.get(product.categoryId)}</p>
                                 <p className="text-sm text-gray-600"><strong>Manufacturer:</strong> {product.manufacturer}</p>
                                 <div className="flex justify-between items-center pt-2 border-t mt-2">
                                     <div className="text-left">
@@ -603,47 +631,65 @@ const Sales: React.FC = () => {
                                     <th scope="col" className="px-6 py-3 text-center">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {sortedSales.map(sale => (
-                                    <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
-                                        <td className="px-6 py-4 font-mono text-xs text-gray-700">{sale.id}</td>
-                                        <td className="px-6 py-4">{formatDate(sale.date)}</td>
-                                        <td className="px-6 py-4">{sale.customerName} ({sale.customerId})</td>
-                                        <td className="px-6 py-4 text-center">{sale.items.reduce((acc, item) => acc + item.quantity, 0)}</td>
-                                        <td className="px-6 py-4 text-right font-semibold">{formatCurrency(sale.total)}</td>
-                                        <td className="px-6 py-4 text-center">
-                                            <div className="flex justify-center space-x-3">
-                                                <button onClick={() => setSelectedSale(sale)} className="text-blue-600 hover:text-blue-800" title="View Details"><Eye size={18}/></button>
-                                                <button onClick={() => setSaleToReverse(sale)} className="text-red-600 hover:text-red-800" title="Reverse Sale"><Trash2 size={18}/></button>
+                             {Object.entries(groupedSales).map(([date, data]) => (
+                                <tbody key={date}>
+                                    <tr className="bg-gray-100 border-b">
+                                        <td colSpan={6} className="px-6 py-2 font-bold text-gray-800">
+                                            <div className="flex justify-between items-center">
+                                                 <span>{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                                <span>Daily Total: {formatCurrency(data.dailyTotal)}</span>
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
-                            </tbody>
+                                    {data.sales.map(sale => (
+                                        <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
+                                            <td className="px-6 py-4 font-mono text-xs text-gray-700">{sale.id}</td>
+                                            <td className="px-6 py-4">{formatDate(sale.date)}</td>
+                                            <td className="px-6 py-4">{sale.customerName} ({sale.customerId})</td>
+                                            <td className="px-6 py-4 text-center">{sale.items.reduce((acc, item) => acc + item.quantity, 0)}</td>
+                                            <td className="px-6 py-4 text-right font-semibold">{formatCurrency(sale.total)}</td>
+                                            <td className="px-6 py-4 text-center">
+                                                <div className="flex justify-center space-x-3">
+                                                    <button onClick={() => setSelectedSale(sale)} className="text-blue-600 hover:text-blue-800" title="View Details"><Eye size={18}/></button>
+                                                    <button onClick={() => setSaleToReverse(sale)} className="text-red-600 hover:text-red-800" title="Reverse Sale"><Trash2 size={18}/></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            ))}
                         </table>
                     </div>
 
                     {/* Cards for small screens */}
-                    <div className="md:hidden grid grid-cols-1 gap-4">
-                        {sortedSales.map(sale => (
-                            <div key={sale.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="text-sm font-semibold">Sale ID: <span className="font-mono text-xs">{sale.id}</span></p>
-                                        <p className="text-xs text-gray-500">{formatDate(sale.date)}</p>
-                                        <p className="text-sm text-gray-700">{sale.customerName} ({sale.customerId})</p>
-                                    </div>
-                                    <p className="text-lg font-bold text-primary-600">{formatCurrency(sale.total)}</p>
+                     <div className="md:hidden grid grid-cols-1 gap-6">
+                        {Object.entries(groupedSales).map(([date, data]) => (
+                            <div key={date} className="space-y-4">
+                                <div className="bg-gray-200 p-2 rounded-lg flex justify-between items-center sticky top-[64px] z-10 shadow">
+                                    <h3 className="font-bold text-gray-800">{new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</h3>
+                                    <span className="font-semibold text-sm text-gray-700">Total: {formatCurrency(data.dailyTotal)}</span>
                                 </div>
-                                <div className="flex justify-between items-center text-sm border-t pt-3">
-                                    <div>
-                                        <strong>Total Items:</strong> {sale.items.reduce((acc, item) => acc + item.quantity, 0)}
+                                {data.sales.map(sale => (
+                                    <div key={sale.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="text-sm font-semibold">Sale ID: <span className="font-mono text-xs">{sale.id}</span></p>
+                                                <p className="text-xs text-gray-500">{formatDate(sale.date)}</p>
+                                                <p className="text-sm text-gray-700">{sale.customerName} ({sale.customerId})</p>
+                                            </div>
+                                            <p className="text-lg font-bold text-primary-600">{formatCurrency(sale.total)}</p>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm border-t pt-3">
+                                            <div>
+                                                <strong>Total Items:</strong> {sale.items.reduce((acc, item) => acc + item.quantity, 0)}
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                                <Button onClick={() => setSelectedSale(sale)} variant="ghost" size="sm" className="flex items-center gap-1"><Eye size={16}/> View</Button>
+                                                <Button onClick={() => setSaleToReverse(sale)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Reverse</Button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center space-x-3">
-                                        <Button onClick={() => setSelectedSale(sale)} variant="ghost" size="sm" className="flex items-center gap-1"><Eye size={16}/> View</Button>
-                                        <Button onClick={() => setSaleToReverse(sale)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Reverse</Button>
-                                    </div>
-                                </div>
+                                ))}
                             </div>
                         ))}
                     </div>

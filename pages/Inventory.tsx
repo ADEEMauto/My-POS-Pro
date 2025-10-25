@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
@@ -536,7 +537,11 @@ const Inventory: React.FC = () => {
 
 
     const filteredInventory = useMemo(() => {
-        return inventory.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        const lowercasedSearchTerm = searchTerm.toLowerCase();
+        return inventory.filter(p => 
+            p.name.toLowerCase().includes(lowercasedSearchTerm) ||
+            (p.barcode && p.barcode.toLowerCase().includes(lowercasedSearchTerm))
+        );
     }, [inventory, searchTerm]);
 
     if (!isMaster) {
@@ -597,7 +602,7 @@ const Inventory: React.FC = () => {
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Inventory</h1>
                 <div className="flex items-center gap-2 flex-wrap justify-center">
                     <div className="w-full sm:w-auto">
-                      <Input placeholder="Search inventory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} icon={<Search className="w-5 h-5 text-gray-400" />} />
+                      <Input placeholder="Search by name or barcode..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} icon={<Search className="w-5 h-5 text-gray-400" />} />
                     </div>
                     <Button onClick={() => setScannerOpen(true)} variant="secondary" className='gap-2'><ScanLine size={18}/> Scan</Button>
                     <input type="file" ref={fileInputRef} onChange={handleExcelUpload} accept=".xlsx, .xls" className="hidden" />

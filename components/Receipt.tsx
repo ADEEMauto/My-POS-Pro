@@ -21,9 +21,6 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
     const showOverallDiscount = Math.round(calculatedOverallDiscount) > 0;
     const showLoyaltyDiscount = (sale.loyaltyDiscount || 0) > 0; // Already rounded at sale creation
 
-    const hasAnyDiscount = showItemDiscounts || showOverallDiscount || showLoyaltyDiscount;
-
-
     const calculateNextServiceDate = (lastVisit: string, value?: number, unit?: 'days' | 'months' | 'years'): string | null => {
         if (!value || !unit) return null;
         
@@ -118,7 +115,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         </tr>
                     ))}
                     {sale.laborCharges && sale.laborCharges > 0 && (
-                        <tr className="align-top text-xs font-semibold">
+                        <tr className="align-top text-xs">
                             {hasItemDiscounts ? (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
@@ -142,7 +139,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
             
             {/* 9 & 10. Totals */}
             <div className="space-y-1 text-xs">
-                 {hasAnyDiscount || (sale.laborCharges && sale.laborCharges > 0) ? (
+                 {showOverallDiscount || showLoyaltyDiscount ? (
                     <>
                         <div className="flex justify-between">
                             <span>Subtotal</span>
