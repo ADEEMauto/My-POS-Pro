@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier } from '../types';
+import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Expense } from '../types';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
@@ -51,7 +51,7 @@ interface AppContextType {
     deleteCategory: (id: string) => void;
 
     sales: Sale[];
-    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number) => Sale | null;
+    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number, amountPaid: number) => Sale | null;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     customers: Customer[];
@@ -75,6 +75,11 @@ interface AppContextType {
 
     customerTiers: CustomerTier[];
     updateCustomerTiers: (tiers: CustomerTier[]) => void;
+
+    expenses: Expense[];
+    addExpense: (expense: Omit<Expense, 'id'>) => void;
+    updateExpense: (expense: Expense) => void;
+    deleteExpense: (expenseId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -87,6 +92,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [categories, setCategories] = useLocalStorage<Category[]>('categories', []);
     const [sales, setSales] = useLocalStorage<Sale[]>('sales', []);
     const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', []);
+    const [expenses, setExpenses] = useLocalStorage<Expense[]>('expenses', []);
     const [loading, setLoading] = useState(true);
 
     const [earningRules, setEarningRules] = useLocalStorage<EarningRule[]>('earningRules', [
@@ -378,7 +384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Category and its sub-categories deleted.");
     };
 
-    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number): Sale | null => {
+    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number, amountPaid: number): Sale | null => {
         if (cartItems.length === 0) {
             toast.error("Cart is empty.");
             return null;
@@ -410,13 +416,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const subtotalAfterItemDiscounts = subtotal - totalItemDiscounts;
         const totalWithLabor = subtotalAfterItemDiscounts + laborCharges;
         const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (totalWithLabor * overallDiscountValue) / 100;
-        const totalBeforeLoyalty = totalWithLabor - overallDiscountAmount;
+        
+        const cartTotal = totalWithLabor - overallDiscountAmount;
 
         const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
+        const isWalkIn = customerId === 'WALKIN';
         let customer = customers.find(c => c.id === customerId);
-        let loyaltyDiscount = 0;
         
-        if (customer && redeemedPoints > 0) {
+        const previousBalanceBroughtForward = !isWalkIn && customer ? customer.balance : 0;
+        
+        const totalBeforeLoyalty = cartTotal + previousBalanceBroughtForward;
+        
+        let loyaltyDiscount = 0;
+        if (customer && redeemedPoints > 0 && !isWalkIn) {
             if (customer.loyaltyPoints < redeemedPoints) {
                 toast.error("Customer does not have enough points to redeem.");
                 return null;
@@ -431,14 +443,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         const total = totalBeforeLoyalty - loyaltyDiscount;
-        if (total < 0) {
-            toast.error("Total amount cannot be negative.");
+        if (amountPaid > total) {
+            toast.error("Amount paid cannot be greater than the total due.");
             return null;
         }
 
+        // --- Loyalty Points Calculation (based on amountPaid) ---
         const sortedEarningRules = [...earningRules].sort((a, b) => a.minSpend - b.minSpend);
-        const applicableRule = sortedEarningRules.reverse().find(rule => totalBeforeLoyalty >= rule.minSpend);
-        let pointsEarned = applicableRule ? Math.floor((totalBeforeLoyalty / 100) * applicableRule.pointsPerHundred) : 0;
+        const applicableRule = sortedEarningRules.reverse().find(rule => amountPaid >= rule.minSpend);
+        let pointsEarned = !isWalkIn && applicableRule ? Math.floor((amountPaid / 100) * applicableRule.pointsPerHundred) : 0;
         
         let promotionApplied: Sale['promotionApplied'] | undefined = undefined;
         let tierApplied: Sale['tierApplied'] | undefined = undefined;
@@ -447,7 +460,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
         // Tier Bonus Check
-        if (customer && customer.tierId && pointsEarned > 0) {
+        if (customer && customer.tierId && pointsEarned > 0 && !isWalkIn) {
             const tier = customerTiers.find(t => t.id === customer.tierId);
             if (tier && tier.pointsMultiplier > 1) {
                 pointsEarned = Math.floor(pointsEarned * tier.pointsMultiplier);
@@ -465,7 +478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return today >= startDate && today <= endDate;
         });
 
-        if (activePromotion && pointsEarned > 0) {
+        if (activePromotion && pointsEarned > 0 && !isWalkIn) {
             pointsEarned = Math.floor(pointsEarned * activePromotion.multiplier);
             promotionApplied = { name: activePromotion.name, multiplier: activePromotion.multiplier };
             toast.success(`Promotional points applied: ${activePromotion.name} (${activePromotion.multiplier}x)!`);
@@ -474,7 +487,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const newSaleId = `${now.getFullYear().toString().slice(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
         let finalLoyaltyPoints = customer?.loyaltyPoints || 0;
 
-        if (customer) {
+        if (customer && !isWalkIn) {
             let currentPoints = customer.loyaltyPoints;
 
             if (redeemedPoints > 0) {
@@ -506,14 +519,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             finalLoyaltyPoints = currentPoints;
         }
+        
+        const roundedTotal = Math.round(total);
+        const roundedAmountPaid = Math.round(amountPaid);
+        const balanceDue = roundedTotal - roundedAmountPaid;
+        let paymentStatus: Sale['paymentStatus'] = 'Unpaid';
+        if (balanceDue <= 0) {
+            paymentStatus = 'Paid';
+        } else if (roundedAmountPaid > 0 && balanceDue > 0) {
+            paymentStatus = 'Partial';
+        }
 
         const newSale: Sale = {
             id: newSaleId, customerId, customerName: customerInfo.customerName.trim(), items: saleItems,
             subtotal, totalItemDiscounts, overallDiscount: overallDiscountValue, overallDiscountType,
             loyaltyDiscount: Math.round(loyaltyDiscount),
             laborCharges: laborCharges > 0 ? laborCharges : undefined,
-            total: Math.round(total), date: now.toISOString(),
-            redeemedPoints, pointsEarned, finalLoyaltyPoints, promotionApplied, tierApplied,
+            total: roundedTotal, 
+            amountPaid: roundedAmountPaid,
+            paymentStatus,
+            balanceDue,
+            previousBalanceBroughtForward: previousBalanceBroughtForward > 0 ? previousBalanceBroughtForward : undefined,
+            date: now.toISOString(),
+            redeemedPoints: isWalkIn ? 0 : redeemedPoints,
+            pointsEarned: isWalkIn ? 0 : pointsEarned,
+            finalLoyaltyPoints: isWalkIn ? 0 : finalLoyaltyPoints,
+            promotionApplied, tierApplied,
         };
 
         setInventory(updatedInventory);
@@ -531,7 +562,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 custToUpdate.serviceFrequencyValue = customerInfo.serviceFrequencyValue;
                 custToUpdate.serviceFrequencyUnit = customerInfo.serviceFrequencyUnit;
             }
-            custToUpdate.loyaltyPoints = finalLoyaltyPoints;
+            custToUpdate.loyaltyPoints = isWalkIn ? 0 : finalLoyaltyPoints;
+            custToUpdate.balance = isWalkIn ? 0 : balanceDue;
             updatedCustomers[existingCustomerIndex] = custToUpdate;
             setCustomers(recalculateAndAssignTier(customerId, updatedCustomers, [newSale, ...sales], customerTiers));
         } else {
@@ -541,8 +573,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 contactNumber: customerInfo.contactNumber?.trim() || undefined,
                 serviceFrequencyValue: customerInfo.serviceFrequencyValue,
                 serviceFrequencyUnit: customerInfo.serviceFrequencyValue ? customerInfo.serviceFrequencyUnit : undefined,
-                loyaltyPoints: pointsEarned,
+                loyaltyPoints: isWalkIn ? 0 : pointsEarned,
                 tierId: null,
+                balance: isWalkIn ? 0 : balanceDue,
             };
             setCustomers(recalculateAndAssignTier(customerId, [newCustomer, ...customers], [newSale, ...sales], customerTiers));
         }
@@ -581,66 +614,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const remainingItems = saleToModify.items.filter(item => !itemsToReturnProductIds.has(item.productId));
 
         if (remainingItems.length === 0) {
-             const customer = customers.find(c => c.id === saleToModify.customerId);
-            if (customer && (saleToModify.pointsEarned || saleToModify.redeemedPoints)) {
-                let currentPoints = customer.loyaltyPoints;
-                let finalPoints = currentPoints;
+            const customer = customers.find(c => c.id === saleToModify.customerId);
+            if (customer) {
+                const isWalkIn = customer.id === 'WALKIN';
+                if (!isWalkIn) {
+                    let currentPoints = customer.loyaltyPoints;
+                    let finalPoints = currentPoints;
+                    const newBalance = saleToModify.previousBalanceBroughtForward ?? 0;
 
-                // Add back redeemed points
-                if (saleToModify.redeemedPoints && saleToModify.redeemedPoints > 0) {
-                    const pointsAfter = currentPoints + saleToModify.redeemedPoints;
-                    const redeemReversalTx: LoyaltyTransaction = {
-                        id: uuidv4(), customerId: customer.id, type: 'manual_add',
-                        points: saleToModify.redeemedPoints, date: new Date().toISOString(),
-                        reason: `Points returned from reversed sale #${saleToModify.id}`,
-                        pointsBefore: currentPoints, pointsAfter: pointsAfter
-                    };
-                    setLoyaltyTransactions(prev => [redeemReversalTx, ...prev]);
-                    finalPoints += saleToModify.redeemedPoints;
+                    // Add back redeemed points
+                    if (saleToModify.redeemedPoints && saleToModify.redeemedPoints > 0) {
+                        const pointsAfter = currentPoints + saleToModify.redeemedPoints;
+                        const redeemReversalTx: LoyaltyTransaction = {
+                            id: uuidv4(), customerId: customer.id, type: 'manual_add',
+                            points: saleToModify.redeemedPoints, date: new Date().toISOString(),
+                            reason: `Points returned from reversed sale #${saleToModify.id}`,
+                            pointsBefore: currentPoints, pointsAfter: pointsAfter
+                        };
+                        setLoyaltyTransactions(prev => [redeemReversalTx, ...prev]);
+                        finalPoints += saleToModify.redeemedPoints;
+                    }
+                    
+                    // Subtract earned points
+                    if (saleToModify.pointsEarned && saleToModify.pointsEarned > 0) {
+                        const tempPointsBefore = finalPoints;
+                        const pointsAfter = finalPoints - saleToModify.pointsEarned;
+                        const earnReversalTx: LoyaltyTransaction = {
+                            id: uuidv4(), customerId: customer.id, type: 'manual_subtract',
+                            points: saleToModify.pointsEarned, date: new Date().toISOString(),
+                            reason: `Points clawed back from reversed sale #${saleToModify.id}`,
+                            pointsBefore: tempPointsBefore, pointsAfter: pointsAfter
+                        };
+                        setLoyaltyTransactions(prev => [earnReversalTx, ...prev]);
+                        finalPoints -= saleToModify.pointsEarned;
+                    }
+                    
+                    setCustomers(customers.map(c => c.id === customer.id ? {...c, loyaltyPoints: finalPoints, balance: newBalance } : c));
+                    toast.success(`Loyalty points and balance for ${customer.name} have been reverted.`);
                 }
-                
-                // Subtract earned points
-                if (saleToModify.pointsEarned && saleToModify.pointsEarned > 0) {
-                    const tempPointsBefore = finalPoints;
-                    const pointsAfter = finalPoints - saleToModify.pointsEarned;
-                    const earnReversalTx: LoyaltyTransaction = {
-                        id: uuidv4(), customerId: customer.id, type: 'manual_subtract',
-                        points: saleToModify.pointsEarned, date: new Date().toISOString(),
-                        reason: `Points clawed back from reversed sale #${saleToModify.id}`,
-                        pointsBefore: tempPointsBefore, pointsAfter: pointsAfter
-                    };
-                    setLoyaltyTransactions(prev => [earnReversalTx, ...prev]);
-                    finalPoints -= saleToModify.pointsEarned;
-                }
-                
-                setCustomers(customers.map(c => c.id === customer.id ? {...c, loyaltyPoints: finalPoints } : c));
-                toast.success(`Loyalty points for ${customer.name} have been reverted.`);
             }
             setSales(sales.filter(s => s.id !== saleId));
             toast.success("All items returned. Sale has been fully reversed and deleted.");
         } else {
-            // Recalculate the sale totals based on remaining items. This is a simplified reversal.
-            // A more complex system would handle discounts more granularly.
-            const newSubtotal = remainingItems.reduce((acc, item) => acc + item.originalPrice * item.quantity, 0);
-            const newItemDiscounts = remainingItems.reduce((acc, item) => acc + (item.originalPrice - item.price) * item.quantity, 0);
-            const subtotalAfterItemDiscounts = newSubtotal - newItemDiscounts;
-
-            let newTotal = subtotalAfterItemDiscounts;
-            if (saleToModify.overallDiscountType === 'percentage') {
-                newTotal = newTotal - (newTotal * (saleToModify.overallDiscount / 100));
-            } else {
-                newTotal = Math.max(0, newTotal - saleToModify.overallDiscount);
+            // Partial reversals are complex with balance logic and are not supported to avoid accounting errors.
+            // A full reversal is required.
+            toast.error("Partial reversals are not supported for sales with balances. Please reverse the entire sale.");
+            // Revert inventory changes if the operation is cancelled.
+            const revertedInventory = [...inventory];
+            for (const item of itemsToReturn) {
+                const productIndex = revertedInventory.findIndex(p => p.id === item.productId);
+                if (productIndex > -1) {
+                    revertedInventory[productIndex].quantity -= item.quantity;
+                }
             }
-
-            const updatedSale = {
-                ...saleToModify,
-                items: remainingItems,
-                subtotal: newSubtotal,
-                totalItemDiscounts: newItemDiscounts,
-                total: newTotal
-            };
-            setSales(sales.map(s => s.id === saleId ? updatedSale : s));
-            toast.success(`${returnedItemsCount} item(s) returned to stock. Sale record updated.`);
+            setInventory(revertedInventory);
         }
     };
     
@@ -839,6 +866,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAllCustomerTiers();
     };
 
+    const addExpense = (expense: Omit<Expense, 'id'>) => {
+        const newExpense = { ...expense, id: uuidv4() };
+        setExpenses([newExpense, ...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        toast.success(`Expense "${expense.description}" added.`);
+    };
+
+    const updateExpense = (updatedExpense: Expense) => {
+        setExpenses(expenses.map(e => e.id === updatedExpense.id ? updatedExpense : e).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        toast.success(`Expense "${updatedExpense.description}" updated.`);
+    };
+
+    const deleteExpense = (expenseId: string) => {
+        setExpenses(expenses.filter(e => e.id !== expenseId));
+        toast.success("Expense deleted.");
+    };
+
+
     return (
         <AppContext.Provider value={{
             loading, shopInfo, saveShopInfo, currentUser, users, signUp, login, logout, updateUser, addUser, deleteUser,
@@ -850,7 +894,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             promotions, addPromotion, updatePromotion, deletePromotion,
             loyaltyTransactions, adjustCustomerPoints,
             loyaltyExpirySettings, updateLoyaltyExpirySettings,
-            customerTiers, updateCustomerTiers
+            customerTiers, updateCustomerTiers,
+            expenses, addExpense, updateExpense, deleteExpense
         }}>
             {children}
         </AppContext.Provider>

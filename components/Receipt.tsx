@@ -12,14 +12,10 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
     const formatCurrencyForReceipt = (amount: number) => `Rs. ${Math.round(amount).toLocaleString('en-IN')}`;
     const formatNumberForReceipt = (amount: number) => Math.round(amount).toLocaleString('en-IN');
     
-    const calculatedOverallDiscount = sale.overallDiscount > 0
-        ? Math.max(0, sale.subtotal - sale.totalItemDiscounts + (sale.laborCharges || 0) - (sale.loyaltyDiscount || 0) - sale.total)
-        : 0;
-        
     // By rounding the calculated discounts before checking, we avoid showing a line for amounts < 0.5 that would round to "Rs. 0".
     const showItemDiscounts = Math.round(sale.totalItemDiscounts) > 0;
-    const showOverallDiscount = Math.round(calculatedOverallDiscount) > 0;
-    const showLoyaltyDiscount = (sale.loyaltyDiscount || 0) > 0; // Already rounded at sale creation
+    const showOverallDiscount = sale.overallDiscount > 0;
+    const showLoyaltyDiscount = (sale.loyaltyDiscount || 0) > 0;
 
     const calculateNextServiceDate = (lastVisit: string, value?: number, unit?: 'days' | 'months' | 'years'): string | null => {
         if (!value || !unit) return null;
@@ -48,6 +44,9 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
 
     const nextServiceDate = customer ? calculateNextServiceDate(sale.date, customer.serviceFrequencyValue, customer.serviceFrequencyUnit) : null;
     
+    const todaysBill = sale.total - (sale.previousBalanceBroughtForward || 0) + (sale.loyaltyDiscount || 0);
+    const calculatedOverallDiscount = Math.max(0, todaysBill - (sale.total - (sale.previousBalanceBroughtForward || 0)));
+
     return (
         <div ref={ref} className="p-4 bg-white text-black font-mono text-sm max-w-sm mx-auto">
             {/* 1 & 2. Shop Info */}
@@ -139,41 +138,46 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
             
             {/* 9 & 10. Totals */}
             <div className="space-y-1 text-xs">
-                 {showOverallDiscount || showLoyaltyDiscount ? (
-                    <>
-                        <div className="flex justify-between">
-                            <span>Subtotal</span>
-                            <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
-                        </div>
-                        {showItemDiscounts && (
-                            <div className="flex justify-between">
-                                <span>Item Discounts</span>
-                                <span>-{formatCurrencyForReceipt(sale.totalItemDiscounts)}</span>
-                            </div>
-                        )}
-                        {showOverallDiscount && (
-                            <div className="flex justify-between">
-                                <span>Overall Discount</span>
-                                <span>-{formatCurrencyForReceipt(calculatedOverallDiscount)}</span>
-                            </div>
-                        )}
-                        {showLoyaltyDiscount && (
-                            <div className="flex justify-between">
-                                <span>Loyalty Discount</span>
-                                <span>-{formatCurrencyForReceipt(sale.loyaltyDiscount!)}</span>
-                            </div>
-                        )}
-                        <div className="flex justify-between font-bold text-sm mt-1 pt-1 border-t border-dashed border-black">
-                            <span>GRAND TOTAL</span>
-                            <span>{formatCurrencyForReceipt(sale.total)}</span>
-                        </div>
-                    </>
-                ) : (
-                    <div className="flex justify-between font-bold text-sm my-1">
-                        <span>TOTAL</span>
-                        <span>{formatCurrencyForReceipt(sale.total)}</span>
+                <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
+                </div>
+                {showItemDiscounts && (
+                    <div className="flex justify-between">
+                        <span>Item Discounts</span>
+                        <span>-{formatCurrencyForReceipt(sale.totalItemDiscounts)}</span>
                     </div>
                 )}
+                {showOverallDiscount && (
+                    <div className="flex justify-between">
+                        <span>Overall Discount</span>
+                        <span>-{formatCurrencyForReceipt(calculatedOverallDiscount)}</span>
+                    </div>
+                )}
+                {showLoyaltyDiscount && (
+                    <div className="flex justify-between">
+                        <span>Loyalty Discount</span>
+                        <span>-{formatCurrencyForReceipt(sale.loyaltyDiscount!)}</span>
+                    </div>
+                )}
+                {(sale.previousBalanceBroughtForward || 0) > 0 && (
+                    <div className="flex justify-between mt-2 pt-2 border-t border-dashed border-black">
+                        <span>Previous Balance</span>
+                        <span>{formatCurrencyForReceipt(sale.previousBalanceBroughtForward!)}</span>
+                    </div>
+                )}
+                <div className="flex justify-between font-bold text-sm my-1">
+                    <span>TOTAL</span>
+                    <span>{formatCurrencyForReceipt(sale.total)}</span>
+                </div>
+                 <div className="flex justify-between font-bold text-sm">
+                    <span>AMOUNT PAID</span>
+                    <span>{formatCurrencyForReceipt(sale.amountPaid)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
+                    <span>BALANCE DUE</span>
+                    <span>{formatCurrencyForReceipt(sale.balanceDue)}</span>
+                </div>
             </div>
 
             {/* 11. Loyalty Points */}

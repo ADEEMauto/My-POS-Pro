@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
@@ -122,6 +121,7 @@ const POS: React.FC = () => {
     const [serviceFrequencyValue, setServiceFrequencyValue] = useState<number | string>('');
     const [serviceFrequencyUnit, setServiceFrequencyUnit] = useState<'days' | 'months' | 'years'>('months');
     const [isCustomerLookupOpen, setCustomerLookupOpen] = useState(false);
+    const [amountPaid, setAmountPaid] = useState<number | string>('');
 
     // Loyalty Points Redemption
     const [pointsToRedeem, setPointsToRedeem] = useState<number | string>('');
@@ -172,7 +172,7 @@ const POS: React.FC = () => {
                 case 'name_asc':
                     return a.name.localeCompare(b.name);
                 case 'name_desc':
-                    return b.name.localeCompare(a.name);
+                    return b.name.localeCompare(b.name);
                 case 'price_desc':
                     return b.salePrice - a.salePrice;
                 case 'price_asc':
@@ -316,6 +316,16 @@ const POS: React.FC = () => {
         if (isNaN(value) || value < 0) return 0;
         return overallDiscountType === 'fixed' ? value : (subtotalWithLabor * value) / 100;
     }, [overallDiscount, overallDiscountType, subtotalWithLabor]);
+    
+    const cartTotal = useMemo(() => {
+        return subtotalWithLabor - overallDiscountAmount;
+    }, [subtotalWithLabor, overallDiscountAmount]);
+
+    const previousBalance = useMemo(() => currentCustomer?.balance || 0, [currentCustomer]);
+    
+    const totalBeforeLoyalty = useMemo(() => {
+        return cartTotal + previousBalance;
+    }, [cartTotal, previousBalance]);
 
     const loyaltyDiscountAmount = useMemo(() => {
         if (!currentCustomer || !pointsToRedeem) return 0;
@@ -323,38 +333,52 @@ const POS: React.FC = () => {
         if (isNaN(points) || points <= 0 || points > currentCustomer.loyaltyPoints) return 0;
         
         let discount = 0;
-        const amountToApplyPercentageOn = subtotalWithLabor - overallDiscountAmount;
         if (redemptionRule.method === 'fixedValue') {
             discount = (points / redemptionRule.points) * redemptionRule.value;
         } else { // percentage
             const percentage = (points / redemptionRule.points) * redemptionRule.value;
-            discount = (amountToApplyPercentageOn * percentage) / 100;
+            discount = (totalBeforeLoyalty * percentage) / 100;
         }
-        return discount > amountToApplyPercentageOn ? amountToApplyPercentageOn : discount;
-    }, [pointsToRedeem, currentCustomer, redemptionRule, subtotalWithLabor, overallDiscountAmount]);
+        return discount > totalBeforeLoyalty ? totalBeforeLoyalty : discount;
+    }, [pointsToRedeem, currentCustomer, redemptionRule, totalBeforeLoyalty]);
 
-    const total = useMemo(() => {
-        const finalTotal = subtotalWithLabor - overallDiscountAmount - loyaltyDiscountAmount;
+    const totalDue = useMemo(() => {
+        const finalTotal = totalBeforeLoyalty - loyaltyDiscountAmount;
         return finalTotal > 0 ? finalTotal : 0;
-    }, [subtotalWithLabor, overallDiscountAmount, loyaltyDiscountAmount]);
+    }, [totalBeforeLoyalty, loyaltyDiscountAmount]);
+
+    // Effect to update amountPaid when totalDue changes
+    useEffect(() => {
+        if(isCheckoutModalOpen) {
+            setAmountPaid(Math.round(totalDue));
+        }
+    }, [totalDue, isCheckoutModalOpen]);
 
     const handleCheckout = () => {
-        if (!bikeNumber.trim()) {
-            toast.error("Bike Number (ID) is required to proceed.");
-            return;
-        }
-        if (!customerName.trim()) {
-            toast.error("Customer Name is required.");
-            return;
+        let finalCustomerName = customerName.trim();
+        let finalBikeNumber = bikeNumber.trim();
+
+        if (!finalCustomerName && !finalBikeNumber) {
+            finalCustomerName = 'Walk-in';
+            // Use a single, static ID for all walk-in customers to consolidate them.
+            finalBikeNumber = 'WALKIN';
+        } else if (!finalBikeNumber) {
+            // If only name is given, generate a unique ID.
+            finalBikeNumber = `${finalCustomerName.replace(/\s+/g, '').toUpperCase()}-${Date.now()}`;
+        } else if (!finalCustomerName) {
+            // If only bike number is given, find existing name or generate a default one.
+            const existingCustomer = customers.find(c => c.id === finalBikeNumber.replace(/\s+/g, '').toUpperCase());
+            finalCustomerName = existingCustomer ? existingCustomer.name : `Customer ${finalBikeNumber}`;
         }
 
         const sale = createSale(
             cart,
             parseFloat(String(overallDiscount)) || 0,
             overallDiscountType,
-            { customerName, bikeNumber, contactNumber, serviceFrequencyValue: Number(serviceFrequencyValue) || undefined, serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined },
+            { customerName: finalCustomerName, bikeNumber: finalBikeNumber, contactNumber, serviceFrequencyValue: Number(serviceFrequencyValue) || undefined, serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined },
             Number(pointsToRedeem) || 0,
-            parseFloat(String(laborCharges)) || 0
+            parseFloat(String(laborCharges)) || 0,
+            Number(amountPaid) || 0
         );
 
         if (sale) {
@@ -370,6 +394,7 @@ const POS: React.FC = () => {
             setContactNumber('');
             setServiceFrequencyValue('');
             setPointsToRedeem('');
+            setAmountPaid('');
         }
     };
     
@@ -678,7 +703,7 @@ const POS: React.FC = () => {
                         {overallDiscountAmount > 0 && <p className="text-sm text-red-600 text-right mt-1">Discount Applied: -{formatCurrency(overallDiscountAmount)}</p>}
                     </div>
                     
-                    <div className="text-xl font-bold flex justify-between pt-2 border-t text-primary-700"><span>TOTAL</span> <span>{formatCurrency(total)}</span></div>
+                    <div className="text-xl font-bold flex justify-between pt-2 border-t text-primary-700"><span>TOTAL</span> <span>{formatCurrency(cartTotal)}</span></div>
                 </div>
 
                 <Button onClick={() => setCheckoutModalOpen(true)} disabled={cart.length === 0} className="w-full mt-4 text-lg">
@@ -688,10 +713,20 @@ const POS: React.FC = () => {
             
             <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Sale" size="lg">
                  <div className="space-y-4">
-                     <div className="p-4 bg-gray-50 rounded-lg">
-                        <div className="flex justify-between items-center text-xl font-bold">
+                     <div className="p-4 bg-gray-50 rounded-lg space-y-2">
+                        {previousBalance > 0 && (
+                             <div className="flex justify-between items-center text-md">
+                                <span>Previous Balance</span>
+                                <span className="font-semibold text-red-600">{formatCurrency(previousBalance)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between items-center text-md">
+                            <span>Today's Bill</span>
+                            <span className="font-semibold">{formatCurrency(cartTotal)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xl font-bold pt-2 border-t">
                             <span>TOTAL DUE</span>
-                            <span className="text-primary-600">{formatCurrency(total)}</span>
+                            <span className="text-primary-600">{formatCurrency(totalDue)}</span>
                         </div>
                     </div>
 
@@ -699,15 +734,15 @@ const POS: React.FC = () => {
                         <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2"><UserPlus size={20}/> Customer Information</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Bike Number (ID) <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Bike Number (ID)</label>
                                 <div className="flex">
-                                    <Input value={bikeNumber} onChange={e => setBikeNumber(e.target.value)} required placeholder="e.g., KHI-1234"/>
+                                    <Input value={bikeNumber} onChange={e => setBikeNumber(e.target.value)} placeholder="e.g., KHI-1234"/>
                                     <Button type="button" variant="ghost" onClick={() => setCustomerLookupOpen(true)} className="ml-2" title="Find Customer">
                                         <FileSearch />
                                     </Button>
                                 </div>
                             </div>
-                            <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} required placeholder="e.g., John Doe"/>
+                            <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g., John Doe"/>
                             <Input label="Contact Number" type="tel" value={contactNumber} onChange={e => setContactNumber(e.target.value)} placeholder="For receipts & reminders"/>
                              <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Service Frequency</label>
@@ -742,11 +777,24 @@ const POS: React.FC = () => {
                              {Number(pointsToRedeem) > currentCustomer.loyaltyPoints && <p className="text-sm text-red-500 text-right">Cannot redeem more points than available.</p>}
                          </div>
                     )}
+                    
+                    <div className="pt-4 border-t">
+                         <Input 
+                            label="Amount Paid"
+                            type="number"
+                            value={amountPaid}
+                            onChange={(e) => setAmountPaid(e.target.value)}
+                            required
+                            min="0"
+                            max={Math.round(totalDue)}
+                            className="text-xl h-12 text-center font-bold"
+                        />
+                    </div>
 
                  </div>
                  <div className="flex justify-end gap-2 pt-6 mt-4 border-t">
                      <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
-                     <Button onClick={handleCheckout} disabled={!bikeNumber.trim() || !customerName.trim()}>Confirm Sale</Button>
+                     <Button onClick={handleCheckout}>Confirm Sale</Button>
                  </div>
             </Modal>
             

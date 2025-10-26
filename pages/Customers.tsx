@@ -5,7 +5,7 @@ import { formatDate, formatCurrency, downloadFile } from '../utils/helpers';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
-import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare, Star, ChevronsRight, Download, Flame, Award } from 'lucide-react';
+import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare, Star, ChevronsRight, Download, Flame, Award, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const isServiceDue = (customer: Customer): { due: boolean; message: string } => {
@@ -137,7 +137,7 @@ const CustomerDetailsModal: React.FC<{
         return loyaltyTransactions.filter(t => t.customerId === customer.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [loyaltyTransactions, customer.id]);
     
-    const totalSpent = useMemo(() => sales.reduce((acc, s) => acc + s.total, 0), [sales]);
+    const totalSpent = useMemo(() => sales.reduce((acc, s) => acc + s.amountPaid, 0), [sales]);
     const serviceStatus = isServiceDue(customer);
 
     const handleSave = () => {
@@ -233,16 +233,23 @@ const CustomerDetailsModal: React.FC<{
     return (
         <Modal isOpen={true} onClose={onClose} title={`Customer: ${customer.name}`} size="2xl" footer={modalFooter}>
             <div className="space-y-6">
-                <div className="flex justify-between items-start">
-                    <div>
+                 {customer.balance > 0 && (
+                    <div className="p-3 mb-2 bg-red-100 border-l-4 border-red-500 text-red-800 rounded-md text-center">
+                        <p className="font-bold text-lg animate-pulse flex items-center justify-center gap-2">
+                            <AlertCircle size={20}/> Outstanding Balance: {formatCurrency(customer.balance)}
+                        </p>
+                    </div>
+                )}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div className="flex-grow space-y-2">
                         {tier && (
-                            <div className={`inline-flex items-center gap-2 mb-2 px-3 py-1 rounded-full text-sm font-semibold ${tierColor}`}>
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold ${tierColor}`}>
                                 <Award size={16} /> {tier.name} Tier
                             </div>
                         )}
                         {serviceStatus.due && (
-                            <div className="p-2 mb-2 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
-                                <p className="font-bold animate-pulse flex items-center gap-2"><Bell size={16}/> Service Due</p>
+                            <div className="p-2 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-md">
+                                <p className="font-bold flex items-center gap-2"><Bell size={16}/> Service Due</p>
                                 <p className="text-sm">{serviceStatus.message}</p>
                             </div>
                         )}
@@ -256,7 +263,7 @@ const CustomerDetailsModal: React.FC<{
                                 <p className="font-bold text-primary-600 text-sm">{sales.length}</p>
                             </div>
                             <div className="bg-gray-100 p-2 rounded-lg">
-                                <p className="text-xs text-gray-500">Total Spent</p>
+                                <p className="text-xs text-gray-500">Total Paid</p>
                                 <p className="font-bold text-primary-600 text-sm">{formatCurrency(totalSpent)}</p>
                             </div>
                             <div className="bg-gray-100 p-2 rounded-lg">
@@ -265,7 +272,7 @@ const CustomerDetailsModal: React.FC<{
                             </div>
                         </div>
                     </div>
-                     <div className="bg-indigo-50 p-3 rounded-lg text-center shrink-0">
+                     <div className="bg-indigo-50 p-3 rounded-lg text-center shrink-0 w-full sm:w-auto">
                         <p className="text-sm text-indigo-700">Loyalty Points</p>
                         <p className="text-3xl font-bold text-indigo-600">{customer.loyaltyPoints || 0}</p>
                     </div>
@@ -277,7 +284,7 @@ const CustomerDetailsModal: React.FC<{
                             Customer Details
                         </button>
                         <button onClick={() => setActiveTab('history')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'history' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                            Sales History
+                            Account History
                         </button>
                          <button onClick={() => setActiveTab('loyalty')} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'loyalty' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
                             Points Ledger
@@ -323,27 +330,30 @@ const CustomerDetailsModal: React.FC<{
                 
                 {activeTab === 'history' && (
                     <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
-                        {sales.length > 0 ? (
-                            sales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(sale => (
-                                <div key={sale.id} className="p-3 border rounded-lg bg-white">
-                                    <div className="flex justify-between items-center mb-2 pb-2 border-b">
-                                        <div>
-                                            <p className="font-semibold text-gray-700">{formatDate(sale.date)}</p>
-                                            <p className="text-xs text-gray-500">ID: {sale.id}</p>
-                                        </div>
-                                        <p className="font-bold text-lg text-primary-600">{formatCurrency(sale.total)}</p>
-                                    </div>
-                                    <ul className="text-sm space-y-1">
-                                        {sale.items.map((item, index) => (
-                                            <li key={index} className="flex justify-between text-gray-600">
-                                                <span>{item.quantity}x {item.name}</span>
-                                                <span className="text-xs">{formatCurrency(item.price)} each</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))
-                        ) : <p className="text-gray-500 text-center py-4">No sales history.</p>}
+                         <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                                <tr>
+                                    <th className="px-2 py-2">Date</th>
+                                    <th className="px-2 py-2">Details</th>
+                                    <th className="px-2 py-2 text-right">Bill</th>
+                                    <th className="px-2 py-2 text-right">Paid</th>
+                                    <th className="px-2 py-2 text-right">Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                            {sales.length > 0 ? (
+                                sales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(sale => (
+                                   <tr key={sale.id}>
+                                        <td className="px-2 py-2 text-xs">{new Date(sale.date).toLocaleDateString()}</td>
+                                        <td className="px-2 py-2">Sale <span className="font-mono text-xs bg-gray-100 p-1 rounded">{sale.id}</span></td>
+                                        <td className="px-2 py-2 text-right">{formatCurrency(sale.total)}</td>
+                                        <td className="px-2 py-2 text-right text-green-600">{formatCurrency(sale.amountPaid)}</td>
+                                        <td className="px-2 py-2 text-right font-semibold">{formatCurrency(sale.balanceDue)}</td>
+                                   </tr>
+                                ))
+                            ) : <tr><td colSpan={5} className="text-gray-500 text-center py-4">No sales history.</td></tr>}
+                            </tbody>
+                         </table>
                     </div>
                 )}
                 
@@ -408,7 +418,7 @@ const Customers: React.FC = () => {
     const { customers, sales, currentUser, updateCustomer, shopInfo, loyaltyTransactions, loyaltyExpirySettings, customerTiers } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-    const [sortBy, setSortBy] = useState('serviceDue_desc');
+    const [sortBy, setSortBy] = useState('balance_desc');
 
     const isMaster = currentUser?.role === 'master';
 
@@ -434,7 +444,7 @@ const Customers: React.FC = () => {
                 .map(id => localSalesMap.get(id))
                 .filter((s): s is Sale => !!s);
             
-            const totalSpent = customerSales.reduce((acc, s) => acc + s.total, 0);
+            const totalSpent = customerSales.reduce((acc, s) => acc + s.amountPaid, 0);
             const totalProfit = customerSales.reduce((acc, sale) => {
                 return acc + sale.items.reduce((itemAcc, item) => {
                     return itemAcc + (item.price - (item.purchasePrice || 0)) * item.quantity;
@@ -461,13 +471,14 @@ const Customers: React.FC = () => {
             if (sortKey === 'serviceDue') {
                 const aIsDue = isServiceDue(a).due;
                 const bIsDue = isServiceDue(b).due;
-                if (aIsDue && !bIsDue) return -1;
-                if (!aIsDue && bIsDue) return 1;
-                // Secondary sort for due status: recent visits first
-                return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+                if (aIsDue && !bIsDue) return -1 * dir;
+                if (!aIsDue && bIsDue) return 1 * dir;
+                return (new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime()) * dir;
             }
 
             switch (sortKey) {
+                case 'balance':
+                    return ((a.balance || 0) - (b.balance || 0)) * dir;
                 case 'visits':
                     return (a.saleIds.length - b.saleIds.length) * dir;
                 case 'profit': {
@@ -561,6 +572,7 @@ const Customers: React.FC = () => {
                             className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
                             aria-label="Sort customers by"
                         >
+                            <option value="balance_desc">Sort by: Balance Due</option>
                             <option value="serviceDue_desc">Sort by: Service Due First</option>
                             <option value="lastSeen_desc">Sort by: Most Recent Visit</option>
                             <option value="lastSeen_asc">Sort by: Oldest Visit</option>
@@ -591,10 +603,16 @@ const Customers: React.FC = () => {
                         const pointsExpiring = calculatePointsExpiringSoon(customer, loyaltyTransactions, loyaltyExpirySettings);
                         const tier = customer.tierId ? tierMap.get(customer.tierId) : null;
                         const tierColor = tier ? tierColors[tier.name.toLowerCase()] || 'bg-gray-200' : 'bg-gray-200';
+                        const hasBalance = (customer.balance || 0) > 0;
 
                         return (
-                        <div key={customer.id} className="bg-white rounded-lg shadow-md p-4 flex flex-col justify-between">
+                        <div key={customer.id} className={`bg-white rounded-lg shadow-md p-4 flex flex-col justify-between border-t-4 ${hasBalance ? 'border-red-500' : 'border-transparent'}`}>
                             <div>
+                                {hasBalance && (
+                                    <div className="p-2 mb-3 bg-red-100 text-red-800 rounded-md text-center font-bold">
+                                        Outstanding: {formatCurrency(customer.balance)}
+                                    </div>
+                                )}
                                 <div className="flex items-start justify-between">
                                     <div className="flex items-center gap-3 mb-3">
                                         <div className="bg-primary-100 p-3 rounded-full">

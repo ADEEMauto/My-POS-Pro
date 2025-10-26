@@ -63,6 +63,10 @@ export interface Sale {
     loyaltyDiscount?: number; // Discount from redeemed loyalty points
     laborCharges?: number;
     total: number; // Final amount
+    amountPaid: number;
+    paymentStatus: 'Paid' | 'Partial' | 'Unpaid';
+    balanceDue: number;
+    previousBalanceBroughtForward?: number;
     date: string; // ISO string
     pointsEarned?: number;
     redeemedPoints?: number;
@@ -91,6 +95,7 @@ export interface Customer {
     serviceFrequencyUnit?: 'days' | 'months' | 'years';
     loyaltyPoints: number;
     tierId: string | null;
+    balance: number;
 }
 
 export interface EarningRule {
@@ -149,4 +154,12 @@ export interface CustomerTier {
     periodUnit: 'days' | 'months' | 'years';
     pointsMultiplier: number;
     rank: number; // Higher is better
+}
+
+export interface Expense {
+    id: string;
+    description: string;
+    amount: number;
+    date: string; // ISO string
+    category: string;
 }
