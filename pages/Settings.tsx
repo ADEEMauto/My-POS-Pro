@@ -185,7 +185,7 @@ const Settings: React.FC = () => {
                                 type="range"
                                 name="receiptLogoSize"
                                 min="2"
-                                max="24"
+                                max="50"
                                 step="1"
                                 value={shopDetails.receiptLogoSize}
                                 onChange={handleDetailsChange}
@@ -206,7 +206,7 @@ const Settings: React.FC = () => {
                                 type="range"
                                 name="pdfLogoSize"
                                 min="20"
-                                max="150"
+                                max="300"
                                 step="5"
                                 value={shopDetails.pdfLogoSize}
                                 onChange={handleDetailsChange}
