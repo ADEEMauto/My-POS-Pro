@@ -166,18 +166,28 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         <span>{formatCurrencyForReceipt(sale.previousBalanceBroughtForward!)}</span>
                     </div>
                 )}
-                <div className="flex justify-between font-bold text-sm my-1">
-                    <span>TOTAL</span>
-                    <span>{formatCurrencyForReceipt(sale.total)}</span>
-                </div>
-                 <div className="flex justify-between font-bold text-sm">
-                    <span>AMOUNT PAID</span>
-                    <span>{formatCurrencyForReceipt(sale.amountPaid)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
-                    <span>BALANCE DUE</span>
-                    <span>{formatCurrencyForReceipt(sale.balanceDue)}</span>
-                </div>
+
+                {sale.paymentStatus === 'Paid' ? (
+                    <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
+                        <span>TOTAL</span>
+                        <span>{formatCurrencyForReceipt(sale.total)}</span>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex justify-between font-bold text-sm my-1">
+                            <span>TOTAL</span>
+                            <span>{formatCurrencyForReceipt(sale.total)}</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-sm">
+                            <span>AMOUNT PAID</span>
+                            <span>{formatCurrencyForReceipt(sale.amountPaid)}</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
+                            <span>BALANCE DUE</span>
+                            <span>{formatCurrencyForReceipt(sale.balanceDue)}</span>
+                        </div>
+                    </>
+                )}
             </div>
 
             {/* 11. Loyalty Points */}

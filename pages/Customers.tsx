@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-import { Customer, Sale, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier } from '../types';
+import { Customer, Sale, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Payment } from '../types';
 import { formatDate, formatCurrency, downloadFile } from '../utils/helpers';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
-import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare, Star, ChevronsRight, Download, Flame, Award, AlertCircle } from 'lucide-react';
+import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare, Star, ChevronsRight, Download, Flame, Award, AlertCircle, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const isServiceDue = (customer: Customer): { due: boolean; message: string } => {
@@ -115,7 +115,7 @@ const CustomerDetailsModal: React.FC<{
         serviceFrequencyUnit?: 'days' | 'months' | 'years',
     }) => boolean
 }> = ({ customer, sales, tier, onClose, onSave }) => {
-    const { currentUser, loyaltyTransactions, adjustCustomerPoints } = useAppContext();
+    const { currentUser, loyaltyTransactions, adjustCustomerPoints, payments, recordCustomerPayment } = useAppContext();
     const isMaster = currentUser?.role === 'master';
 
     const [activeTab, setActiveTab] = useState('details');
@@ -132,10 +132,23 @@ const CustomerDetailsModal: React.FC<{
     // Points Adjustment State
     const [adjustmentPoints, setAdjustmentPoints] = useState('');
     const [adjustmentReason, setAdjustmentReason] = useState('');
+    
+    // Payment State
+    const [paymentAmount, setPaymentAmount] = useState<number | string>('');
 
     const customerTransactions = useMemo(() => {
         return loyaltyTransactions.filter(t => t.customerId === customer.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [loyaltyTransactions, customer.id]);
+
+    const customerPayments = useMemo(() => {
+        return payments.filter(p => p.customerId === customer.id);
+    }, [payments, customer.id]);
+
+    const combinedHistory = useMemo(() => {
+        const salesHistory = sales.map(s => ({ type: 'sale', data: s, date: new Date(s.date) }));
+        const paymentsHistory = customerPayments.map(p => ({ type: 'payment', data: p, date: new Date(p.date) }));
+        return [...salesHistory, ...paymentsHistory].sort((a, b) => b.date.getTime() - a.date.getTime());
+    }, [sales, customerPayments]);
     
     const totalSpent = useMemo(() => sales.reduce((acc, s) => acc + s.amountPaid, 0), [sales]);
     const serviceStatus = isServiceDue(customer);
@@ -173,6 +186,19 @@ const CustomerDetailsModal: React.FC<{
         }
     };
     
+    const handleRecordPayment = (e: React.FormEvent) => {
+        e.preventDefault();
+        const amount = Number(paymentAmount);
+        if (!amount || amount <= 0) {
+            toast.error("Please enter a valid amount.");
+            return;
+        }
+        const success = recordCustomerPayment(customer.id, amount);
+        if (success) {
+            setPaymentAmount('');
+        }
+    };
+
     const handleDownloadLedger = () => {
         if(customerTransactions.length === 0) {
             toast.error("No transactions to download.");
@@ -277,6 +303,27 @@ const CustomerDetailsModal: React.FC<{
                         <p className="text-3xl font-bold text-indigo-600">{customer.loyaltyPoints || 0}</p>
                     </div>
                 </div>
+                
+                 {isMaster && customer.balance > 0 && (
+                    <form onSubmit={handleRecordPayment} className="p-4 bg-green-50 rounded-lg border border-green-200">
+                        <h4 className="font-semibold text-green-800 mb-2 flex items-center gap-2"><DollarSign size={18}/> Settle Balance</h4>
+                        <div className="flex items-end gap-2">
+                            <div className="flex-grow">
+                                <Input 
+                                    label="Amount Paid"
+                                    type="number"
+                                    value={paymentAmount}
+                                    onChange={e => setPaymentAmount(e.target.value)}
+                                    max={customer.balance}
+                                    min="1"
+                                    placeholder={`Max: ${formatCurrency(customer.balance)}`}
+                                    required
+                                />
+                            </div>
+                            <Button type="submit">Record Payment</Button>
+                        </div>
+                    </form>
+                )}
 
                 <div className="border-b border-gray-200">
                     <nav className="-mb-px flex space-x-6" aria-label="Tabs">
@@ -341,17 +388,33 @@ const CustomerDetailsModal: React.FC<{
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                            {sales.length > 0 ? (
-                                sales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(sale => (
-                                   <tr key={sale.id}>
-                                        <td className="px-2 py-2 text-xs">{new Date(sale.date).toLocaleDateString()}</td>
-                                        <td className="px-2 py-2">Sale <span className="font-mono text-xs bg-gray-100 p-1 rounded">{sale.id}</span></td>
-                                        <td className="px-2 py-2 text-right">{formatCurrency(sale.total)}</td>
-                                        <td className="px-2 py-2 text-right text-green-600">{formatCurrency(sale.amountPaid)}</td>
-                                        <td className="px-2 py-2 text-right font-semibold">{formatCurrency(sale.balanceDue)}</td>
-                                   </tr>
-                                ))
-                            ) : <tr><td colSpan={5} className="text-gray-500 text-center py-4">No sales history.</td></tr>}
+                            {combinedHistory.length > 0 ? (
+                                combinedHistory.map(item => {
+                                    if(item.type === 'sale') {
+                                        const sale = item.data as Sale;
+                                        return (
+                                            <tr key={`sale-${sale.id}`}>
+                                                <td className="px-2 py-2 text-xs">{new Date(sale.date).toLocaleDateString()}</td>
+                                                <td className="px-2 py-2">Sale <span className="font-mono text-xs bg-gray-100 p-1 rounded">{sale.id}</span></td>
+                                                <td className="px-2 py-2 text-right">{formatCurrency(sale.total)}</td>
+                                                <td className="px-2 py-2 text-right text-green-600">{formatCurrency(sale.amountPaid)}</td>
+                                                <td className="px-2 py-2 text-right font-semibold">{formatCurrency(sale.balanceDue)}</td>
+                                            </tr>
+                                        )
+                                    } else {
+                                        const payment = item.data as Payment;
+                                        return (
+                                             <tr key={`payment-${payment.id}`} className="bg-green-50 hover:bg-green-100">
+                                                <td className="px-2 py-2 text-xs">{new Date(payment.date).toLocaleDateString()}</td>
+                                                <td className="px-2 py-2 font-semibold text-green-800">{payment.notes || 'Payment Received'}</td>
+                                                <td className="px-2 py-2 text-right">-</td>
+                                                <td className="px-2 py-2 text-right font-semibold text-green-800">{formatCurrency(payment.amount)}</td>
+                                                <td className="px-2 py-2 text-right">-</td>
+                                            </tr>
+                                        )
+                                    }
+                                })
+                            ) : <tr><td colSpan={5} className="text-gray-500 text-center py-4">No account history.</td></tr>}
                             </tbody>
                          </table>
                     </div>

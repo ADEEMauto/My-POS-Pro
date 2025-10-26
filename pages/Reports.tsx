@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { formatCurrency } from '../utils/helpers';
@@ -144,16 +143,15 @@ const Reports: React.FC = () => {
                 `;
             }).join('');
             
+            const logoSize = shopInfo?.pdfLogoSize ?? 50;
             const logoHtml = shopInfo?.logoUrl 
-                ? `<img src="${shopInfo.logoUrl}" alt="Shop Logo" style="height: 50px; width: auto; margin: 0 auto 10px auto; display: block; object-fit: contain;" />`
+                ? `<img src="${shopInfo.logoUrl}" alt="Shop Logo" style="height: ${logoSize}px; width: auto; margin: 0 auto 10px auto; display: block; object-fit: contain;" />`
                 : '';
 
             pdfContainer.innerHTML = `
                 <div>
                     <div style="text-align: center; margin-bottom: 20px;">
                         ${logoHtml}
-                        <h1 style="font-size: 24px; margin: 0;">${shopInfo?.name || 'Inventory'}</h1>
-                        <p style="font-size: 12px; margin: 0;">${shopInfo?.address || ''}</p>
                     </div>
                     <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">${reportTitle}</h2>
                     <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>

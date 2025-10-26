@@ -3,6 +3,7 @@ export interface ShopInfo {
     address: string;
     logoUrl?: string;
     receiptLogoSize?: number;
+    pdfLogoSize?: number;
 }
 
 export type UserRole = 'master' | 'sub';
@@ -162,4 +163,20 @@ export interface Expense {
     amount: number;
     date: string; // ISO string
     category: string;
+}
+
+export interface Payment {
+  id: string;
+  customerId: string;
+  amount: number;
+  date: string; // ISO string
+  notes?: string;
+}
+
+export interface DemandItem {
+  id: string;
+  quantity: number;
+  name: string;
+  category: string;
+  manufacturer: string;
 }

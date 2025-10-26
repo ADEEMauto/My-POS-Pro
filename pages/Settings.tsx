@@ -12,11 +12,12 @@ const Settings: React.FC = () => {
     const { currentUser, shopInfo, saveShopInfo } = useAppContext();
     const restoreInputRef = useRef<HTMLInputElement>(null);
     const [backupFrequency, setBackupFrequency] = useLocalStorage('backupFrequency', 'daily');
-    const [shopDetails, setShopDetails] = useState<ShopInfo & { receiptLogoSize: number }>({
+    const [shopDetails, setShopDetails] = useState<ShopInfo & { receiptLogoSize: number; pdfLogoSize: number }>({
         name: '',
         address: '',
         logoUrl: undefined,
         receiptLogoSize: 9,
+        pdfLogoSize: 50,
     });
 
     const isMaster = currentUser?.role === 'master';
@@ -28,6 +29,7 @@ const Settings: React.FC = () => {
                 address: shopInfo.address,
                 logoUrl: shopInfo.logoUrl,
                 receiptLogoSize: shopInfo.receiptLogoSize ?? 9,
+                pdfLogoSize: shopInfo.pdfLogoSize ?? 50,
             });
         }
     }, [shopInfo]);
@@ -113,6 +115,7 @@ const Settings: React.FC = () => {
                 address: shopDetails.address.trim(),
                 logoUrl: shopDetails.logoUrl,
                 receiptLogoSize: shopDetails.receiptLogoSize,
+                pdfLogoSize: shopDetails.pdfLogoSize,
             });
             toast.success("Shop details updated successfully!");
         } else {
@@ -185,6 +188,27 @@ const Settings: React.FC = () => {
                                 max="24"
                                 step="1"
                                 value={shopDetails.receiptLogoSize}
+                                onChange={handleDetailsChange}
+                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                             <div className="flex justify-between text-xs text-gray-500 mt-1">
+                                <span>Small</span>
+                                <span>Large</span>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label htmlFor="pdf-logo-size-slider" className="block text-sm font-medium text-gray-700 mb-2">
+                                PDF Report Logo Size: <span className="font-bold">{shopDetails.pdfLogoSize}px</span>
+                            </label>
+                            <input
+                                id="pdf-logo-size-slider"
+                                type="range"
+                                name="pdfLogoSize"
+                                min="20"
+                                max="150"
+                                step="5"
+                                value={shopDetails.pdfLogoSize}
                                 onChange={handleDetailsChange}
                                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                             />

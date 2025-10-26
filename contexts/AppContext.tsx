@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Expense } from '../types';
+import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Expense, Payment, DemandItem } from '../types';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
+import { formatCurrency } from '../utils/helpers';
 
 // This is a simple hash function for demonstration. 
 // In a real app, use a library like bcrypt.js on a server.
@@ -56,6 +57,7 @@ interface AppContextType {
 
     customers: Customer[];
     updateCustomer: (customerId: string, details: { id: string; name: string; contactNumber?: string; servicingNotes?: string; nextServiceDate?: string; serviceFrequencyValue?: number; serviceFrequencyUnit?: 'days' | 'months' | 'years'; }) => boolean;
+    recordCustomerPayment: (customerId: string, amount: number, notes?: string) => boolean;
 
     earningRules: EarningRule[];
     updateEarningRules: (rules: EarningRule[]) => void;
@@ -80,6 +82,13 @@ interface AppContextType {
     addExpense: (expense: Omit<Expense, 'id'>) => void;
     updateExpense: (expense: Expense) => void;
     deleteExpense: (expenseId: string) => void;
+    
+    payments: Payment[];
+
+    demandItems: DemandItem[];
+    addDemandItem: (item: Omit<DemandItem, 'id'>) => void;
+    updateDemandItem: (item: DemandItem) => void;
+    deleteDemandItem: (itemId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -93,6 +102,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const [sales, setSales] = useLocalStorage<Sale[]>('sales', []);
     const [customers, setCustomers] = useLocalStorage<Customer[]>('customers', []);
     const [expenses, setExpenses] = useLocalStorage<Expense[]>('expenses', []);
+    const [payments, setPayments] = useLocalStorage<Payment[]>('payments', []);
+    const [demandItems, setDemandItems] = useLocalStorage<DemandItem[]>('demandItems', []);
     const [loading, setLoading] = useState(true);
 
     const [earningRules, setEarningRules] = useLocalStorage<EarningRule[]>('earningRules', [
@@ -691,6 +702,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
          toast.success("Customer details updated.");
          return true;
     };
+
+    const recordCustomerPayment = (customerId: string, amount: number, notes?: string): boolean => {
+        if (currentUser?.role !== 'master') {
+            toast.error("Only master account can record payments.");
+            return false;
+        }
+        if (isNaN(amount) || amount <= 0) {
+            toast.error("Payment amount must be a positive number.");
+            return false;
+        }
+
+        const customerIndex = customers.findIndex(c => c.id === customerId);
+        if (customerIndex === -1) {
+            toast.error("Customer not found.");
+            return false;
+        }
+
+        const updatedCustomers = [...customers];
+        const customerToUpdate = { ...updatedCustomers[customerIndex] };
+
+        if (amount > customerToUpdate.balance) {
+            toast.error(`Payment amount cannot be greater than the outstanding balance of ${formatCurrency(customerToUpdate.balance)}.`);
+            return false;
+        }
+
+        customerToUpdate.balance -= amount;
+        updatedCustomers[customerIndex] = customerToUpdate;
+        setCustomers(updatedCustomers);
+
+        const newPayment: Payment = {
+            id: uuidv4(),
+            customerId,
+            amount,
+            date: new Date().toISOString(),
+            notes: notes || 'Payment for outstanding balance',
+        };
+
+        setPayments(prev => [...prev, newPayment].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        
+        toast.success(`Payment of ${formatCurrency(amount)} recorded for ${customerToUpdate.name}.`);
+        return true;
+    };
     
     // Loyalty & Promotions
     const updateEarningRules = (rules: EarningRule[]) => {
@@ -882,6 +935,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Expense deleted.");
     };
 
+    const addDemandItem = (item: Omit<DemandItem, 'id'>) => {
+        const newItem = { ...item, id: uuidv4() };
+        setDemandItems(prev => [newItem, ...prev]);
+        toast.success(`"${item.name}" added to demand list.`);
+    };
+
+    const updateDemandItem = (updatedItem: DemandItem) => {
+        setDemandItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+        toast.success(`"${updatedItem.name}" updated.`);
+    };
+
+    const deleteDemandItem = (itemId: string) => {
+        setDemandItems(prev => prev.filter(item => item.id !== itemId));
+        toast.success("Demand item removed.");
+    };
+
 
     return (
         <AppContext.Provider value={{
@@ -889,13 +958,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             inventory, addProduct, updateProduct, deleteProduct, findProductByBarcode, addSampleData, importFromExcel, addStock,
             categories, addCategory, updateCategory, deleteCategory,
             sales, createSale, reverseSale,
-            customers, updateCustomer,
+            customers, updateCustomer, recordCustomerPayment,
             earningRules, updateEarningRules, redemptionRule, updateRedemptionRule,
             promotions, addPromotion, updatePromotion, deletePromotion,
             loyaltyTransactions, adjustCustomerPoints,
             loyaltyExpirySettings, updateLoyaltyExpirySettings,
             customerTiers, updateCustomerTiers,
-            expenses, addExpense, updateExpense, deleteExpense
+            expenses, addExpense, updateExpense, deleteExpense,
+            payments,
+            demandItems, addDemandItem, updateDemandItem, deleteDemandItem
         }}>
             {children}
         </AppContext.Provider>

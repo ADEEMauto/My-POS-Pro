@@ -1,8 +1,9 @@
+
 import React from 'react';
 // FIX: Changed react-router-dom import to use namespace import to resolve module export error.
 import * as ReactRouterDOM from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
-import { LayoutDashboard, ShoppingCart, Archive, Layers, Users, BarChart2, User, Settings, X, Receipt, Contact, Award, CreditCard } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Archive, Layers, Users, BarChart2, User, Settings, X, Receipt, Contact, Award, CreditCard, ClipboardList, ClipboardCheck } from 'lucide-react';
 
 const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onClick: () => void; }> = ({ to, icon, label, onClick }) => (
     <ReactRouterDOM.NavLink
@@ -32,7 +33,9 @@ const Sidebar: React.FC<{ isOpen: boolean, onToggle: () => void }> = ({ isOpen, 
         { to: "/customers", icon: <Contact className="w-5 h-5" />, label: "Customers" },
         { to: "/users", icon: <Users className="w-5 h-5" />, label: "Manage Users" },
         { to: "/reports", icon: <BarChart2 className="w-5 h-5" />, label: "Reports" },
+        { to: "/demand", icon: <ClipboardList className="w-5 h-5" />, label: "Demand List" },
         { to: "/expenses", icon: <CreditCard className="w-5 h-5" />, label: "Expenses" },
+        { to: "/due-payments", icon: <ClipboardCheck className="w-5 h-5" />, label: "Due Payments" },
         { to: "/loyalty", icon: <Award className="w-5 h-5" />, label: "Loyalty Program" },
         { to: "/settings", icon: <Settings className="w-5 h-5" />, label: "Settings" },
     ];

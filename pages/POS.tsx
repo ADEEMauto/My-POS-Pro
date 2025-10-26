@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
@@ -355,6 +356,14 @@ const POS: React.FC = () => {
     }, [totalDue, isCheckoutModalOpen]);
 
     const handleCheckout = () => {
+        const numericAmountPaid = Number(amountPaid) || 0;
+        const roundedTotalDue = Math.round(totalDue);
+
+        if (numericAmountPaid < roundedTotalDue && (!bikeNumber.trim() || !customerName.trim())) {
+            toast.error("Customer details (Bike No & Name) are required when the bill is not fully paid.");
+            return;
+        }
+        
         let finalCustomerName = customerName.trim();
         let finalBikeNumber = bikeNumber.trim();
 
