@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
@@ -107,6 +106,7 @@ const POS: React.FC = () => {
     const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
     const [overallDiscount, setOverallDiscount] = useState<number | string>('');
     const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+    const [tuningCharges, setTuningCharges] = useState<number | string>('');
     const [laborCharges, setLaborCharges] = useState<number | string>('');
     
     const [isSaleCompleteModalOpen, setIsSaleCompleteModalOpen] = useState(false);
@@ -307,20 +307,21 @@ const POS: React.FC = () => {
     
     const subtotalAfterItemDiscount = subtotal - totalItemDiscount;
 
-    const subtotalWithLabor = useMemo(() => {
+    const subtotalWithCharges = useMemo(() => {
+        const numericTuningCharges = parseFloat(String(tuningCharges)) || 0;
         const numericLaborCharges = parseFloat(String(laborCharges)) || 0;
-        return subtotalAfterItemDiscount + numericLaborCharges;
-    }, [subtotalAfterItemDiscount, laborCharges]);
+        return subtotalAfterItemDiscount + numericTuningCharges + numericLaborCharges;
+    }, [subtotalAfterItemDiscount, tuningCharges, laborCharges]);
 
     const overallDiscountAmount = useMemo(() => {
         const value = parseFloat(String(overallDiscount));
         if (isNaN(value) || value < 0) return 0;
-        return overallDiscountType === 'fixed' ? value : (subtotalWithLabor * value) / 100;
-    }, [overallDiscount, overallDiscountType, subtotalWithLabor]);
+        return overallDiscountType === 'fixed' ? value : (subtotalWithCharges * value) / 100;
+    }, [overallDiscount, overallDiscountType, subtotalWithCharges]);
     
     const cartTotal = useMemo(() => {
-        return subtotalWithLabor - overallDiscountAmount;
-    }, [subtotalWithLabor, overallDiscountAmount]);
+        return subtotalWithCharges - overallDiscountAmount;
+    }, [subtotalWithCharges, overallDiscountAmount]);
 
     const previousBalance = useMemo(() => currentCustomer?.balance || 0, [currentCustomer]);
     
@@ -386,6 +387,7 @@ const POS: React.FC = () => {
             overallDiscountType,
             { customerName: finalCustomerName, bikeNumber: finalBikeNumber, contactNumber, serviceFrequencyValue: Number(serviceFrequencyValue) || undefined, serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined },
             Number(pointsToRedeem) || 0,
+            parseFloat(String(tuningCharges)) || 0,
             parseFloat(String(laborCharges)) || 0,
             Number(amountPaid) || 0
         );
@@ -397,6 +399,7 @@ const POS: React.FC = () => {
             // Reset state for next sale
             setCart([]);
             setOverallDiscount('');
+            setTuningCharges('');
             setLaborCharges('');
             setCustomerName('');
             setBikeNumber('');
@@ -680,6 +683,17 @@ const POS: React.FC = () => {
                     </div>
 
                     <div className="pt-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Tuning Charges (Optional)</label>
+                        <Input
+                            type="number"
+                            placeholder="e.g., 200"
+                            value={tuningCharges}
+                            onChange={e => setTuningCharges(e.target.value)}
+                            className="h-9"
+                        />
+                    </div>
+
+                    <div className="pt-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Labor Charges (Optional)</label>
                         <Input
                             type="number"
@@ -715,7 +729,7 @@ const POS: React.FC = () => {
                     <div className="text-xl font-bold flex justify-between pt-2 border-t text-primary-700"><span>TOTAL</span> <span>{formatCurrency(cartTotal)}</span></div>
                 </div>
 
-                <Button onClick={() => setCheckoutModalOpen(true)} disabled={cart.length === 0} className="w-full mt-4 text-lg">
+                <Button onClick={() => setCheckoutModalOpen(true)} disabled={cartTotal <= 0} className="w-full mt-4 text-lg">
                     Checkout
                 </Button>
             </div>

@@ -52,7 +52,7 @@ interface AppContextType {
     deleteCategory: (id: string) => void;
 
     sales: Sale[];
-    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number, amountPaid: number) => Sale | null;
+    createSale: (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, tuningCharges: number, laborCharges: number, amountPaid: number) => Sale | null;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     customers: Customer[];
@@ -395,9 +395,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Category and its sub-categories deleted.");
     };
 
-    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, laborCharges: number, amountPaid: number): Sale | null => {
-        if (cartItems.length === 0) {
-            toast.error("Cart is empty.");
+    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, tuningCharges: number, laborCharges: number, amountPaid: number): Sale | null => {
+        if (cartItems.length === 0 && laborCharges <= 0 && tuningCharges <= 0) {
+            toast.error("Cannot checkout with an empty cart and no charges.");
             return null;
         }
 
@@ -425,10 +425,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const totalItemDiscounts = saleItems.reduce((acc, item) => acc + (item.originalPrice - item.price) * item.quantity, 0);
         
         const subtotalAfterItemDiscounts = subtotal - totalItemDiscounts;
-        const totalWithLabor = subtotalAfterItemDiscounts + laborCharges;
-        const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (totalWithLabor * overallDiscountValue) / 100;
+        const totalWithCharges = subtotalAfterItemDiscounts + tuningCharges + laborCharges;
+        const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (totalWithCharges * overallDiscountValue) / 100;
         
-        const cartTotal = totalWithLabor - overallDiscountAmount;
+        const cartTotal = totalWithCharges - overallDiscountAmount;
 
         const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
         const isWalkIn = customerId === 'WALKIN';
@@ -545,6 +545,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: newSaleId, customerId, customerName: customerInfo.customerName.trim(), items: saleItems,
             subtotal, totalItemDiscounts, overallDiscount: overallDiscountValue, overallDiscountType,
             loyaltyDiscount: Math.round(loyaltyDiscount),
+            tuningCharges: tuningCharges > 0 ? tuningCharges : undefined,
             laborCharges: laborCharges > 0 ? laborCharges : undefined,
             total: roundedTotal, 
             amountPaid: roundedAmountPaid,

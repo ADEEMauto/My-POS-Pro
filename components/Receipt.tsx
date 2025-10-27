@@ -17,6 +17,10 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
     const showOverallDiscount = sale.overallDiscount > 0;
     const showLoyaltyDiscount = (sale.loyaltyDiscount || 0) > 0;
 
+    // Only show subtotal if it's different from the final total AND there are items.
+    // This hides the subtotal line for service-only bills and for simple bills where subtotal equals total.
+    const showSubtotalLine = sale.items.length > 0 && Math.round(sale.subtotal) !== Math.round(sale.total);
+
     const calculateNextServiceDate = (lastVisit: string, value?: number, unit?: 'days' | 'months' | 'years'): string | null => {
         if (!value || !unit) return null;
         
@@ -113,6 +117,23 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             )}
                         </tr>
                     ))}
+                    {sale.tuningCharges && sale.tuningCharges > 0 && (
+                        <tr className="align-top text-xs">
+                            {hasItemDiscounts ? (
+                                <>
+                                    <td className="text-center pt-1 px-1"></td>
+                                    <td colSpan={3} className="text-left pt-1 px-1">Tuning Charges</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges)}</td>
+                                </>
+                            ) : (
+                                <>
+                                    <td className="text-center pt-1 px-1"></td>
+                                    <td className="text-left pt-1 px-1">Tuning Charges</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges)}</td>
+                                </>
+                            )}
+                        </tr>
+                    )}
                     {sale.laborCharges && sale.laborCharges > 0 && (
                         <tr className="align-top text-xs">
                             {hasItemDiscounts ? (
@@ -138,10 +159,12 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
             
             {/* 9 & 10. Totals */}
             <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
-                </div>
+                {showSubtotalLine && (
+                    <div className="flex justify-between">
+                        <span>Subtotal</span>
+                        <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
+                    </div>
+                )}
                 {showItemDiscounts && (
                     <div className="flex justify-between">
                         <span>Item Discounts</span>

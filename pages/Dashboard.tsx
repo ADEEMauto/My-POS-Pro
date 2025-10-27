@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 // FIX: Changed react-router-dom import to use namespace import to resolve module export error.
@@ -48,17 +47,17 @@ const Dashboard: React.FC = () => {
         sales.forEach(sale => {
             if (new Date(sale.date).toLocaleDateString('en-CA') === todayStr) {
                 const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
-                const labor = sale.laborCharges || 0;
-                const totalWithLabor = subtotalAfterItemDiscounts + labor;
+                const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+                const totalWithCharges = subtotalAfterItemDiscounts + charges;
 
-                if (totalWithLabor > 0) {
-                    const itemRatio = subtotalAfterItemDiscounts / totalWithLabor;
+                if (totalWithCharges > 0) {
+                    const itemRatio = subtotalAfterItemDiscounts / totalWithCharges;
                     salesTotal += sale.total * itemRatio;
-                } else if (labor === 0) {
+                } else if (charges === 0) {
                     salesTotal += sale.total;
                 }
                 
-                laborCharges += labor;
+                laborCharges += charges;
             }
         });
         return { todaysSalesTotal: salesTotal, todaysLaborCharges: laborCharges };
@@ -302,20 +301,20 @@ const Dashboard: React.FC = () => {
     const totalSales = useMemo(() => {
         return sales.reduce((acc, sale) => {
             const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
-            const labor = sale.laborCharges || 0;
-            const totalWithLabor = subtotalAfterItemDiscounts + labor;
+            const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+            const totalWithCharges = subtotalAfterItemDiscounts + charges;
 
-            if (totalWithLabor > 0) {
-                const itemRatio = subtotalAfterItemDiscounts / totalWithLabor;
+            if (totalWithCharges > 0) {
+                const itemRatio = subtotalAfterItemDiscounts / totalWithCharges;
                 return acc + (sale.total * itemRatio);
             }
-            if (labor === 0) {
+            if (charges === 0) {
                 return acc + sale.total;
             }
             return acc;
         }, 0);
     }, [sales]);
-    const totalLaborCharges = sales.reduce((total, sale) => total + (sale.laborCharges || 0), 0);
+    const totalLaborCharges = sales.reduce((total, sale) => total + (sale.laborCharges || 0) + (sale.tuningCharges || 0), 0);
 
     return (
         <div className="space-y-8">
@@ -323,7 +322,7 @@ const Dashboard: React.FC = () => {
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <StatCard title="Today's Sale" value={formatCurrency(todaysSalesTotal)} icon={<DollarSign className="w-6 h-6 text-white" />} color="bg-green-500" />
-                <StatCard title="Today's Labor Charges" value={formatCurrency(todaysLaborCharges)} icon={<FileText className="w-6 h-6 text-white" />} color="bg-cyan-500" />
+                <StatCard title="Today's Labor & Tuning" value={formatCurrency(todaysLaborCharges)} icon={<FileText className="w-6 h-6 text-white" />} color="bg-cyan-500" />
             </div>
 
             {isMaster && (
@@ -331,7 +330,7 @@ const Dashboard: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         <StatCard title="Total Investment" value={formatCurrency(totalInvestment)} icon={<DollarSign className="w-6 h-6 text-white" />} color="bg-blue-500" />
                         <StatCard title="Total Sales" value={formatCurrency(totalSales)} icon={<ShoppingCart className="w-6 h-6 text-white" />} color="bg-green-500" />
-                        <StatCard title="Total Labor Charges" value={formatCurrency(totalLaborCharges)} icon={<FileText className="w-6 h-6 text-white" />} color="bg-cyan-500" />
+                        <StatCard title="Total Labor & Tuning" value={formatCurrency(totalLaborCharges)} icon={<FileText className="w-6 h-6 text-white" />} color="bg-cyan-500" />
                         <StatCard title="Total Products" value={inventory.length} icon={<Package className="w-6 h-6 text-white" />} color="bg-purple-500" />
                         <StatCard title="Low Stock Items" value={lowStockProducts.length} icon={<AlertTriangle className="w-6 h-6 text-white" />} color="bg-yellow-500" />
                     </div>

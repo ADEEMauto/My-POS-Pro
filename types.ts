@@ -62,6 +62,7 @@ export interface Sale {
     overallDiscount: number; // The value of the discount (e.g. 500 or 15)
     overallDiscountType: 'fixed' | 'percentage';
     loyaltyDiscount?: number; // Discount from redeemed loyalty points
+    tuningCharges?: number;
     laborCharges?: number;
     total: number; // Final amount
     amountPaid: number;
