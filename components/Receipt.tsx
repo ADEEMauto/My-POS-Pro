@@ -122,13 +122,13 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             {hasItemDiscounts ? (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
-                                    <td colSpan={3} className="text-left pt-1 px-1">Tuning Charges</td>
+                                    <td colSpan={3} className="text-left pt-1 px-1">Tuning</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges)}</td>
                                 </>
                             ) : (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
-                                    <td className="text-left pt-1 px-1">Tuning Charges</td>
+                                    <td className="text-left pt-1 px-1">Tuning</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges)}</td>
                                 </>
                             )}

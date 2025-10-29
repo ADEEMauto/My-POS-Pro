@@ -105,15 +105,7 @@ const CustomerDetailsModal: React.FC<{
     sales: Sale[],
     tier: CustomerTier | null,
     onClose: () => void,
-    onSave: (details: {
-        id: string;
-        name: string;
-        contactNumber?: string,
-        servicingNotes?: string,
-        nextServiceDate?: string,
-        serviceFrequencyValue?: number,
-        serviceFrequencyUnit?: 'days' | 'months' | 'years',
-    }) => boolean
+    onSave: (details: Partial<Customer>) => boolean
 }> = ({ customer, sales, tier, onClose, onSave }) => {
     const { currentUser, loyaltyTransactions, adjustCustomerPoints, payments, recordCustomerPayment } = useAppContext();
     const isMaster = currentUser?.role === 'master';
@@ -128,6 +120,7 @@ const CustomerDetailsModal: React.FC<{
     const [nextServiceDate, setNextServiceDate] = useState(customer.nextServiceDate ? customer.nextServiceDate.split('T')[0] : '');
     const [serviceFrequencyValue, setServiceFrequencyValue] = useState<number | string>(customer.serviceFrequencyValue || '');
     const [serviceFrequencyUnit, setServiceFrequencyUnit] = useState<'days' | 'months' | 'years'>(customer.serviceFrequencyUnit || 'months');
+    const [manualVisitAdjustment, setManualVisitAdjustment] = useState<number | string>(customer.manualVisitAdjustment || 0);
 
     // Points Adjustment State
     const [adjustmentPoints, setAdjustmentPoints] = useState('');
@@ -151,6 +144,7 @@ const CustomerDetailsModal: React.FC<{
     }, [sales, customerPayments]);
     
     const totalSpent = useMemo(() => sales.reduce((acc, s) => acc + s.amountPaid, 0), [sales]);
+    const totalVisits = useMemo(() => sales.length + (customer.manualVisitAdjustment || 0), [sales, customer]);
     const serviceStatus = isServiceDue(customer);
 
     const handleSave = () => {
@@ -166,6 +160,7 @@ const CustomerDetailsModal: React.FC<{
             nextServiceDate: nextServiceDate || undefined,
             serviceFrequencyValue: serviceFrequencyValue ? Number(serviceFrequencyValue) : undefined,
             serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined,
+            manualVisitAdjustment: Number(manualVisitAdjustment) || 0,
         });
         
         if (success) {
@@ -286,7 +281,7 @@ const CustomerDetailsModal: React.FC<{
                             </div>
                             <div className="bg-gray-100 p-2 rounded-lg">
                                 <p className="text-xs text-gray-500">Total Visits</p>
-                                <p className="font-bold text-primary-600 text-sm">{sales.length}</p>
+                                <p className="font-bold text-primary-600 text-sm">{totalVisits}</p>
                             </div>
                             <div className="bg-gray-100 p-2 rounded-lg">
                                 <p className="text-xs text-gray-500">Total Paid</p>
@@ -345,6 +340,12 @@ const CustomerDetailsModal: React.FC<{
                             <Input label="Customer Name" value={name} onChange={(e) => setName(e.target.value)} required />
                             <Input label="Bike Number (ID)" value={bikeNumber} onChange={(e) => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())} required />
                             <Input label="Contact Number" type="tel" placeholder="e.g., 03001234567" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} />
+                             {isMaster && (
+                                <div>
+                                    <Input label="Manual Visit Adjustment" type="number" placeholder="e.g., 1 or -2" value={manualVisitAdjustment} onChange={(e) => setManualVisitAdjustment(e.target.value)} />
+                                    <p className="text-xs text-gray-500 mt-1">Adjusts total visits for tier calculation.</p>
+                                </div>
+                             )}
                             <div className="md:col-span-2">
                                 <label htmlFor="servicing-notes" className="block text-sm font-medium text-gray-700 mb-1">Servicing Notes</label>
                                 <textarea id="servicing-notes" rows={3} className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm" placeholder="e.g., Every 3 months, check oil..." value={servicingNotes} onChange={(e) => setServicingNotes(e.target.value)}></textarea>
@@ -543,7 +544,9 @@ const Customers: React.FC = () => {
                 case 'balance':
                     return ((a.balance || 0) - (b.balance || 0)) * dir;
                 case 'visits':
-                    return (a.saleIds.length - b.saleIds.length) * dir;
+                    const visitsA = a.saleIds.length + (a.manualVisitAdjustment || 0);
+                    const visitsB = b.saleIds.length + (b.manualVisitAdjustment || 0);
+                    return (visitsA - visitsB) * dir;
                 case 'profit': {
                     const profitA = customerMetrics.get(a.id)?.totalProfit || 0;
                     const profitB = customerMetrics.get(b.id)?.totalProfit || 0;
@@ -667,6 +670,7 @@ const Customers: React.FC = () => {
                         const tier = customer.tierId ? tierMap.get(customer.tierId) : null;
                         const tierColor = tier ? tierColors[tier.name.toLowerCase()] || 'bg-gray-200' : 'bg-gray-200';
                         const hasBalance = (customer.balance || 0) > 0;
+                        const totalVisits = customer.saleIds.length + (customer.manualVisitAdjustment || 0);
 
                         return (
                         <div key={customer.id} className={`bg-white rounded-lg shadow-md p-4 flex flex-col justify-between border-t-4 ${hasBalance ? 'border-red-500' : 'border-transparent'}`}>
@@ -695,7 +699,7 @@ const Customers: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="text-sm space-y-2 text-gray-600">
-                                    <p className="flex items-center gap-2"><ShoppingCart size={16} /> <strong>Total Visits:</strong> {customer.saleIds.length}</p>
+                                    <p className="flex items-center gap-2"><ShoppingCart size={16} /> <strong>Total Visits:</strong> {totalVisits}</p>
                                     <p className="flex items-center gap-2"><Calendar size={16} /> <strong>Last Visit:</strong> {formatDate(customer.lastSeen)}</p>
                                 </div>
                                 {serviceStatus.due && (

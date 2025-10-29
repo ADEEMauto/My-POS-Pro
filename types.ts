@@ -98,6 +98,7 @@ export interface Customer {
     loyaltyPoints: number;
     tierId: string | null;
     balance: number;
+    manualVisitAdjustment?: number;
 }
 
 export interface EarningRule {

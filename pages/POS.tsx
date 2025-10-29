@@ -618,158 +618,133 @@ const POS: React.FC = () => {
                         <div className="text-center text-gray-500 pt-10">
                             <ShoppingCart size={48} className="mx-auto text-gray-300" />
                             <p>Your cart is empty</p>
-                            <p className="text-sm">Click on a product to add it.</p>
+                            <p className="text-sm">Click an item to add it to the cart</p>
                         </div>
                     ) : (
-                        cart.map(item => {
-                            const lineItemTotal = (item.salePrice - (item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount / 100))) * item.cartQuantity;
-                            return (
-                                <div key={item.id} className="py-3 border-b border-gray-100">
-                                    <div className="flex justify-between items-start gap-2">
-                                        <div>
-                                            <p className="font-semibold text-sm text-gray-800 leading-tight">{item.name}</p>
-                                            <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
-                                        </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            <Input
-                                                type="number"
-                                                value={item.cartQuantity}
-                                                onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))}
-                                                className="w-16 h-8 text-center"
-                                                min="1"
-                                                max={item.quantity}
-                                                aria-label={`Quantity for ${item.name}`}
-                                            />
-                                            <button onClick={() => updateQuantity(item.id, 0)} className="text-red-500 hover:text-red-700 p-1" title="Remove"><X size={18} /></button>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-2">
-                                        <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
-                                        <Input 
-                                            id={`discount-${item.id}`}
-                                            type="number"
-                                            value={item.discount || ''}
-                                            onChange={e => handleItemDiscountChange(item.id, e.target.value)}
-                                            className="w-20 h-8 text-xs p-1"
-                                            placeholder="0"
-                                            aria-label={`Discount for ${item.name}`}
-                                        />
-                                        <select
-                                            value={item.discountType}
-                                            onChange={e => handleItemDiscountTypeChange(item.id, e.target.value as 'fixed' | 'percentage')}
-                                            className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white focus:ring-primary-500 focus:border-primary-500"
-                                            aria-label={`Discount type for ${item.name}`}
-                                        >
-                                            <option value="fixed">Rs.</option>
-                                            <option value="percentage">%</option>
-                                        </select>
-                                        <div className="flex-grow text-right text-sm font-semibold">
-                                            {formatCurrency(lineItemTotal)}
-                                        </div>
-                                    </div>
+                        cart.map(item => (
+                            <div key={item.id} className="bg-gray-50 p-3 rounded-md">
+                                <div className="flex justify-between items-start">
+                                    <p className="font-semibold text-sm flex-grow pr-2">{item.name}</p>
+                                    <button onClick={() => updateQuantity(item.id, 0)} className="text-gray-400 hover:text-red-600 shrink-0"><X size={16} /></button>
                                 </div>
-                            );
-                        })
+                                <div className="flex items-center justify-between mt-2">
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => updateQuantity(item.id, item.cartQuantity - 1)} className="p-1 border rounded-md">-</button>
+                                        <Input 
+                                            type="number" 
+                                            value={item.cartQuantity} 
+                                            onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 1)} 
+                                            className="w-12 text-center h-8"
+                                        />
+                                        <button onClick={() => updateQuantity(item.id, item.cartQuantity + 1)} className="p-1 border rounded-md">+</button>
+                                    </div>
+                                    <span className="font-semibold">{formatCurrency(item.salePrice * item.cartQuantity)}</span>
+                                </div>
+                                 <div className="flex items-center gap-2 mt-2">
+                                    <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
+                                    <Input 
+                                        id={`discount-${item.id}`}
+                                        type="number"
+                                        value={item.discount || ''}
+                                        onChange={e => handleItemDiscountChange(item.id, e.target.value)}
+                                        className="w-20 h-8 text-xs p-1"
+                                        placeholder="0"
+                                    />
+                                    <select
+                                        value={item.discountType}
+                                        onChange={e => handleItemDiscountTypeChange(item.id, e.target.value as 'fixed' | 'percentage')}
+                                        className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white"
+                                    >
+                                        <option value="fixed">Rs.</option>
+                                        <option value="percentage">%</option>
+                                    </select>
+                                </div>
+                            </div>
+                        ))
                     )}
+                    <Button onClick={addManualItemToCart} variant="secondary" size="sm" className="w-full mt-2 flex items-center justify-center gap-2">
+                        <PlusCircle size={16}/> Add Manual Item/Service
+                    </Button>
                 </div>
 
-                <div className="border-t pt-4 mt-2 space-y-2 text-sm">
-                    <Button onClick={addManualItemToCart} variant="secondary" className="w-full mb-2 flex items-center justify-center gap-2"><PlusCircle size={16}/> Add Manual Item</Button>
-                    <div className="flex justify-between"><span>Subtotal</span> <span className="font-semibold">{formatCurrency(subtotal)}</span></div>
-                    {totalItemDiscount > 0 && <div className="flex justify-between text-red-600"><span>Item Discounts</span> <span className="font-semibold">-{formatCurrency(totalItemDiscount)}</span></div>}
-                     <div className="flex justify-between font-semibold border-t pt-2">
-                        <span>Subtotal after Item Discounts</span>
-                        <span>{formatCurrency(subtotalAfterItemDiscount)}</span>
-                    </div>
-
-                    <div className="pt-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Tuning Charges (Optional)</label>
-                        <Input
-                            type="number"
-                            placeholder="e.g., 200"
-                            value={tuningCharges}
-                            onChange={e => setTuningCharges(e.target.value)}
-                            className="h-9"
-                        />
-                    </div>
-
-                    <div className="pt-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Labor Charges (Optional)</label>
-                        <Input
-                            type="number"
-                            placeholder="e.g., 500"
-                            value={laborCharges}
-                            onChange={e => setLaborCharges(e.target.value)}
-                            className="h-9"
-                        />
-                    </div>
-
-                    <div className="pt-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Overall Discount</label>
-                        <div className="flex items-center gap-2">
-                            <Input 
-                                type="number"
-                                placeholder="e.g., 100 or 10"
-                                value={overallDiscount}
-                                onChange={e => setOverallDiscount(e.target.value)}
-                                className="flex-grow h-9"
-                            />
-                            <select 
-                                value={overallDiscountType}
-                                onChange={e => setOverallDiscountType(e.target.value as 'fixed' | 'percentage')}
-                                className="p-2 h-9 border border-gray-300 rounded-md bg-white focus:ring-primary-500 focus:border-primary-500"
-                            >
-                                <option value="fixed">Rs.</option>
-                                <option value="percentage">%</option>
-                            </select>
+                <div className="mt-auto pt-4 border-t">
+                    <div className="space-y-2 text-sm">
+                         <div className="flex justify-between">
+                            <span>Subtotal</span>
+                            <span>{formatCurrency(subtotal)}</span>
                         </div>
-                        {overallDiscountAmount > 0 && <p className="text-sm text-red-600 text-right mt-1">Discount Applied: -{formatCurrency(overallDiscountAmount)}</p>}
-                    </div>
-                    
-                    <div className="text-xl font-bold flex justify-between pt-2 border-t text-primary-700"><span>TOTAL</span> <span>{formatCurrency(cartTotal)}</span></div>
-                </div>
-
-                <Button onClick={() => setCheckoutModalOpen(true)} disabled={cartTotal <= 0} className="w-full mt-4 text-lg">
-                    Checkout
-                </Button>
-            </div>
-            
-            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Complete Sale" size="lg">
-                 <div className="space-y-4">
-                     <div className="p-4 bg-gray-50 rounded-lg space-y-2">
-                        {previousBalance > 0 && (
-                             <div className="flex justify-between items-center text-md">
-                                <span>Previous Balance</span>
-                                <span className="font-semibold text-red-600">{formatCurrency(previousBalance)}</span>
+                         {totalItemDiscount > 0 && (
+                            <div className="flex justify-between text-red-600">
+                                <span>Item Discounts</span>
+                                <span>-{formatCurrency(totalItemDiscount)}</span>
                             </div>
                         )}
-                        <div className="flex justify-between items-center text-md">
-                            <span>Today's Bill</span>
-                            <span className="font-semibold">{formatCurrency(cartTotal)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xl font-bold pt-2 border-t">
-                            <span>TOTAL DUE</span>
-                            <span className="text-primary-600">{formatCurrency(totalDue)}</span>
+                         <div className="flex justify-between font-semibold">
+                            <span>Total</span>
+                            <span className="text-lg">{formatCurrency(subtotalAfterItemDiscount)}</span>
                         </div>
                     </div>
-
-                    <div className="pt-4 border-t">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2"><UserPlus size={20}/> Customer Information</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Bike Number (ID)</label>
-                                <div className="flex">
-                                    <Input value={bikeNumber} onChange={e => setBikeNumber(e.target.value)} placeholder="e.g., KHI-1234"/>
-                                    <Button type="button" variant="ghost" onClick={() => setCustomerLookupOpen(true)} className="ml-2" title="Find Customer">
-                                        <FileSearch />
-                                    </Button>
-                                </div>
+                    <Button 
+                        onClick={() => setCheckoutModalOpen(true)} 
+                        disabled={cart.length === 0 && !tuningCharges && !laborCharges}
+                        className="w-full mt-4 text-lg"
+                    >
+                        Checkout
+                    </Button>
+                </div>
+            </div>
+            
+             {/* Checkout Modal */}
+            <Modal 
+                isOpen={isCheckoutModalOpen} 
+                onClose={() => setCheckoutModalOpen(false)} 
+                title="Complete Sale" 
+                size="xl"
+                footer={
+                    <>
+                        <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleCheckout} disabled={!bikeNumber.trim() && Math.round(totalDue) > Number(amountPaid)}>
+                            Complete Sale
+                        </Button>
+                    </>
+                }
+            >
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left Side: Customer & Charges */}
+                    <div className="space-y-4">
+                        <h3 className="font-semibold text-lg border-b pb-2">Customer & Charges</h3>
+                        <div>
+                             <label className="block text-sm font-medium text-gray-700 mb-1">Customer (Bike No.)</label>
+                             <div className="flex gap-2">
+                                <Input 
+                                    placeholder="e.g., KHI1234" 
+                                    value={bikeNumber} 
+                                    onChange={e => setBikeNumber(e.target.value)} 
+                                />
+                                <Button type="button" variant="secondary" onClick={() => setCustomerLookupOpen(true)} className="px-3" aria-label="Find customer"><FileSearch size={18}/></Button>
                             </div>
-                            <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="e.g., John Doe"/>
-                            <Input label="Contact Number" type="tel" value={contactNumber} onChange={e => setContactNumber(e.target.value)} placeholder="For receipts & reminders"/>
-                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Service Frequency</label>
-                                <div className="flex items-center gap-2">
+                        </div>
+                        <Input label="Customer Name" placeholder="e.g., John Doe" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+                        
+                         {currentCustomer && (
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                <p className="font-semibold text-blue-800">Existing Customer Found</p>
+                                <p className="text-sm text-blue-700">Name: {currentCustomer.name}</p>
+                                <p className="text-sm text-blue-700">Tier: {customerTier?.name || 'N/A'}</p>
+                                <p className="text-sm text-blue-700">Balance: {formatCurrency(currentCustomer.balance)}</p>
+                                <p className="text-sm text-blue-700">Points: {currentCustomer.loyaltyPoints}</p>
+                            </div>
+                        )}
+
+                        <Input label="Tuning Charges (Rs)" type="number" value={tuningCharges} onChange={e => setTuningCharges(e.target.value)} placeholder="0" />
+                        <Input label="Labor Charges (Rs)" type="number" value={laborCharges} onChange={e => setLaborCharges(e.target.value)} placeholder="0" />
+
+                        <div className="pt-4 border-t">
+                            <h4 className="text-md font-semibold mb-2">New Customer Settings</h4>
+                            <Input label="Contact Number (Optional)" value={contactNumber} onChange={e => setContactNumber(e.target.value)} />
+                             <div className="mt-2">
+                                <label className="block text-sm font-medium text-gray-700">Service Frequency (Optional)</label>
+                                <div className="flex items-center gap-2 mt-1">
                                     <Input type="number" placeholder="e.g., 3" min="1" value={serviceFrequencyValue} onChange={(e) => setServiceFrequencyValue(e.target.value)} className="w-1/3" />
                                     <select value={serviceFrequencyUnit} onChange={(e) => setServiceFrequencyUnit(e.target.value as 'days' | 'months' | 'years')} className="flex-grow p-2 border border-gray-300 rounded-md">
                                         <option value="days">Days</option>
@@ -779,109 +754,123 @@ const POS: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    {currentCustomer && (
-                         <div className="pt-4 border-t">
-                             <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2"><Star size={20}/> Loyalty Points</h3>
-                             <div className="p-3 bg-indigo-50 rounded-md text-center">
-                                <p className="text-sm text-indigo-700">
-                                    <span className="font-semibold">{currentCustomer.name}</span> has <span className="font-bold text-lg">{currentCustomer.loyaltyPoints}</span> points available.
-                                    {customerTier && <span className="ml-2 px-2 py-0.5 bg-indigo-200 text-indigo-800 text-xs rounded-full font-semibold">{customerTier.name} Tier</span>}
-                                </p>
-                                <p className="text-xs text-indigo-500 mt-1">
-                                    Rule: {redemptionRule.points} pts = {redemptionRule.method === 'fixedValue' ? `${formatCurrency(redemptionRule.value)} off` : `${redemptionRule.value}% off`}
-                                </p>
-                             </div>
-                             <div className="flex items-end gap-2 mt-2">
-                                <Input label="Points to Redeem" type="number" placeholder="e.g., 500" value={pointsToRedeem} onChange={e => setPointsToRedeem(e.target.value)} max={currentCustomer.loyaltyPoints}/>
-                             </div>
-                             {loyaltyDiscountAmount > 0 && <p className="text-sm text-green-600 text-right font-semibold">Loyalty Discount: {formatCurrency(loyaltyDiscountAmount)}</p>}
-                             {Number(pointsToRedeem) > currentCustomer.loyaltyPoints && <p className="text-sm text-red-500 text-right">Cannot redeem more points than available.</p>}
-                         </div>
-                    )}
-                    
-                    <div className="pt-4 border-t">
-                         <Input 
-                            label="Amount Paid"
-                            type="number"
-                            value={amountPaid}
-                            onChange={(e) => setAmountPaid(e.target.value)}
-                            required
-                            min="0"
-                            max={Math.round(totalDue)}
-                            className="text-xl h-12 text-center font-bold"
-                        />
                     </div>
+                    {/* Right Side: Summary & Payment */}
+                    <div className="space-y-4">
+                        <h3 className="font-semibold text-lg border-b pb-2">Summary & Payment</h3>
+                        
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Overall Discount</label>
+                            <div className="flex items-center gap-2">
+                                <Input type="number" value={overallDiscount} onChange={e => setOverallDiscount(e.target.value)} placeholder="0" />
+                                <select value={overallDiscountType} onChange={e => setOverallDiscountType(e.target.value as 'fixed' | 'percentage')} className="p-2 border border-gray-300 rounded-md">
+                                    <option value="fixed">Rs.</option>
+                                    <option value="percentage">%</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                         {currentCustomer && currentCustomer.loyaltyPoints > 0 && (
+                             <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Redeem Loyalty Points</label>
+                                <Input 
+                                    type="number" 
+                                    value={pointsToRedeem} 
+                                    onChange={e => setPointsToRedeem(e.target.value)} 
+                                    placeholder={`Max ${currentCustomer.loyaltyPoints} points`} 
+                                    max={currentCustomer.loyaltyPoints}
+                                />
+                                {loyaltyDiscountAmount > 0 && (
+                                    <p className="text-sm text-green-600 mt-1">
+                                        This gives a discount of {formatCurrency(loyaltyDiscountAmount)}.
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
-                 </div>
-                 <div className="flex justify-end gap-2 pt-6 mt-4 border-t">
-                     <Button variant="secondary" onClick={() => setCheckoutModalOpen(false)}>Cancel</Button>
-                     <Button onClick={handleCheckout}>Confirm Sale</Button>
-                 </div>
-            </Modal>
-            
-            <Modal isOpen={isScannerModalOpen} onClose={() => setScannerModalOpen(false)} title="Scan Product Barcode">
-                <BarcodeScanner onScanSuccess={handleBarcodeScan} />
-            </Modal>
-            
-            <CustomerLookupModal 
-                isOpen={isCustomerLookupOpen}
-                onClose={() => setCustomerLookupOpen(false)}
-                onSelectCustomer={handleSelectCustomer}
-            />
+                        <div className="mt-4 p-4 bg-gray-100 rounded-lg space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span>Cart Total:</span>
+                                <span>{formatCurrency(cartTotal)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span>Previous Balance:</span>
+                                <span className={previousBalance > 0 ? "text-red-600" : ""}>{formatCurrency(previousBalance)}</span>
+                            </div>
+                             {loyaltyDiscountAmount > 0 && (
+                                <div className="flex justify-between text-sm text-green-600">
+                                    <span>Loyalty Discount:</span>
+                                    <span>- {formatCurrency(loyaltyDiscountAmount)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-lg font-bold pt-1 border-t">
+                                <span>Total Due:</span>
+                                <span className="text-primary-600">{formatCurrency(totalDue)}</span>
+                            </div>
+                        </div>
 
-            {completedSale && (
-                <Modal 
-                    isOpen={isSaleCompleteModalOpen} 
-                    onClose={() => {
-                        setCompletedSale(null);
-                        setIsSaleCompleteModalOpen(false);
-                    }} 
-                    title="Sale Successful!"
-                    size="sm"
-                >
-                    <div ref={receiptRef} className="bg-white p-1">
-                        <Receipt sale={completedSale} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 pt-4 border-t mt-4">
-                         <Button onClick={handlePrintReceipt} className="w-full flex items-center justify-center gap-2">
-                            <Printer size={18} /> Print
-                        </Button>
-                        <Button onClick={handleDownloadImage} className="w-full flex items-center justify-center gap-2">
-                            <ImageDown size={18} /> Download Image
-                        </Button>
-                         <Button
-                            onClick={handleShareWhatsAppClick}
-                            className="w-full flex items-center justify-center gap-2 col-span-2 bg-green-500 hover:bg-green-600 text-white"
-                        >
-                            <MessageSquare size={18} /> Send via WhatsApp
-                        </Button>
-                    </div>
-                </Modal>
-            )}
+                        <div>
+                            <Input 
+                                label="Amount Paid" 
+                                type="number" 
+                                value={amountPaid} 
+                                onChange={e => setAmountPaid(e.target.value)} 
+                                required
+                            />
+                        </div>
 
-            <Modal isOpen={showWhatsAppInput} onClose={() => setShowWhatsAppInput(false)} title="Enter WhatsApp Number">
-                <div className="space-y-4">
-                    <p>This customer does not have a saved contact number. Please enter their WhatsApp number to proceed. The number will be saved to their profile.</p>
-                    <Input 
-                        type="tel"
-                        placeholder="e.g., 55555555"
-                        value={whatsAppNumber}
-                        onChange={(e) => setWhatsAppNumber(e.target.value)}
-                        autoFocus
-                    />
-                    <div className="flex justify-end gap-2">
-                        <Button variant="secondary" onClick={() => setShowWhatsAppInput(false)}>Cancel</Button>
-                        <Button onClick={handleWhatsAppNumberSubmit}>
-                            Download & Open WhatsApp
-                        </Button>
                     </div>
                 </div>
             </Modal>
 
+            <Modal isOpen={isScannerModalOpen} onClose={() => setScannerModalOpen(false)} title="Scan Barcode">
+                 <p className="text-center text-gray-600 mb-4">Point the camera at a barcode to add the item to the cart.</p>
+                <BarcodeScanner onScanSuccess={handleBarcodeScan} />
+            </Modal>
+            
+            <Modal isOpen={isSaleCompleteModalOpen} onClose={() => setIsSaleCompleteModalOpen(false)} title="Sale Complete!" size="lg">
+                <div className="flex flex-col md:flex-row gap-6">
+                    <div className="flex-grow">
+                        <h3 className="font-semibold text-lg text-center mb-2">Receipt</h3>
+                        <div className="border rounded-md p-2 bg-gray-50 max-h-96 overflow-y-auto">
+                            <Receipt sale={completedSale!} ref={receiptRef} />
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-4 w-full md:w-48">
+                         <h3 className="font-semibold text-lg text-center mb-2">Actions</h3>
+                         <Button onClick={handlePrintReceipt} className="w-full flex items-center justify-center gap-2"><Printer size={18}/> Print Receipt</Button>
+                         <Button onClick={handleDownloadImage} variant="secondary" className="w-full flex items-center justify-center gap-2"><ImageDown size={18}/> Download Image</Button>
+                         <Button onClick={handleShareWhatsAppClick} variant="secondary" className="w-full flex items-center justify-center gap-2 bg-green-500 text-white hover:bg-green-600 focus:ring-green-400">
+                             <MessageSquare size={18}/> WhatsApp
+                         </Button>
+                         <Button onClick={() => setIsSaleCompleteModalOpen(false)} variant="secondary" className="w-full">Close</Button>
+                    </div>
+                </div>
+                {showWhatsAppInput && (
+                    <div className="mt-4 p-4 border-t">
+                        <h4 className="font-semibold mb-2">Send Receipt via WhatsApp</h4>
+                        <p className="text-sm text-gray-600 mb-2">Customer has no saved number. Enter a number to continue.</p>
+                        <div className="flex gap-2">
+                             <Input 
+                                placeholder="e.g., 03001234567" 
+                                value={whatsAppNumber} 
+                                onChange={e => setWhatsAppNumber(e.target.value)} 
+                                autoFocus
+                             />
+                             <Button onClick={handleWhatsAppNumberSubmit}>Send</Button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+            
+            <CustomerLookupModal
+                isOpen={isCustomerLookupOpen}
+                onClose={() => setCustomerLookupOpen(false)}
+                onSelectCustomer={handleSelectCustomer}
+            />
         </div>
     );
 };
-
+// FIX: Added default export for POS component.
 export default POS;
