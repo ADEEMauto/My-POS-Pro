@@ -736,7 +736,7 @@ const POS: React.FC = () => {
                             </div>
                         )}
 
-                        <Input label="Tuning Charges (Rs)" type="number" value={tuningCharges} onChange={e => setTuningCharges(e.target.value)} placeholder="0" />
+                        <Input label="Tuning (Rs)" type="number" value={tuningCharges} onChange={e => setTuningCharges(e.target.value)} placeholder="0" />
                         <Input label="Labor Charges (Rs)" type="number" value={laborCharges} onChange={e => setLaborCharges(e.target.value)} placeholder="0" />
 
                         <div className="pt-4 border-t">

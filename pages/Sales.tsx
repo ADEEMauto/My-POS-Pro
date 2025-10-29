@@ -81,7 +81,7 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
                     )}
                     {(sale.tuningCharges || 0) > 0 && (
                         <div className="flex justify-between items-baseline text-sm text-blue-600">
-                            <p><strong>Tuning Charges:</strong></p>
+                            <p><strong>Tuning:</strong></p>
                             <p>+ {formatCurrency(sale.tuningCharges!)}</p>
                         </div>
                     )}
@@ -308,7 +308,7 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
                 </div>
                 <div className="space-y-4">
                     <h3 className="font-semibold text-lg border-b pb-2">Overall Adjustments</h3>
-                    <Input label="Tuning Charges (Rs)" type="number" value={tuningCharges} onChange={e => setTuningCharges(e.target.value)} />
+                    <Input label="Tuning (Rs)" type="number" value={tuningCharges} onChange={e => setTuningCharges(e.target.value)} />
                     <Input label="Labor Charges (Rs)" type="number" value={laborCharges} onChange={e => setLaborCharges(e.target.value)} />
                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Overall Discount</label>
@@ -427,7 +427,7 @@ const Sales: React.FC = () => {
                 } else {
                     summary['__tuning__'] = {
                         productId: '__tuning__',
-                        name: 'Tuning Charges',
+                        name: 'Tuning',
                         quantity: 1,
                         total: sale.tuningCharges,
                         isService: true,
