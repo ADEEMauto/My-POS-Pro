@@ -325,6 +325,7 @@ const Inventory: React.FC = () => {
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortBy, setSortBy] = useState('name_asc');
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isSampleViewOpen, setSampleViewOpen] = useState(false);
@@ -340,6 +341,18 @@ const Inventory: React.FC = () => {
             });
         });
         return ids;
+    }, [sales]);
+
+    const productSales = useMemo(() => {
+        const salesCount = new Map<string, number>();
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                if (!item.productId.startsWith('manual-')) {
+                    salesCount.set(item.productId, (salesCount.get(item.productId) || 0) + item.quantity);
+                }
+            });
+        });
+        return salesCount;
     }, [sales]);
 
     const categoryMap = useMemo(() => {
@@ -536,11 +549,46 @@ const Inventory: React.FC = () => {
 
     const filteredInventory = useMemo(() => {
         const lowercasedSearchTerm = searchTerm.toLowerCase();
-        return inventory.filter(p => 
+        const filtered = inventory.filter(p => 
             p.name.toLowerCase().includes(lowercasedSearchTerm) ||
             (p.barcode && p.barcode.toLowerCase().includes(lowercasedSearchTerm))
         );
-    }, [inventory, searchTerm]);
+
+        filtered.sort((a, b) => {
+            switch (sortBy) {
+                case 'name_asc':
+                    return a.name.localeCompare(b.name);
+                case 'name_desc':
+                    return b.name.localeCompare(a.name);
+                case 'price_desc':
+                    return b.salePrice - a.salePrice;
+                case 'price_asc':
+                    return a.salePrice - b.salePrice;
+                case 'most_selling':
+                    return (productSales.get(b.id) || 0) - (productSales.get(a.id) || 0);
+                case 'least_selling':
+                    return (productSales.get(a.id) || 0) - (productSales.get(b.id) || 0);
+                case 'category_asc': {
+                    const catA = categoryMap.get(a.categoryId) || '';
+                    const catB = categoryMap.get(b.categoryId) || '';
+                    if (catA.localeCompare(catB) !== 0) {
+                        return catA.localeCompare(catB);
+                    }
+                    const subCatA = a.subCategoryId ? categoryMap.get(a.subCategoryId) || '' : '';
+                    const subCatB = b.subCategoryId ? categoryMap.get(b.subCategoryId) || '' : '';
+                    return subCatA.localeCompare(subCatB);
+                }
+                case 'manufacturer_asc':
+                    return a.manufacturer.localeCompare(b.manufacturer);
+                case 'location_asc':
+                    return (a.location || '').localeCompare(b.location || '');
+                default:
+                    return 0;
+            }
+        });
+
+        return filtered;
+    }, [inventory, searchTerm, sortBy, productSales, categoryMap]);
 
     if (!isMaster) {
         return (
@@ -602,6 +650,22 @@ const Inventory: React.FC = () => {
                     <div className="w-full sm:w-auto">
                       <Input placeholder="Search by name or barcode..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} icon={<Search className="w-5 h-5 text-gray-400" />} />
                     </div>
+                    <select
+                        value={sortBy}
+                        onChange={e => setSortBy(e.target.value)}
+                        className="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                        aria-label="Sort by"
+                    >
+                        <option value="name_asc">Alphabetical (A-Z)</option>
+                        <option value="name_desc">Alphabetical (Z-A)</option>
+                        <option value="price_desc">Sale Price: High to Low</option>
+                        <option value="price_asc">Sale Price: Low to High</option>
+                        <option value="most_selling">Most Selling</option>
+                        <option value="least_selling">Least Selling</option>
+                        <option value="category_asc">Category</option>
+                        <option value="manufacturer_asc">Manufacturer</option>
+                        <option value="location_asc">Location</option>
+                    </select>
                     <Button onClick={() => setScannerOpen(true)} variant="secondary" className='gap-2'><ScanLine size={18}/> Scan</Button>
                     <input type="file" ref={fileInputRef} onChange={handleExcelUpload} accept=".xlsx, .xls" className="hidden" />
                     <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className='gap-2'><Upload size={18}/> Import</Button>
