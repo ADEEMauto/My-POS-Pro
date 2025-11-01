@@ -730,6 +730,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (newTransactions.length > 0) setLoyaltyTransactions(prev => [...newTransactions, ...prev]);
 
         toast.success(`Sale ${newSale.id} completed!`);
+        
+        // Automatically download a backup after a successful sale
+        createBackup(false);
+
         return newSale;
     };
     
