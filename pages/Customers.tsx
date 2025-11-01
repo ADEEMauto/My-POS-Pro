@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Customer, Sale, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Payment } from '../types';
@@ -111,6 +112,7 @@ const CustomerDetailsModal: React.FC<{
     const isMaster = currentUser?.role === 'master';
 
     const [activeTab, setActiveTab] = useState('details');
+    const [viewingSale, setViewingSale] = useState<Sale | null>(null);
 
     // Details Tab State
     const [name, setName] = useState(customer.name);
@@ -250,6 +252,23 @@ const CustomerDetailsModal: React.FC<{
     };
     const tierColor = tier ? tierColors[tier.name.toLowerCase()] || 'bg-gray-200' : 'bg-gray-200';
 
+    const estimatedProfit = useMemo(() => {
+        if (!viewingSale) return 0;
+        return viewingSale.items.reduce((acc, item) => {
+            const cost = item.purchasePrice || 0;
+            return acc + (item.price - cost) * item.quantity;
+        }, 0);
+    }, [viewingSale]);
+    
+    const hasDiscounts = useMemo(() => {
+        if (!viewingSale) return false;
+        return (viewingSale.totalItemDiscounts || 0) > 0 || (viewingSale.overallDiscount || 0) > 0 || (viewingSale.loyaltyDiscount || 0) > 0;
+    }, [viewingSale]);
+    
+    const calculatedOverallDiscount = useMemo(() => {
+        if (!viewingSale) return 0;
+        return Math.max(0, viewingSale.subtotal - (viewingSale.totalItemDiscounts || 0) + (viewingSale.tuningCharges || 0) + (viewingSale.laborCharges || 0) - (viewingSale.loyaltyDiscount || 0) - viewingSale.total);
+    }, [viewingSale]);
 
     return (
         <Modal isOpen={true} onClose={onClose} title={`Customer: ${customer.name}`} size="2xl" footer={modalFooter}>
@@ -377,48 +396,163 @@ const CustomerDetailsModal: React.FC<{
                 )}
                 
                 {activeTab === 'history' && (
-                    <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
-                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
-                                <tr>
-                                    <th className="px-2 py-2">Date</th>
-                                    <th className="px-2 py-2">Details</th>
-                                    <th className="px-2 py-2 text-right">Bill</th>
-                                    <th className="px-2 py-2 text-right">Paid</th>
-                                    <th className="px-2 py-2 text-right">Balance</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                            {combinedHistory.length > 0 ? (
-                                combinedHistory.map(item => {
-                                    if(item.type === 'sale') {
-                                        const sale = item.data as Sale;
-                                        return (
-                                            <tr key={`sale-${sale.id}`}>
-                                                <td className="px-2 py-2 text-xs">{new Date(sale.date).toLocaleDateString()}</td>
-                                                <td className="px-2 py-2">Sale <span className="font-mono text-xs bg-gray-100 p-1 rounded">{sale.id}</span></td>
-                                                <td className="px-2 py-2 text-right">{formatCurrency(sale.total)}</td>
-                                                <td className="px-2 py-2 text-right text-green-600">{formatCurrency(sale.amountPaid)}</td>
-                                                <td className="px-2 py-2 text-right font-semibold">{formatCurrency(sale.balanceDue)}</td>
+                    viewingSale ? (
+                        <div>
+                            <div className="flex justify-between items-center mb-4">
+                                <h4 className="font-semibold text-lg">Sale Details - ID: {viewingSale.id}</h4>
+                                <Button variant="secondary" size="sm" onClick={() => setViewingSale(null)}>
+                                    &larr; Back to History
+                                </Button>
+                            </div>
+                            <div className="space-y-4">
+                                <div className="max-h-80 overflow-y-auto pr-2">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                                            <tr>
+                                                <th className="px-4 py-2">Product Name</th>
+                                                <th className="px-4 py-2 text-center">Qty</th>
+                                                <th className="px-4 py-2 text-right">Price/Item</th>
+                                                <th className="px-4 py-2 text-right">Subtotal</th>
                                             </tr>
-                                        )
-                                    } else {
-                                        const payment = item.data as Payment;
-                                        return (
-                                             <tr key={`payment-${payment.id}`} className="bg-green-50 hover:bg-green-100">
-                                                <td className="px-2 py-2 text-xs">{new Date(payment.date).toLocaleDateString()}</td>
-                                                <td className="px-2 py-2 font-semibold text-green-800">{payment.notes || 'Payment Received'}</td>
-                                                <td className="px-2 py-2 text-right">-</td>
-                                                <td className="px-2 py-2 text-right font-semibold text-green-800">{formatCurrency(payment.amount)}</td>
-                                                <td className="px-2 py-2 text-right">-</td>
-                                            </tr>
-                                        )
-                                    }
-                                })
-                            ) : <tr><td colSpan={5} className="text-gray-500 text-center py-4">No account history.</td></tr>}
-                            </tbody>
-                         </table>
-                    </div>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {viewingSale.items.map((item, index) => (
+                                                <tr key={`${item.productId}-${index}`}>
+                                                    <td className="px-4 py-2 font-medium text-gray-900">
+                                                        {item.name}
+                                                        {item.discount > 0 && (
+                                                            <span className="block text-xs text-red-500">
+                                                                (-{item.discountType === 'fixed' ? formatCurrency(item.discount) : `${item.discount}%`}/item)
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-center">{item.quantity}</td>
+                                                    <td className="px-4 py-2 text-right">
+                                                         {item.discount > 0 ? (
+                                                            <del className="text-xs text-gray-400">{formatCurrency(item.originalPrice)}</del>
+                                                         ) : null}
+                                                         {' '}
+                                                         {formatCurrency(item.price)}
+                                                    </td>
+                                                    <td className="px-4 py-2 text-right font-semibold">{formatCurrency(item.price * item.quantity)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div className="pt-2 border-t space-y-1">
+                                     {hasDiscounts && (
+                                        <div className="flex justify-between items-baseline text-sm">
+                                            <p><strong>Subtotal:</strong></p>
+                                            <p>{formatCurrency(viewingSale.subtotal)}</p>
+                                        </div>
+                                    )}
+                                    {(viewingSale.totalItemDiscounts || 0) > 0 && (
+                                         <div className="flex justify-between items-baseline text-sm text-red-600">
+                                            <p><strong>Item Discounts:</strong></p>
+                                            <p>- {formatCurrency(viewingSale.totalItemDiscounts)}</p>
+                                        </div>
+                                    )}
+                                    {(viewingSale.tuningCharges || 0) > 0 && (
+                                        <div className="flex justify-between items-baseline text-sm text-blue-600">
+                                            <p><strong>Tuning:</strong></p>
+                                            <p>+ {formatCurrency(viewingSale.tuningCharges!)}</p>
+                                        </div>
+                                    )}
+                                    {(viewingSale.laborCharges || 0) > 0 && (
+                                        <div className="flex justify-between items-baseline text-sm text-blue-600">
+                                            <p><strong>Labor Charges:</strong></p>
+                                            <p>+ {formatCurrency(viewingSale.laborCharges!)}</p>
+                                        </div>
+                                    )}
+                                    {(viewingSale.overallDiscount || 0) > 0 && (
+                                         <div className="flex justify-between items-baseline text-sm text-red-600">
+                                            <p><strong>Overall Discount {viewingSale.overallDiscountType === 'percentage' && `(${viewingSale.overallDiscount}%)`}</strong></p>
+                                            <p>- {formatCurrency(calculatedOverallDiscount)}</p>
+                                        </div>
+                                    )}
+                                     {(viewingSale.loyaltyDiscount || 0) > 0 && (
+                                         <div className="flex justify-between items-baseline text-sm text-green-600">
+                                            <p><strong>Loyalty Discount:</strong></p>
+                                            <p>- {formatCurrency(viewingSale.loyaltyDiscount!)}</p>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between items-baseline pt-1 border-t">
+                                        <p><strong>Total Amount:</strong></p> 
+                                        <p><span className="font-bold text-lg text-primary-600">{formatCurrency(viewingSale.total)}</span></p>
+                                    </div>
+                                     <div className="flex justify-between items-baseline">
+                                        <p><strong>Est. Profit:</strong></p> 
+                                        <p><span className="font-bold text-base text-green-600">{formatCurrency(estimatedProfit)}</span></p>
+                                    </div>
+                                </div>
+                                {(viewingSale.pointsEarned !== undefined) && (
+                                    <div className="pt-2 border-t space-y-1 text-sm">
+                                         <h4 className="font-semibold flex items-center gap-1"><Star size={14}/> Loyalty Summary</h4>
+                                         {viewingSale.promotionApplied && (
+                                            <p className="p-2 bg-green-50 text-green-700 rounded-md text-center font-semibold">
+                                                ✨ Promotion Applied: {viewingSale.promotionApplied.name} ({viewingSale.promotionApplied.multiplier}x Points!) ✨
+                                            </p>
+                                         )}
+                                         <div className="flex justify-between"><span>Points Earned:</span> <span>{viewingSale.pointsEarned}</span></div>
+                                         <div className="flex justify-between"><span>Points Redeemed:</span> <span>{viewingSale.redeemedPoints || 0}</span></div>
+                                         <div className="flex justify-between font-bold"><span>Final Balance:</span> <span>{viewingSale.finalLoyaltyPoints}</span></div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
+                             <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th className="px-2 py-2">Date</th>
+                                        <th className="px-2 py-2">Details</th>
+                                        <th className="px-2 py-2 text-right">Bill</th>
+                                        <th className="px-2 py-2 text-right">Paid</th>
+                                        <th className="px-2 py-2 text-right">Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                {combinedHistory.length > 0 ? (
+                                    combinedHistory.map((item, index) => {
+                                        if(item.type === 'sale') {
+                                            const sale = item.data as Sale;
+                                            return (
+                                                <tr key={`sale-${sale.id}-${index}`}>
+                                                    <td className="px-2 py-2 text-xs">{new Date(sale.date).toLocaleDateString()}</td>
+                                                    <td className="px-2 py-2">
+                                                        Sale{' '}
+                                                        <button 
+                                                            onClick={() => setViewingSale(sale)}
+                                                            className="font-mono text-xs bg-gray-100 p-1 rounded text-primary-600 hover:bg-primary-100 hover:underline"
+                                                        >
+                                                            {sale.id}
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-right">{formatCurrency(sale.total)}</td>
+                                                    <td className="px-2 py-2 text-right text-green-600">{formatCurrency(sale.amountPaid)}</td>
+                                                    <td className="px-2 py-2 text-right font-semibold">{formatCurrency(sale.balanceDue)}</td>
+                                                </tr>
+                                            )
+                                        } else {
+                                            const payment = item.data as Payment;
+                                            return (
+                                                 <tr key={`payment-${payment.id}-${index}`} className="bg-green-50 hover:bg-green-100">
+                                                    <td className="px-2 py-2 text-xs">{new Date(payment.date).toLocaleDateString()}</td>
+                                                    <td className="px-2 py-2 font-semibold text-green-800">{payment.notes || 'Payment Received'}</td>
+                                                    <td className="px-2 py-2 text-right">-</td>
+                                                    <td className="px-2 py-2 text-right font-semibold text-green-800">{formatCurrency(payment.amount)}</td>
+                                                    <td className="px-2 py-2 text-right">-</td>
+                                                </tr>
+                                            )
+                                        }
+                                    })
+                                ) : <tr><td colSpan={5} className="text-gray-500 text-center py-4">No account history.</td></tr>}
+                                </tbody>
+                             </table>
+                        </div>
+                    )
                 )}
                 
                 {activeTab === 'loyalty' && (

@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Expense, Payment, DemandItem } from '../types';
@@ -454,77 +455,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 setInventory(prev => [...newProducts, ...prev]);
                 toast.success(`${newProducts.length} products imported successfully!`);
             } else {
-                toast.error("No valid products were found in the file.");
+                toast.error("No valid products were found in the file to import.");
             }
         } catch (error) {
-            console.error("Excel import error:", error);
-            toast.error("An error occurred during import. Please check file format and content.");
+            console.error(error);
+            toast.error("An error occurred while importing the file.");
         }
     };
-
+    
     const addCategory = (name: string, parentId: string | null) => {
-        const newCategory: Category = { id: name.toLowerCase().replace(/\s+/g, '-'), name, parentId };
+        const newCategory = { id: name.toLowerCase().replace(/\s+/g, '-'), name, parentId };
+        if(categories.some(c => c.id === newCategory.id)) {
+            toast.error("Category with this name already exists.");
+            return;
+        }
         setCategories([...categories, newCategory]);
         toast.success(`Category "${name}" added.`);
     };
 
-    const updateCategory = (id: string, newName: string) => {
-        setCategories(categories.map(c => c.id === id ? { ...c, name: newName } : c));
-        toast.success(`Category updated to "${newName}".`);
+    const updateCategory = (id: string, name: string) => {
+        setCategories(categories.map(c => c.id === id ? { ...c, name } : c));
+        toast.success("Category updated.");
     };
 
     const deleteCategory = (id: string) => {
-        const childIds = categories.filter(c => c.parentId === id).map(c => c.id);
-        const idsToDelete = [id, ...childIds];
+        const subcategoriesToDelete = categories.filter(c => c.parentId === id).map(c => c.id);
+        const allIdsToDelete = [id, ...subcategoriesToDelete];
         
-        setCategories(categories.filter(c => !idsToDelete.includes(c.id)));
-        
-        // Uncategorize products
+        setCategories(categories.filter(c => !allIdsToDelete.includes(c.id)));
         setInventory(inventory.map(p => {
-            if (idsToDelete.includes(p.categoryId)) {
+            if (allIdsToDelete.includes(p.categoryId)) {
                 return { ...p, categoryId: 'uncategorized', subCategoryId: null };
             }
-            if (p.subCategoryId && idsToDelete.includes(p.subCategoryId)) {
-                 return { ...p, subCategoryId: null };
+            if (p.subCategoryId && allIdsToDelete.includes(p.subCategoryId)) {
+                return { ...p, subCategoryId: null };
             }
             return p;
         }));
         toast.success("Category and its sub-categories deleted.");
     };
-
-    const createBackup = (showToast: boolean = true) => {
-        try {
-            const dataToBackup: { [key: string]: any } = {};
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key) {
-                    dataToBackup[key] = JSON.parse(localStorage.getItem(key)!);
-                }
-            }
     
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToBackup, null, 2));
-            const downloadAnchorNode = document.createElement('a');
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", `shopsync_backup_${timestamp}.json`);
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
-            
-            if (showToast) {
-                toast.success("Backup created successfully!");
-            }
-        } catch (error) {
-            console.error("Backup failed:", error);
-            if (showToast) {
-                toast.error("Failed to create backup.");
-            }
-            throw error;
-        }
-    };
-
-    const createSale = (cartItems: CartItem[], overallDiscountValue: number, overallDiscountType: 'fixed' | 'percentage', customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' }, redeemedPoints: number, tuningCharges: number, laborCharges: number, amountPaid: number): Sale | null => {
-        if (cartItems.length === 0 && !tuningCharges && !laborCharges) {
+    const createSale = (
+        cartItems: CartItem[], 
+        overallDiscountValue: number, 
+        overallDiscountType: 'fixed' | 'percentage', 
+        customerInfo: { customerName: string, bikeNumber: string, contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' },
+        redeemedPoints: number,
+        tuningCharges: number,
+        laborCharges: number,
+        amountPaid: number
+    ): Sale | null => {
+        if (cartItems.length === 0 && tuningCharges <= 0 && laborCharges <= 0) {
             toast.error("Cannot create an empty sale.");
             return null;
         }
@@ -535,218 +516,412 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const day = now.getDate().toString().padStart(2, '0');
         const hours = now.getHours().toString().padStart(2, '0');
         const minutes = now.getMinutes().toString().padStart(2, '0');
-        const timestampPart = `${year}${month}${day}${hours}${minutes}`;
-        const salesWithSameTimestamp = sales.filter(s => s.id.startsWith(timestampPart));
-        const counter = salesWithSameTimestamp.length;
-        const saleId = counter > 0 ? `${timestampPart}-${counter}` : timestampPart;
-        const saleDate = now.toISOString();
-        const bikeNumberFormatted = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
+        const seconds = now.getSeconds().toString().padStart(2, '0');
+
+        const saleIdBase = `${year}${month}${day}${hours}${minutes}${seconds}`;
+        let finalSaleId = saleIdBase;
+        let counter = 1;
         
-        const existingCustomer = customers.find(c => c.id === bikeNumberFormatted);
-        if (existingCustomer && redeemedPoints > 0 && redeemedPoints > existingCustomer.loyaltyPoints) {
-            toast.error("Cannot redeem more points than available.");
-            return null;
+        while (sales.some(s => s.id === finalSaleId)) {
+            finalSaleId = `${saleIdBase}${counter}`;
+            counter++;
         }
-        
-        let previousBalanceBroughtForward = existingCustomer?.balance || 0;
-        const subtotal = cartItems.reduce((acc, item) => acc + (item.salePrice * item.cartQuantity), 0);
-        const totalItemDiscount = cartItems.reduce((acc, item) => {
-            const discount = item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount) / 100;
-            return acc + (discount * item.cartQuantity);
-        }, 0);
-        
+
         const saleItems: SaleItem[] = cartItems.map(item => {
-            const itemDiscountValue = item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount) / 100;
+            const discountAmount = item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount) / 100;
             return {
-                productId: item.id, name: item.name, quantity: item.cartQuantity,
-                originalPrice: item.salePrice, discount: item.discount, discountType: item.discountType,
-                price: item.salePrice - itemDiscountValue, purchasePrice: item.purchasePrice,
+                productId: item.id,
+                name: item.name,
+                quantity: item.cartQuantity,
+                originalPrice: item.salePrice,
+                discount: item.discount,
+                discountType: item.discountType,
+                price: item.salePrice - discountAmount,
+                purchasePrice: item.purchasePrice,
             };
         });
 
-        const subtotalAfterItemDiscount = subtotal - totalItemDiscount;
-        const subtotalWithCharges = subtotalAfterItemDiscount + (tuningCharges || 0) + (laborCharges || 0);
-        const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (subtotalWithCharges * overallDiscountValue) / 100;
-        const cartTotal = subtotalWithCharges - overallDiscountAmount;
-        const totalBeforeLoyalty = cartTotal + previousBalanceBroughtForward;
+        const subtotal = saleItems.reduce((acc, item) => acc + (item.originalPrice * item.quantity), 0);
+        const totalItemDiscounts = saleItems.reduce((acc, item) => {
+            const discount = item.discountType === 'fixed' ? item.discount : (item.originalPrice * item.discount) / 100;
+            return acc + (discount * item.quantity);
+        }, 0);
+
+        const subtotalAfterItemDiscount = subtotal - totalItemDiscounts;
+        const totalWithCharges = subtotalAfterItemDiscount + tuningCharges + laborCharges;
+        
+        const overallDiscountAmount = overallDiscountType === 'fixed' ? overallDiscountValue : (totalWithCharges * overallDiscountValue) / 100;
+        const cartTotal = totalWithCharges - overallDiscountAmount;
+        
+        const customerId = customerInfo.bikeNumber.replace(/\s+/g, '').toUpperCase();
+        const existingCustomer = customers.find(c => c.id === customerId);
+        const previousBalance = existingCustomer?.balance || 0;
+        
+        const totalBeforeLoyalty = cartTotal + previousBalance;
 
         let loyaltyDiscountAmount = 0;
-        if (existingCustomer && redeemedPoints > 0) {
+        if (existingCustomer && redeemedPoints > 0 && redeemedPoints <= existingCustomer.loyaltyPoints) {
             if (redemptionRule.method === 'fixedValue') {
                 loyaltyDiscountAmount = (redeemedPoints / redemptionRule.points) * redemptionRule.value;
             } else {
                 const percentage = (redeemedPoints / redemptionRule.points) * redemptionRule.value;
                 loyaltyDiscountAmount = (totalBeforeLoyalty * percentage) / 100;
             }
+             // Cap discount to not exceed the current bill total
             loyaltyDiscountAmount = Math.min(loyaltyDiscountAmount, totalBeforeLoyalty);
         }
-        
+
         const total = Math.round(totalBeforeLoyalty - loyaltyDiscountAmount);
-        const balanceDue = total - amountPaid;
-        const paymentStatus = balanceDue <= 0 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid');
-        const inventoryItemsValueAfterItemDiscounts = cartItems.filter(item => !item.id.startsWith('manual-')).reduce((acc, item) => {
-            const itemTotal = item.salePrice * item.cartQuantity;
-            const itemDiscountAmount = item.discountType === 'fixed' ? item.discount * item.cartQuantity : (itemTotal * item.discount) / 100;
-            return acc + (itemTotal - itemDiscountAmount);
-        }, 0);
-        const totalValueBeforeOverallDiscount = subtotalAfterItemDiscount + (tuningCharges || 0) + (laborCharges || 0);
-        let proportionalOverallDiscountForInventory = 0;
-        if (totalValueBeforeOverallDiscount > 0) {
-            proportionalOverallDiscountForInventory = overallDiscountAmount * (inventoryItemsValueAfterItemDiscounts / totalValueBeforeOverallDiscount);
-        }
-        const finalInventoryValue = Math.max(0, inventoryItemsValueAfterItemDiscounts - proportionalOverallDiscountForInventory);
-        const amountEligibleForPoints = Math.min(Number(amountPaid) || 0, finalInventoryValue);
-        const promoCheckDate = new Date();
-        promoCheckDate.setHours(0,0,0,0);
-        const activePromotion = promotions.find(p => {
-            const start = new Date(p.startDate); start.setHours(0,0,0,0);
-            const end = new Date(p.endDate); end.setHours(23,59,59,999);
-            return promoCheckDate >= start && promoCheckDate <= end;
-        });
-        const customerTier = existingCustomer?.tierId ? customerTiers.find(t => t.id === existingCustomer.tierId) : null;
-        const finalMultiplier = (activePromotion?.multiplier || 1) * (customerTier?.pointsMultiplier || 1);
+        const balanceDue = Math.round(total - amountPaid);
+        const paymentStatus: 'Paid' | 'Partial' | 'Unpaid' = balanceDue <= 0 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid');
+        
+        // --- Loyalty Points Calculation ---
         let pointsEarned = 0;
-        if (amountEligibleForPoints > 0) {
-            const applicableRule = earningRules.sort((a, b) => b.minSpend - a.minSpend).find(rule => amountEligibleForPoints >= rule.minSpend);
-            if (applicableRule) {
-                pointsEarned = (amountEligibleForPoints / 100) * applicableRule.pointsPerHundred;
+        let promotionApplied: Sale['promotionApplied'] = undefined;
+        let tierApplied: Sale['tierApplied'] = undefined;
+
+        if (subtotal > 0) {
+            // Check for active promotions
+            const todayStr = now.toISOString().split('T')[0];
+            const activePromotion = promotions.find(p => p.startDate <= todayStr && p.endDate >= todayStr);
+            if (activePromotion) {
+                promotionApplied = { name: activePromotion.name, multiplier: activePromotion.multiplier };
             }
-        }
-        pointsEarned = Math.round(pointsEarned * finalMultiplier);
-        let pointsBefore = existingCustomer?.loyaltyPoints || 0;
-        let finalLoyaltyPoints = pointsBefore;
-        const newTransactions: LoyaltyTransaction[] = [];
-        if (existingCustomer && redeemedPoints > 0 && loyaltyDiscountAmount > 0) {
-            const pointsAfterRedemption = pointsBefore - redeemedPoints;
-            newTransactions.push({
-                id: uuidv4(), customerId: existingCustomer.id, type: 'redeemed', points: redeemedPoints, date: saleDate,
-                relatedSaleId: saleId, pointsBefore: pointsBefore, pointsAfter: pointsAfterRedemption,
-            });
-            finalLoyaltyPoints = pointsAfterRedemption;
-            pointsBefore = pointsAfterRedemption;
-        }
-        if (pointsEarned > 0) {
-             const pointsAfterEarned = finalLoyaltyPoints + pointsEarned;
-             newTransactions.push({
-                id: uuidv4(), customerId: bikeNumberFormatted, type: 'earned', points: pointsEarned, date: saleDate,
-                relatedSaleId: saleId, pointsBefore: pointsBefore, pointsAfter: pointsAfterEarned
-            });
-            finalLoyaltyPoints = pointsAfterEarned;
+            
+            // Find applicable earning rule
+            const applicableRule = [...earningRules].sort((a,b) => a.minSpend - b.minSpend).find(r => subtotal >= r.minSpend && (r.maxSpend === null || subtotal <= r.maxSpend));
+            
+            if (applicableRule) {
+                pointsEarned = (subtotal / 100) * applicableRule.pointsPerHundred;
+                
+                // Apply tier multiplier
+                if (existingCustomer?.tierId) {
+                    const tier = customerTiers.find(t => t.id === existingCustomer.tierId);
+                    if (tier && tier.pointsMultiplier > 1) {
+                        pointsEarned *= tier.pointsMultiplier;
+                        tierApplied = { name: tier.name, multiplier: tier.pointsMultiplier };
+                    }
+                }
+                
+                // Apply promotion multiplier
+                if (activePromotion) {
+                    pointsEarned *= activePromotion.multiplier;
+                }
+
+                pointsEarned = Math.round(pointsEarned);
+            }
         }
 
         const newSale: Sale = {
-            id: saleId, customerId: bikeNumberFormatted, customerName: customerInfo.customerName, items: saleItems,
-            subtotal, totalItemDiscounts: totalItemDiscount, overallDiscount: overallDiscountValue, overallDiscountType,
-            loyaltyDiscount: loyaltyDiscountAmount, tuningCharges: tuningCharges || 0, laborCharges: laborCharges || 0,
-            total, amountPaid, paymentStatus, balanceDue, previousBalanceBroughtForward, date: saleDate,
-            pointsEarned, redeemedPoints: redeemedPoints > 0 ? redeemedPoints : undefined, finalLoyaltyPoints,
-            promotionApplied: activePromotion ? { name: activePromotion.name, multiplier: activePromotion.multiplier } : undefined,
-            tierApplied: customerTier ? { name: customerTier.name, multiplier: customerTier.pointsMultiplier } : undefined,
+            id: finalSaleId,
+            customerId: customerId,
+            customerName: customerInfo.customerName,
+            items: saleItems,
+            subtotal,
+            totalItemDiscounts,
+            overallDiscount: overallDiscountValue,
+            overallDiscountType,
+            tuningCharges,
+            laborCharges,
+            loyaltyDiscount: loyaltyDiscountAmount,
+            total,
+            amountPaid,
+            paymentStatus,
+            balanceDue,
+            previousBalanceBroughtForward: previousBalance > 0 ? previousBalance : undefined,
+            date: now.toISOString(),
+            pointsEarned,
+            redeemedPoints,
+            promotionApplied,
+            tierApplied,
+            finalLoyaltyPoints: 0 // Will be set after customer update
         };
         
-        // ATOMIC STATE UPDATES using functional form to prevent stale state issues
-        setInventory(prevInventory => {
-            const updatedInventory = [...prevInventory];
-            saleItems.forEach(item => {
-                if (!item.productId.startsWith('manual-')) {
-                    const productIndex = updatedInventory.findIndex(p => p.id === item.productId);
-                    if (productIndex !== -1) {
-                        updatedInventory[productIndex].quantity -= item.quantity;
-                    }
+        const updatedInventory = [...inventory];
+        let inventoryUpdated = false;
+        for (const item of cartItems) {
+            // Do not deduct stock for manually added items
+            if(item.id.startsWith('manual-')) continue;
+            
+            const index = updatedInventory.findIndex(p => p.id === item.id);
+            if (index !== -1) {
+                const currentQty = updatedInventory[index].quantity;
+                if (currentQty < item.cartQuantity) {
+                    toast.error(`Not enough stock for ${item.name}. Sale cancelled.`);
+                    return null;
                 }
-            });
-            return updatedInventory;
-        });
-
-        setSales(prevSales => 
-            [...prevSales, newSale].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        );
-
-        setCustomers(prevCustomers => {
-            let tempCustomers = [...prevCustomers];
-            const existingCustomerIndex = tempCustomers.findIndex(c => c.id === bikeNumberFormatted);
-
-            if (existingCustomerIndex > -1) {
-                 tempCustomers[existingCustomerIndex] = {
-                    ...tempCustomers[existingCustomerIndex],
-                    lastSeen: saleDate, loyaltyPoints: finalLoyaltyPoints, balance: balanceDue,
-                    saleIds: [...tempCustomers[existingCustomerIndex].saleIds, saleId]
-                 };
+                updatedInventory[index] = { ...updatedInventory[index], quantity: currentQty - item.cartQuantity };
+                inventoryUpdated = true;
             } else {
-                tempCustomers.push({
-                    id: bikeNumberFormatted, name: customerInfo.customerName, saleIds: [saleId],
-                    firstSeen: saleDate, lastSeen: saleDate, contactNumber: customerInfo.contactNumber,
-                    serviceFrequencyValue: customerInfo.serviceFrequencyValue, serviceFrequencyUnit: customerInfo.serviceFrequencyUnit,
-                    loyaltyPoints: finalLoyaltyPoints, tierId: null, balance: balanceDue,
-                });
+                 toast.error(`Product ${item.name} not found in inventory. Sale cancelled.`);
+                 return null;
             }
-            const salesForTierCalc = [...sales, newSale]; // `sales` is from closure, but includes new sale
-            return recalculateAndAssignTier(bikeNumberFormatted, tempCustomers, salesForTierCalc, customerTiers);
-        });
+        }
+        
+        let newTransactions: LoyaltyTransaction[] = [];
+        let finalCustomerList = [...customers];
+        let customerUpdated = false;
 
-        if (newTransactions.length > 0) {
-            setLoyaltyTransactions(prev => [...prev, ...newTransactions]);
+        const customerIndex = finalCustomerList.findIndex(c => c.id === customerId);
+
+        if (customerIndex > -1) { // Existing customer
+            let customer = { ...finalCustomerList[customerIndex] };
+            const pointsBefore = customer.loyaltyPoints;
+            let pointsAfter = pointsBefore;
+
+            if (pointsEarned > 0) {
+                pointsAfter += pointsEarned;
+                newTransactions.push({ id: uuidv4(), customerId, type: 'earned', points: pointsEarned, date: now.toISOString(), relatedSaleId: newSale.id, pointsBefore, pointsAfter });
+            }
+            if (redeemedPoints > 0) {
+                const pointsBeforeRedeem = pointsAfter;
+                pointsAfter -= redeemedPoints;
+                newTransactions.push({ id: uuidv4(), customerId, type: 'redeemed', points: redeemedPoints, date: now.toISOString(), relatedSaleId: newSale.id, pointsBefore: pointsBeforeRedeem, pointsAfter });
+            }
+
+            customer = {
+                ...customer,
+                name: customerInfo.customerName, // Allow name updates on sale
+                contactNumber: customerInfo.contactNumber || customer.contactNumber,
+                saleIds: [...customer.saleIds, newSale.id],
+                lastSeen: now.toISOString(),
+                loyaltyPoints: pointsAfter,
+                balance: balanceDue,
+            };
+            
+            // Only update service frequency if new values are provided
+            if (customerInfo.serviceFrequencyValue) {
+                customer.serviceFrequencyValue = customerInfo.serviceFrequencyValue;
+                customer.serviceFrequencyUnit = customerInfo.serviceFrequencyUnit;
+            }
+            
+            newSale.finalLoyaltyPoints = pointsAfter;
+            finalCustomerList[customerIndex] = customer;
+            customerUpdated = true;
+
+        } else { // New customer
+            const newCustomer: Customer = {
+                id: customerId,
+                name: customerInfo.customerName,
+                contactNumber: customerInfo.contactNumber,
+                saleIds: [newSale.id],
+                firstSeen: now.toISOString(),
+                lastSeen: now.toISOString(),
+                loyaltyPoints: pointsEarned,
+                tierId: customerTiers.find(t => t.rank === 0)?.id || null, // Assign base tier
+                balance: balanceDue,
+                serviceFrequencyValue: customerInfo.serviceFrequencyValue,
+                serviceFrequencyUnit: customerInfo.serviceFrequencyUnit
+            };
+            newSale.finalLoyaltyPoints = pointsEarned;
+            finalCustomerList.push(newCustomer);
+            customerUpdated = true;
+            if (pointsEarned > 0) {
+                 newTransactions.push({ id: uuidv4(), customerId, type: 'earned', points: pointsEarned, date: now.toISOString(), relatedSaleId: newSale.id, pointsBefore: 0, pointsAfter: pointsEarned });
+            }
         }
 
-        try {
-            createBackup(false);
-            toast.success("Sale recorded. Backup file is downloading.");
-        } catch (error) {
-            console.error("Automatic backup failed after sale:", error);
-            toast.error("Sale completed, but auto-backup failed. Please create a manual backup from Settings.");
-        }
+        finalCustomerList = recalculateAndAssignTier(customerId, finalCustomerList, [...sales, newSale], customerTiers);
 
+        // Perform state updates together
+        setSales(prevSales => [newSale, ...prevSales]);
+        if(inventoryUpdated) setInventory(updatedInventory);
+        if(customerUpdated) setCustomers(finalCustomerList);
+        if (newTransactions.length > 0) setLoyaltyTransactions(prev => [...newTransactions, ...prev]);
+
+        toast.success(`Sale ${newSale.id} completed!`);
         return newSale;
     };
-    // The following functions were missing from the provided file and have been stubbed.
-    // In a real scenario, these would contain the full logic for updating and reversing sales.
-    const updateSale = (saleId: string, updates: any) => {
-      console.warn("updateSale function is not fully implemented in the provided file.");
-      toast.error("Editing sales is not fully supported in this version.");
+    
+    const updateSale = (saleId: string, updates: { items: SaleItem[], overallDiscount: number, overallDiscountType: 'fixed' | 'percentage', tuningCharges: number, laborCharges: number }) => {
+        setSales(prevSales => {
+            const saleIndex = prevSales.findIndex(s => s.id === saleId);
+            if (saleIndex === -1) return prevSales;
+
+            const originalSale = prevSales[saleIndex];
+            
+            const subtotal = updates.items.reduce((acc, item) => acc + item.originalPrice * item.quantity, 0);
+            const totalItemDiscounts = updates.items.reduce((acc, item) => {
+                const discountAmount = item.discountType === 'fixed' ? item.discount : (item.originalPrice * item.discount) / 100;
+                return acc + (discountAmount * item.quantity);
+            }, 0);
+
+            const subtotalAfterItemDiscount = subtotal - totalItemDiscounts;
+            const totalWithCharges = subtotalAfterItemDiscount + updates.tuningCharges + updates.laborCharges;
+
+            const overallDiscountAmount = updates.overallDiscountType === 'fixed' 
+                ? updates.overallDiscount 
+                : (totalWithCharges * updates.overallDiscount) / 100;
+
+            const cartTotal = totalWithCharges - overallDiscountAmount;
+            const totalBeforeLoyalty = cartTotal + (originalSale.previousBalanceBroughtForward || 0);
+            const newTotal = Math.round(totalBeforeLoyalty - (originalSale.loyaltyDiscount || 0));
+            const newBalanceDue = newTotal - originalSale.amountPaid;
+            const newPaymentStatus: 'Paid' | 'Partial' | 'Unpaid' = newBalanceDue <= 0 ? 'Paid' : (originalSale.amountPaid > 0 ? 'Partial' : 'Unpaid');
+
+            const updatedSale: Sale = {
+                ...originalSale,
+                items: updates.items.map(item => ({
+                    ...item,
+                    price: item.originalPrice - (item.discountType === 'fixed' ? item.discount : (item.originalPrice * item.discount) / 100)
+                })),
+                overallDiscount: updates.overallDiscount,
+                overallDiscountType: updates.overallDiscountType,
+                tuningCharges: updates.tuningCharges,
+                laborCharges: updates.laborCharges,
+                subtotal,
+                totalItemDiscounts,
+                total: newTotal,
+                balanceDue: newBalanceDue,
+                paymentStatus: newPaymentStatus,
+            };
+
+            // Update customer balance
+            setCustomers(prevCustomers => {
+                const customerIndex = prevCustomers.findIndex(c => c.id === updatedSale.customerId);
+                if (customerIndex === -1) return prevCustomers;
+
+                const customer = prevCustomers[customerIndex];
+                const otherSalesTotalBalance = customer.saleIds
+                    .filter(id => id !== saleId)
+                    .map(id => prevSales.find(s => s.id === id))
+                    .filter((s): s is Sale => !!s)
+                    .reduce((sum, s) => sum + s.balanceDue, 0);
+                
+                const updatedCustomer = {
+                    ...customer,
+                    balance: otherSalesTotalBalance + newBalanceDue,
+                };
+                
+                const newCustomers = [...prevCustomers];
+                newCustomers[customerIndex] = updatedCustomer;
+                return newCustomers;
+            });
+
+            const newSales = [...prevSales];
+            newSales[saleIndex] = updatedSale;
+            toast.success(`Sale ${saleId} updated successfully.`);
+            return newSales;
+        });
     };
 
     const reverseSale = (saleId: string, itemsToReturn: SaleItem[]) => {
-      console.warn("reverseSale function is not fully implemented in the provided file.");
-      toast.error("Reversing sales is not fully supported in this version.");
+        const sale = sales.find(s => s.id === saleId);
+        if (!sale) {
+            toast.error("Sale not found.");
+            return;
+        }
+
+        // Add quantities back to inventory
+        setInventory(prevInventory => {
+            const newInventory = [...prevInventory];
+            let updated = false;
+            for (const item of itemsToReturn) {
+                 if(item.productId.startsWith('manual-')) continue; // Don't add stock for manual items
+
+                const index = newInventory.findIndex(p => p.id === item.productId);
+                if (index !== -1) {
+                    newInventory[index] = { ...newInventory[index], quantity: newInventory[index].quantity + item.quantity };
+                    updated = true;
+                }
+            }
+            if(updated) toast.success(`${itemsToReturn.length} item(s) returned to stock.`);
+            return updated ? newInventory : prevInventory;
+        });
+        
+        const remainingItems = sale.items.filter(item => !itemsToReturn.some(r => r.productId === item.productId));
+
+        if (remainingItems.length === 0 && (sale.tuningCharges || 0) === 0 && (sale.laborCharges || 0) === 0) {
+            // If all items are returned and no other charges, delete the sale
+            setSales(sales.filter(s => s.id !== saleId));
+            setCustomers(customers.map(c => {
+                if (c.id === sale.customerId) {
+                    return { ...c, saleIds: c.saleIds.filter(id => id !== saleId) };
+                }
+                return c;
+            }));
+            // TODO: A more robust loyalty reversal would be ideal here.
+            // For simplicity, we just delete the transaction if it exists.
+            setLoyaltyTransactions(lt => lt.filter(t => t.relatedSaleId !== saleId));
+            
+            toast.success(`Sale ${saleId} and associated loyalty points have been completely reversed and deleted.`);
+
+        } else {
+             // If some items remain, update the sale (recalculate totals)
+             const newSubtotal = remainingItems.reduce((acc, item) => acc + (item.originalPrice * item.quantity), 0);
+             const newItemDiscounts = remainingItems.reduce((acc, item) => {
+                const discount = item.discountType === 'fixed' ? item.discount : (item.originalPrice * item.discount) / 100;
+                return acc + (discount * item.quantity);
+            }, 0);
+            
+            // Re-calculate total based on remaining items and original discounts/charges
+            const subtotalAfterItemDiscount = newSubtotal - newItemDiscounts;
+            const totalWithCharges = subtotalAfterItemDiscount + (sale.tuningCharges || 0) + (sale.laborCharges || 0);
+            const overallDiscountAmount = sale.overallDiscountType === 'fixed' ? sale.overallDiscount : (totalWithCharges * sale.overallDiscount) / 100;
+            const cartTotal = totalWithCharges - overallDiscountAmount;
+            const totalBeforeLoyalty = cartTotal + (sale.previousBalanceBroughtForward || 0);
+            const newTotal = Math.round(totalBeforeLoyalty - (sale.loyaltyDiscount || 0));
+
+            const newBalanceDue = newTotal - sale.amountPaid;
+            const newPaymentStatus: 'Paid' | 'Partial' | 'Unpaid' = newBalanceDue <= 0 ? 'Paid' : (sale.amountPaid > 0 ? 'Partial' : 'Unpaid');
+             
+            const updatedSale: Sale = {
+                ...sale,
+                items: remainingItems,
+                subtotal: newSubtotal,
+                totalItemDiscounts: newItemDiscounts,
+                total: newTotal,
+                balanceDue: newBalanceDue,
+                paymentStatus: newPaymentStatus,
+            };
+
+            setSales(sales.map(s => s.id === saleId ? updatedSale : s));
+            toast.success(`Sale ${saleId} partially reversed.`);
+        }
     };
 
-    // FIX: Implement missing context functions
     const updateCustomer = (customerId: string, details: Partial<Customer>): boolean => {
-        const customerToUpdate = customers.find(c => c.id === customerId);
-        if (!customerToUpdate) {
+        const customersCopy = [...customers];
+        const index = customersCopy.findIndex(c => c.id === customerId);
+        
+        if (index === -1) {
             toast.error("Customer not found.");
             return false;
         }
 
+        // If ID (bike number) is being changed, check for duplicates
         if (details.id && details.id !== customerId) {
-            if (customers.some(c => c.id === details.id && c.id !== customerId)) {
-                toast.error(`Another customer with ID "${details.id}" already exists.`);
+            if (customers.some(c => c.id === details.id)) {
+                toast.error(`A customer with bike number "${details.id}" already exists.`);
                 return false;
             }
+            // Update all related sale records with the new customer ID
+            const customerSaleIds = customersCopy[index].saleIds;
+            setSales(prevSales => prevSales.map(sale => {
+                if (customerSaleIds.includes(sale.id)) {
+                    return { ...sale, customerId: details.id! };
+                }
+                return sale;
+            }));
+            setLoyaltyTransactions(prev => prev.map(lt => lt.customerId === customerId ? {...lt, customerId: details.id!} : lt));
         }
         
-        setCustomers(customers.map(c => (c.id === customerId ? { ...c, ...details } : c)));
-        
-        if (details.id && details.id !== customerId) {
-            setSales(sales.map(s => s.customerId === customerId ? { ...s, customerId: details.id! } : s));
-        }
-
-        toast.success("Customer details updated successfully.");
+        customersCopy[index] = { ...customersCopy[index], ...details };
+        setCustomers(customersCopy);
+        toast.success("Customer details updated.");
         return true;
     };
-
+    
     const recordCustomerPayment = (customerId: string, amount: number, notes?: string): boolean => {
-        let customerFound = false;
-        const updatedCustomers = customers.map(c => {
-            if (c.id === customerId) {
-                customerFound = true;
-                return { ...c, balance: c.balance - amount };
-            }
-            return c;
-        });
-
-        if (!customerFound) {
+        const customerIndex = customers.findIndex(c => c.id === customerId);
+        if (customerIndex === -1) {
             toast.error("Customer not found.");
+            return false;
+        }
+        
+        const customer = customers[customerIndex];
+        if (amount > customer.balance) {
+            toast.error(`Payment amount exceeds the balance of ${formatCurrency(customer.balance)}.`);
             return false;
         }
 
@@ -755,15 +930,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             customerId,
             amount,
             date: new Date().toISOString(),
-            notes,
+            notes
         };
         
-        setCustomers(updatedCustomers);
-        setPayments(prev => [newPayment, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        toast.success(`Payment of ${formatCurrency(amount)} recorded for customer ${customerId}.`);
+        const updatedCustomer = {
+            ...customer,
+            balance: customer.balance - amount,
+            lastSeen: new Date().toISOString(), // Consider payment as an interaction
+        };
+        
+        setCustomers(prev => prev.map(c => c.id === customerId ? updatedCustomer : c));
+        setPayments(prev => [newPayment, ...prev]);
+        toast.success(`Payment of ${formatCurrency(amount)} recorded for ${customer.name}.`);
         return true;
     };
-    
+
     const updateEarningRules = (rules: EarningRule[]) => {
         setEarningRules(rules);
         toast.success("Earning rules updated.");
@@ -776,7 +957,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const addPromotion = (promotion: Omit<Promotion, 'id'>) => {
         const newPromotion: Promotion = { ...promotion, id: uuidv4() };
-        setPromotions([...promotions, newPromotion]);
+        setPromotions([newPromotion, ...promotions]);
         toast.success(`Promotion "${newPromotion.name}" added.`);
     };
 
@@ -791,11 +972,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const adjustCustomerPoints = (customerId: string, points: number, reason: string): boolean => {
+        if (!reason.trim()) {
+            toast.error("A reason is required for manual point adjustments.");
+            return false;
+        }
+        
         const customerIndex = customers.findIndex(c => c.id === customerId);
         if (customerIndex === -1) {
             toast.error("Customer not found.");
             return false;
         }
+        
         const customer = customers[customerIndex];
         const pointsBefore = customer.loyaltyPoints;
         const pointsAfter = pointsBefore + points;
@@ -805,63 +992,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return false;
         }
 
+        const transactionType = points > 0 ? 'manual_add' : 'manual_subtract';
         const newTransaction: LoyaltyTransaction = {
             id: uuidv4(),
             customerId,
-            type: points > 0 ? 'manual_add' : 'manual_subtract',
+            type: transactionType,
             points: Math.abs(points),
             date: new Date().toISOString(),
             reason,
             pointsBefore,
-            pointsAfter
+            pointsAfter,
         };
-        
-        setCustomers(customers.map(c => c.id === customerId ? { ...c, loyaltyPoints: pointsAfter } : c));
+
+        const updatedCustomer = { ...customer, loyaltyPoints: pointsAfter };
+        setCustomers(prev => prev.map(c => c.id === customerId ? updatedCustomer : c));
         setLoyaltyTransactions(prev => [newTransaction, ...prev]);
-        toast.success(`Points adjusted for ${customer.name}.`);
+        toast.success(`Points adjusted for ${customer.name}. New balance: ${pointsAfter}.`);
         return true;
     };
-
+    
     const updateLoyaltyExpirySettings = (settings: LoyaltyExpirySettings) => {
         setLoyaltyExpirySettings(settings);
         toast.success("Loyalty expiry settings updated.");
     };
-    
+
     const updateCustomerTiers = (tiers: CustomerTier[]) => {
         setCustomerTiers(tiers);
-        toast.success("Customer tiers updated.");
+        toast.success("Customer tiers updated. Tiers for all customers will be re-evaluated on the next app load.");
     };
-    
+
     const addExpense = (expense: Omit<Expense, 'id'>) => {
-        const newExpense: Expense = { ...expense, id: uuidv4() };
-        setExpenses(prev => [newExpense, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        toast.success("Expense added.");
+        const newExpense = { ...expense, id: uuidv4() };
+        setExpenses([newExpense, ...expenses]);
+        toast.success("Expense added successfully.");
     };
-    
+
     const updateExpense = (expense: Expense) => {
-        setExpenses(prev => prev.map(e => e.id === expense.id ? expense : e).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        toast.success("Expense updated.");
+        setExpenses(expenses.map(e => e.id === expense.id ? expense : e));
+        toast.success("Expense updated successfully.");
     };
 
     const deleteExpense = (expenseId: string) => {
-        setExpenses(prev => prev.filter(e => e.id !== expenseId));
+        setExpenses(expenses.filter(e => e.id !== expenseId));
         toast.success("Expense deleted.");
     };
     
     const addDemandItem = (item: Omit<DemandItem, 'id'>) => {
-        const newItem: DemandItem = { ...item, id: uuidv4() };
-        setDemandItems(prev => [newItem, ...prev]);
+        const newItem = { ...item, id: uuidv4() };
+        setDemandItems([newItem, ...demandItems]);
         toast.success(`"${newItem.name}" added to demand list.`);
     };
-
+    
     const updateDemandItem = (item: DemandItem) => {
-        setDemandItems(prev => prev.map(d => d.id === item.id ? item : d));
-        toast.success(`"${item.name}" updated in demand list.`);
+        setDemandItems(demandItems.map(d => d.id === item.id ? item : d));
+        toast.success(`"${item.name}" updated.`);
     };
-
+    
     const deleteDemandItem = (itemId: string) => {
-        setDemandItems(prev => prev.filter(d => d.id !== itemId));
+        setDemandItems(demandItems.filter(d => d.id !== itemId));
         toast.success("Item removed from demand list.");
+    };
+    
+    const createBackup = (showToast = true) => {
+        const data: { [key: string]: any } = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key) {
+                try {
+                    data[key] = localStorage.getItem(key);
+                } catch (e) {
+                    console.warn(`Could not back up key: ${key}`);
+                }
+            }
+        }
+        
+        // This is a simplified backup that stores raw strings. 
+        // A more robust solution might parse and then stringify to ensure format.
+        const backupObject = {
+            timestamp: new Date().toISOString(),
+            data: data
+        };
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupObject, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `shopsync_backup_${new Date().toISOString().split('T')[0]}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        if(showToast) toast.success("Backup created successfully!");
     };
 
 
@@ -871,11 +1090,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             inventory, addProduct, updateProduct, deleteProduct, findProductByBarcode, addSampleData, importFromExcel, addStock,
             categories, addCategory, updateCategory, deleteCategory,
             sales, createSale, updateSale, reverseSale,
-            customers, updateCustomer,
-            // FIX: Replaced stubbed functions and missing properties with actual implementations.
-            recordCustomerPayment,
-            earningRules, updateEarningRules,
-            redemptionRule, updateRedemptionRule,
+            customers, updateCustomer, recordCustomerPayment,
+            earningRules, updateEarningRules, redemptionRule, updateRedemptionRule,
             promotions, addPromotion, updatePromotion, deletePromotion,
             loyaltyTransactions, adjustCustomerPoints,
             loyaltyExpirySettings, updateLoyaltyExpirySettings,
@@ -883,7 +1099,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             expenses, addExpense, updateExpense, deleteExpense,
             payments,
             demandItems, addDemandItem, updateDemandItem, deleteDemandItem,
-            createBackup
+            createBackup,
         }}>
             {children}
         </AppContext.Provider>

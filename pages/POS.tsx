@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
@@ -667,6 +668,14 @@ const POS: React.FC = () => {
                     </Button>
                 </div>
 
+                <Button 
+                    onClick={() => setCheckoutModalOpen(true)} 
+                    disabled={cart.length === 0 && !tuningCharges && !laborCharges}
+                    className="w-full mt-4 text-lg"
+                >
+                    Checkout
+                </Button>
+
                 <div className="mt-auto pt-4 border-t">
                     <div className="space-y-2 text-sm">
                          <div className="flex justify-between">
@@ -684,13 +693,6 @@ const POS: React.FC = () => {
                             <span className="text-lg">{formatCurrency(subtotalAfterItemDiscount)}</span>
                         </div>
                     </div>
-                    <Button 
-                        onClick={() => setCheckoutModalOpen(true)} 
-                        disabled={cart.length === 0 && !tuningCharges && !laborCharges}
-                        className="w-full mt-4 text-lg"
-                    >
-                        Checkout
-                    </Button>
                 </div>
             </div>
             
