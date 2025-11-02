@@ -19,6 +19,7 @@ const DemandForm: React.FC<{
 }> = ({ item, onSave, onCancel }) => {
     const [formData, setFormData] = React.useState({
         quantity: item?.quantity || '',
+        unit: item?.unit || '',
         name: item?.name || '',
         category: item?.category || '',
         manufacturer: item?.manufacturer || '',
@@ -43,6 +44,7 @@ const DemandForm: React.FC<{
         const dataToSave = {
             ...formData,
             quantity: quantity,
+            unit: formData.unit.trim(),
             name: formData.name.trim(),
             category: formData.category.trim(),
             manufacturer: formData.manufacturer.trim(),
@@ -53,7 +55,10 @@ const DemandForm: React.FC<{
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Quantity" name="quantity" type="number" value={formData.quantity} onChange={handleChange} required min="1" />
+            <div className="grid grid-cols-2 gap-4">
+                <Input label="Quantity" name="quantity" type="number" value={formData.quantity} onChange={handleChange} required min="1" />
+                <Input label="Unit (Optional)" name="unit" value={formData.unit} onChange={handleChange} placeholder="e.g., packets, box" />
+            </div>
             <Input label="Name of Item" name="name" value={formData.name} onChange={handleChange} required placeholder="e.g., Engine Oil 20W-50" />
             <Input label="Category" name="category" value={formData.category} onChange={handleChange} required placeholder="e.g., Lubricants" />
             <Input label="Manufacturing (Brand)" name="manufacturer" value={formData.manufacturer} onChange={handleChange} required placeholder="e.g., Shell" />
@@ -123,6 +128,7 @@ const Demand: React.FC = () => {
                 <tr>
                     <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${index + 1}</td>
                     <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${item.quantity}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px;">${item.unit || ''}</td>
                     <td style="border: 1px solid #ddd; padding: 6px;">${item.name}</td>
                     <td style="border: 1px solid #ddd; padding: 6px;">${item.category}</td>
                     <td style="border: 1px solid #ddd; padding: 6px;">${item.manufacturer}</td>
@@ -134,8 +140,6 @@ const Demand: React.FC = () => {
                 ? `<img src="${shopInfo.logoUrl}" alt="Shop Logo" style="height: ${logoSize}px; width: auto; margin: 0 auto 10px auto; display: block; object-fit: contain;" />`
                 : '';
             
-            const totalQuantity = demandItems.reduce((sum, item) => sum + item.quantity, 0);
-
             pdfContainer.innerHTML = `
                 <div>
                     <div style="text-align: center; margin-bottom: 20px;">
@@ -148,19 +152,13 @@ const Demand: React.FC = () => {
                             <tr>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Sr. No.</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Quantity</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Unit</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Name of Item</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Category</th>
                                 <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Manufacturing</th>
                             </tr>
                         </thead>
                         <tbody>${tableRows}</tbody>
-                        <tfoot style="background-color: #f2f2f2; font-weight: bold;">
-                             <tr>
-                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">Total:</td>
-                                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${totalQuantity}</td>
-                                <td colspan="3" style="border: 1px solid #ddd; padding: 8px;"></td>
-                             </tr>
-                        </tfoot>
                     </table>
                 </div>
             `;
@@ -219,6 +217,7 @@ const Demand: React.FC = () => {
                         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                             <tr>
                                 <th scope="col" className="px-6 py-3 w-24 text-center">Quantity</th>
+                                <th scope="col" className="px-6 py-3 w-32">Unit</th>
                                 <th scope="col" className="px-6 py-3">Name of Item</th>
                                 <th scope="col" className="px-6 py-3">Category</th>
                                 <th scope="col" className="px-6 py-3">Manufacturing</th>
@@ -229,6 +228,7 @@ const Demand: React.FC = () => {
                             {demandItems.map(item => (
                                 <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
                                     <td className="px-6 py-4 font-bold text-center">{item.quantity}</td>
+                                    <td className="px-6 py-4">{item.unit || '-'}</td>
                                     <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                                     <td className="px-6 py-4">{item.category}</td>
                                     <td className="px-6 py-4">{item.manufacturer}</td>
@@ -255,7 +255,9 @@ const Demand: React.FC = () => {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-xs text-gray-500">Quantity</p>
-                                    <p className="font-bold text-xl text-primary-600">{item.quantity}</p>
+                                    <p className="font-bold text-xl text-primary-600">
+                                        {item.quantity} <span className="text-sm font-medium text-gray-500">{item.unit}</span>
+                                    </p>
                                 </div>
                             </div>
                             <div className="flex justify-between items-center pt-2 border-t">

@@ -1,4 +1,3 @@
-
 export interface ShopInfo {
     name: string;
     address: string;
@@ -179,6 +178,7 @@ export interface Payment {
 export interface DemandItem {
   id: string;
   quantity: number;
+  unit?: string;
   name: string;
   category: string;
   manufacturer: string;
