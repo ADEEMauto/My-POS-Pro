@@ -1,12 +1,12 @@
 
 import React from 'react';
-// FIX: Changed react-router-dom import to use namespace import to resolve module export error.
-import * as ReactRouterDOM from 'react-router-dom';
+// FIX: Use named imports for react-router-dom components.
+import { NavLink } from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
 import { LayoutDashboard, ShoppingCart, Archive, Layers, Users, BarChart2, User, Settings, X, Receipt, Contact, Award, CreditCard, ClipboardList, ClipboardCheck } from 'lucide-react';
 
 const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onClick: () => void; }> = ({ to, icon, label, onClick }) => (
-    <ReactRouterDOM.NavLink
+    <NavLink
         to={to}
         onClick={onClick}
         className={({ isActive }) =>
@@ -17,7 +17,7 @@ const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onCl
     >
         {icon}
         <span className="ml-3">{label}</span>
-    </ReactRouterDOM.NavLink>
+    </NavLink>
 );
 
 const Sidebar: React.FC<{ isOpen: boolean, onToggle: () => void }> = ({ isOpen, onToggle }) => {

@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-// FIX: Changed react-router-dom import to use namespace import to resolve module export error.
-import * as ReactRouterDOM from 'react-router-dom';
+// FIX: Use named imports for react-router-dom components.
+import { Link } from 'react-router-dom';
 import { ShoppingCart, Archive, Layers, Users, BarChart2, DollarSign, Package, AlertTriangle, FileText } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import Button from '../components/ui/Button';
@@ -26,10 +27,10 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
 );
 
 const QuickLink: React.FC<{ to: string; label: string; icon: React.ReactNode }> = ({ to, label, icon }) => (
-    <ReactRouterDOM.Link to={to} className="flex flex-col items-center justify-center bg-white p-4 sm:p-6 rounded-lg shadow-md hover:shadow-lg hover:bg-primary-50 transition-all text-center">
+    <Link to={to} className="flex flex-col items-center justify-center bg-white p-4 sm:p-6 rounded-lg shadow-md hover:shadow-lg hover:bg-primary-50 transition-all text-center">
         <div className="mb-2 text-primary-600">{icon}</div>
         <span className="font-semibold text-gray-700">{label}</span>
-    </ReactRouterDOM.Link>
+    </Link>
 );
 
 
@@ -428,6 +429,10 @@ const Dashboard: React.FC = () => {
                                     <div>
                                         <p className="font-semibold text-gray-800">{product.name}</p>
                                         <p className="text-sm text-gray-500">{product.manufacturer}</p>
+                                        <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full inline-block mt-1">
+                                            {categoryMap.get(product.categoryId) || 'N/A'}
+                                            {product.subCategoryId && categoryMap.get(product.subCategoryId) ? ` > ${categoryMap.get(product.subCategoryId)}` : ''}
+                                        </p>
                                     </div>
                                     <span className="text-sm text-gray-600">Purchase Price: {formatCurrency(product.purchasePrice)}</span>
                                 </li>
