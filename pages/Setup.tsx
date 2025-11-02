@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -8,10 +7,11 @@ import { compressImage } from '../utils/helpers';
 import toast from 'react-hot-toast';
 
 const Setup: React.FC = () => {
-    const { saveShopInfo } = useAppContext();
+    const { saveShopInfo, restoreData } = useAppContext();
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [logo, setLogo] = useState<string | undefined>(undefined);
+    const restoreInputRef = useRef<HTMLInputElement>(null);
 
     const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -33,6 +33,30 @@ const Setup: React.FC = () => {
         if (name.trim() && address.trim()) {
             saveShopInfo({ name, address, logoUrl: logo });
         }
+    };
+    
+    const handleRestoreClick = () => {
+        restoreInputRef.current?.click();
+    };
+
+    const handleRestoreUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const text = e.target?.result as string;
+                const data = JSON.parse(text);
+                restoreData(data);
+            } catch (error) {
+                toast.error("Invalid backup file. Please upload a valid JSON backup.");
+                console.error("Restore error:", error);
+            }
+        };
+        reader.readAsText(file);
+        // Reset the input value to allow re-uploading the same file
+        event.target.value = ''; 
     };
 
     return (
@@ -106,6 +130,33 @@ const Setup: React.FC = () => {
                         </Button>
                     </div>
                 </form>
+                 <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-300" />
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                        <span className="px-2 bg-white text-gray-500">Or</span>
+                    </div>
+                </div>
+
+                <div>
+                    <input
+                        type="file"
+                        ref={restoreInputRef}
+                        onChange={handleRestoreUpload}
+                        accept=".json"
+                        className="hidden"
+                    />
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        className="w-full"
+                        onClick={handleRestoreClick}
+                    >
+                        <Upload className="h-5 w-5 mr-2" />
+                        Restore from Backup
+                    </Button>
+                </div>
             </div>
         </div>
     );

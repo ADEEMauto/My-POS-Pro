@@ -9,7 +9,7 @@ import { compressImage } from '../utils/helpers';
 import { ShopInfo } from '../types';
 
 const Settings: React.FC = () => {
-    const { currentUser, shopInfo, saveShopInfo } = useAppContext();
+    const { currentUser, shopInfo, saveShopInfo, backupData, restoreData } = useAppContext();
     const restoreInputRef = useRef<HTMLInputElement>(null);
     const [backupFrequency, setBackupFrequency] = useLocalStorage('backupFrequency', 'daily');
     const [shopDetails, setShopDetails] = useState<ShopInfo & { receiptLogoSize: number; pdfLogoSize: number }>({
@@ -34,54 +34,24 @@ const Settings: React.FC = () => {
         }
     }, [shopInfo]);
 
-    const handleBackup = () => {
-        const dataToBackup: { [key: string]: any } = {};
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key) {
-                dataToBackup[key] = JSON.parse(localStorage.getItem(key)!);
-            }
-        }
-
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToBackup, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", `shopsync_backup_${new Date().toISOString().split('T')[0]}.json`);
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-        toast.success("Backup created successfully!");
-    };
-    
     const handleRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-
-        if (!window.confirm("Are you sure you want to restore? This will overwrite all current data.")) {
-            return;
-        }
 
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
                 const text = e.target?.result as string;
                 const data = JSON.parse(text);
-                
-                localStorage.clear();
-
-                Object.keys(data).forEach(key => {
-                    localStorage.setItem(key, JSON.stringify(data[key]));
-                });
-
-                toast.success("Data restored successfully! The app will now reload.");
-                setTimeout(() => window.location.reload(), 1500);
-
+                restoreData(data); // Use context function
             } catch (error) {
                 toast.error("Invalid backup file.");
                 console.error("Restore error:", error);
             }
         };
         reader.readAsText(file);
+        // Reset file input
+        event.target.value = '';
     };
 
     const handleDetailsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -258,7 +228,7 @@ const Settings: React.FC = () => {
                      )}
 
                     <div className="flex flex-col md:flex-row gap-4">
-                        <Button onClick={handleBackup} className="w-full md:w-auto flex-1 gap-2">
+                        <Button onClick={backupData} className="w-full md:w-auto flex-1 gap-2">
                             <Download size={18} /> Create & Download Backup
                         </Button>
                         {isMaster && (
