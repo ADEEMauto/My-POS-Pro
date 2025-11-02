@@ -551,6 +551,17 @@ const POS: React.FC = () => {
                     <div className="flex items-center gap-2"><ShoppingCart /> Current Sale</div>
                     {cart.length > 0 && <Button variant="danger" size="sm" onClick={() => setCart([])}><Trash2 size={16} /></Button>}
                 </h2>
+
+                {/* Checkout and Manual Add buttons moved to the top */}
+                <div className="space-y-2 mb-4">
+                    <Button onClick={() => setCheckoutModalOpen(true)} className="w-full">
+                        {cart.length > 0 ? 'Proceed to Checkout' : 'Add Charges / Checkout'}
+                    </Button>
+                    <Button onClick={addManualItemToCart} variant="ghost" className="w-full flex items-center justify-center gap-2">
+                        <PlusCircle size={18} /> Add Manual Item
+                    </Button>
+                </div>
+                
                 <div className="flex-grow overflow-y-auto -mr-4 pr-4 space-y-3">
                     {cart.length === 0 ? (
                         <p className="text-gray-500 text-center mt-8">Your cart is empty.</p>
@@ -594,14 +605,6 @@ const POS: React.FC = () => {
                         ))
                     )}
                 </div>
-                <Button onClick={addManualItemToCart} variant="ghost" className="w-full mt-2 flex items-center justify-center gap-2">
-                    <PlusCircle size={18} /> Add Manual Item
-                </Button>
-                
-                {/* MOVED: Checkout button now appears before totals. Also simplified logic to allow for service-only sales. */}
-                <Button onClick={() => setCheckoutModalOpen(true)} className="w-full mt-4">
-                    {cart.length > 0 ? 'Proceed to Checkout' : 'Add Charges / Checkout'}
-                </Button>
 
                 <div className="border-t pt-4 mt-4 space-y-2">
                     <div className="flex justify-between font-semibold">
