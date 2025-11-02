@@ -547,10 +547,17 @@ const POS: React.FC = () => {
 
             {/* Right Sidebar - Cart */}
             <div className="w-full md:w-96 bg-white shadow-lg p-4 flex flex-col border-l">
-                <h2 className="text-xl font-bold mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-bold mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2"><ShoppingCart /> Current Sale</div>
                     {cart.length > 0 && <Button variant="danger" size="sm" onClick={() => setCart([])}><Trash2 size={16} /></Button>}
                 </h2>
+
+                {cart.length > 0 && (
+                    <div className="bg-primary-600 text-white rounded-lg p-3 text-center mb-4 shadow-inner">
+                        <p className="text-xs opacity-80 uppercase tracking-wider">Total Amount</p>
+                        <p className="text-3xl font-bold tracking-tight">{formatCurrency(subtotalAfterItemDiscount)}</p>
+                    </div>
+                )}
 
                 {/* Checkout and Manual Add buttons moved to the top */}
                 <div className="space-y-2 mb-4">
