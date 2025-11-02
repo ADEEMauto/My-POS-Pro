@@ -296,7 +296,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // SALES & CUSTOMERS
     const createSale = useCallback((...args: Parameters<AppContextType['createSale']>) => {
         const [cart, overallDiscount, overallDiscountType, customerDetails, pointsToRedeem, tuningCharges, laborCharges, amountPaid] = args;
-        const saleId = uuidv4().split('-')[0].toUpperCase();
+        
+        const now = new Date();
+        const year = now.getFullYear().toString().slice(-2);
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const day = now.getDate().toString().padStart(2, '0');
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const baseSaleId = `${year}${month}${day}${hours}${minutes}`;
+
+        let saleId = baseSaleId;
+        let counter = 1;
+        // Ensure sale ID is unique for sales in the same minute
+        while (sales.some(s => s.id === saleId)) {
+            saleId = `${baseSaleId}-${counter}`;
+            counter++;
+        }
         
         let subtotal = 0;
         let totalItemDiscounts = 0;
