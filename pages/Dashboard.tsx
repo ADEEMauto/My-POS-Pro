@@ -1,13 +1,12 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 // FIX: Use named imports for react-router-dom components.
 import { Link } from 'react-router-dom';
-import { ShoppingCart, Archive, Layers, Users, BarChart2, DollarSign, Package, AlertTriangle, FileText } from 'lucide-react';
+import { ShoppingCart, Archive, Layers, Users, BarChart2, DollarSign, Package, AlertTriangle, FileText, ClipboardList } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-import { Product } from '../types';
+import { Product, DemandItem } from '../types';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -35,7 +34,7 @@ const QuickLink: React.FC<{ to: string; label: string; icon: React.ReactNode }> 
 
 
 const Dashboard: React.FC = () => {
-    const { currentUser, inventory, sales, shopInfo, categories } = useAppContext();
+    const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems } = useAppContext();
     const isMaster = currentUser?.role === 'master';
 
     const [isLowStockModalOpen, setLowStockModalOpen] = useState(false);
@@ -297,6 +296,29 @@ const Dashboard: React.FC = () => {
         }
     };
 
+    const handleImportToDemand = () => {
+        if (outOfStockProducts.length === 0) {
+            toast.error("No out-of-stock items to import.");
+            return;
+        }
+
+        const itemsToDemand: Omit<DemandItem, 'id'>[] = outOfStockProducts.map(product => {
+            const categoryName = categoryMap.get(product.categoryId) || 'N/A';
+            const subCategoryName = product.subCategoryId ? categoryMap.get(product.subCategoryId) : null;
+            const fullCategory = subCategoryName ? `${categoryName} > ${subCategoryName}` : categoryName;
+
+            return {
+                name: product.name,
+                manufacturer: product.manufacturer,
+                category: fullCategory,
+                quantity: 1, // Default quantity
+                unit: '',    // User can add manually later
+            };
+        });
+
+        addMultipleDemandItems(itemsToDemand);
+        setOutOfStockModalOpen(false); // Close modal on success
+    };
 
     const totalInvestment = inventory.reduce((acc, p) => acc + p.purchasePrice * p.quantity, 0);
     const totalSales = useMemo(() => {
@@ -415,9 +437,22 @@ const Dashboard: React.FC = () => {
                 title="Out of Stock Items"
                 size="lg"
                 footer={
-                     <div className="flex justify-end gap-2">
-                        <Button variant="secondary" onClick={() => setOutOfStockModalOpen(false)}>Close</Button>
-                        <Button onClick={handleDownloadOutOfStockPdf} className="flex items-center gap-2" disabled={outOfStockProducts.length === 0}><FileText size={18}/> Download PDF</Button>
+                    <div className="flex justify-between w-full items-center gap-2">
+                        <Button 
+                            onClick={handleImportToDemand} 
+                            variant="secondary" 
+                            className="flex items-center gap-2" 
+                            disabled={outOfStockProducts.length === 0}
+                            title="Add all out of stock items to the demand list"
+                        >
+                            <ClipboardList size={18}/> Import to Demand List
+                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button variant="secondary" onClick={() => setOutOfStockModalOpen(false)}>Close</Button>
+                            <Button onClick={handleDownloadOutOfStockPdf} className="flex items-center gap-2" disabled={outOfStockProducts.length === 0}>
+                                <FileText size={18}/> Download PDF
+                            </Button>
+                        </div>
                     </div>
                 }
             >

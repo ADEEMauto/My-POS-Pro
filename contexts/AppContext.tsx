@@ -94,6 +94,7 @@ interface AppContextType {
     payments: Payment[];
     demandItems: DemandItem[];
     addDemandItem: (item: Omit<DemandItem, 'id'>) => void;
+    addMultipleDemandItems: (items: Omit<DemandItem, 'id'>[]) => void;
     updateDemandItem: (item: DemandItem) => void;
     deleteDemandItem: (itemId: string) => void;
     backupData: () => void;
@@ -845,6 +846,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toast.success("Item added to demand list.");
     };
     
+    const addMultipleDemandItems = (items: Omit<DemandItem, 'id'>[]) => {
+        const newDemandItems = [...appData.demandItems];
+        let addedCount = 0;
+        
+        for (const item of items) {
+            // Check for duplicates based on name and manufacturer (case-insensitive)
+            const isDuplicate = newDemandItems.some(
+                existingItem =>
+                    existingItem.name.toLowerCase() === item.name.toLowerCase() &&
+                    existingItem.manufacturer.toLowerCase() === item.manufacturer.toLowerCase()
+            );
+            
+            if (!isDuplicate) {
+                newDemandItems.push({ ...item, id: uuidv4() });
+                addedCount++;
+            }
+        }
+
+        if (addedCount > 0) {
+            setAppData({ ...appData, demandItems: newDemandItems });
+            toast.success(`${addedCount} item(s) imported to demand list.`);
+        } else {
+            // FIX: The 'react-hot-toast' library does not have a dedicated `info` method. The standard `toast()` function is used for informational messages.
+            toast("All out-of-stock items were already in the demand list.");
+        }
+    };
+    
     const updateDemandItem = (updatedItem: DemandItem) => {
         setAppData({...appData, demandItems: appData.demandItems.map(i => i.id === updatedItem.id ? updatedItem : i)});
         toast.success("Demand item updated.");
@@ -908,7 +936,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         customerTiers, updateCustomerTiers,
         expenses, addExpense, updateExpense, deleteExpense,
         payments,
-        demandItems, addDemandItem, updateDemandItem, deleteDemandItem,
+        demandItems, addDemandItem, addMultipleDemandItems, updateDemandItem, deleteDemandItem,
         backupData,
         restoreData,
         loading,
