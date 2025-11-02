@@ -52,6 +52,12 @@ export interface SaleItem {
     purchasePrice: number; // Purchase price per item at time of sale
 }
 
+export interface OutsideServiceItem {
+    id: string;
+    name: string;
+    amount: number;
+}
+
 export interface Sale {
     id: string;
     customerId: string; // The bike number
@@ -64,6 +70,8 @@ export interface Sale {
     loyaltyDiscount?: number; // Discount from redeemed loyalty points
     tuningCharges?: number;
     laborCharges?: number;
+    outsideServices?: OutsideServiceItem[];
+    totalOutsideServices?: number;
     total: number; // Final amount
     amountPaid: number;
     paymentStatus: 'Paid' | 'Partial' | 'Unpaid';
@@ -176,7 +184,7 @@ export interface Payment {
 }
 
 export interface DemandItem {
-  id: string;
+  id:string;
   quantity: number;
   unit?: string;
   name: string;

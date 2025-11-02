@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-import { Sale, SaleItem, Product } from '../types';
+import { Sale, SaleItem, Product, OutsideServiceItem } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { Eye, Trash2, FileText, Star, ShoppingBag, Pencil } from 'lucide-react';
+import { Eye, Trash2, FileText, Star, ShoppingBag, Pencil, PlusCircle, X, Hammer } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import toast from 'react-hot-toast';
+import { v4 as uuidv4 } from 'uuid';
 // @ts-ignore
 import jsPDF from 'jspdf';
 // @ts-ignore
@@ -21,7 +22,10 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
     }, 0);
     
     const hasDiscounts = (sale.totalItemDiscounts || 0) > 0 || (sale.overallDiscount || 0) > 0 || (sale.loyaltyDiscount || 0) > 0;
-    const calculatedOverallDiscount = Math.max(0, sale.subtotal - sale.totalItemDiscounts + (sale.tuningCharges || 0) + (sale.laborCharges || 0) - (sale.loyaltyDiscount || 0) - sale.total);
+    const revenueBase = (sale.subtotal - (sale.totalItemDiscounts || 0)) + (sale.tuningCharges || 0) + (sale.laborCharges || 0);
+    const calculatedOverallDiscount = sale.overallDiscountType === 'fixed'
+        ? sale.overallDiscount
+        : (revenueBase * sale.overallDiscount) / 100;
 
     return (
         <Modal isOpen={true} onClose={onClose} title={`Sale Details - ID: ${sale.id}`} size="lg">
@@ -89,6 +93,12 @@ const SaleDetailsModal: React.FC<{ sale: Sale; onClose: () => void }> = ({ sale,
                         <div className="flex justify-between items-baseline text-sm text-blue-600">
                             <p><strong>Labor Charges:</strong></p>
                             <p>+ {formatCurrency(sale.laborCharges!)}</p>
+                        </div>
+                    )}
+                    {(sale.outsideServices && sale.outsideServices.length > 0) && (
+                        <div className="flex justify-between items-baseline text-sm text-cyan-600">
+                           <p><strong>Outside Services:</strong></p>
+                           <p>+ {formatCurrency(sale.totalOutsideServices || 0)}</p>
                         </div>
                     )}
                     {(sale.overallDiscount || 0) > 0 && (
@@ -217,6 +227,7 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
     const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>(sale.overallDiscountType || 'fixed');
     const [tuningCharges, setTuningCharges] = useState<number | string>(sale.tuningCharges || '');
     const [laborCharges, setLaborCharges] = useState<number | string>(sale.laborCharges || '');
+    const [outsideServices, setOutsideServices] = useState<OutsideServiceItem[]>(() => JSON.parse(JSON.stringify(sale.outsideServices || [])));
     
     const handleItemDiscountChange = (productId: string, value: string) => {
         const numericValue = parseFloat(value);
@@ -235,6 +246,16 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
         ));
     };
 
+    // Outside Services handlers
+    const handleAddService = () => setOutsideServices([...outsideServices, { id: uuidv4(), name: '', amount: 0 }]);
+    const handleUpdateService = (id: string, field: 'name' | 'amount', value: string) => {
+        setOutsideServices(outsideServices.map(s => s.id === id ? { ...s, [field]: field === 'amount' ? Number(value) || 0 : value } : s));
+    };
+    const handleRemoveService = (id: string) => {
+        setOutsideServices(outsideServices.filter(s => s.id !== id));
+    };
+
+
     const { newTotal, newBalanceDue } = useMemo(() => {
         const subtotal = items.reduce((acc, item) => acc + item.originalPrice * item.quantity, 0);
         const totalItemDiscounts = items.reduce((acc, item) => {
@@ -252,7 +273,8 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
             ? numOverallDiscount 
             : (totalWithCharges * numOverallDiscount) / 100;
         
-        const cartTotal = totalWithCharges - overallDiscountAmount;
+        const totalOutsideServicesAmount = outsideServices.reduce((sum, s) => sum + s.amount, 0);
+        const cartTotal = (totalWithCharges - overallDiscountAmount) + totalOutsideServicesAmount;
         const totalBeforeLoyalty = cartTotal + (sale.previousBalanceBroughtForward || 0);
         const calculatedNewTotal = totalBeforeLoyalty - (sale.loyaltyDiscount || 0);
         
@@ -260,7 +282,7 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
         const calculatedNewBalanceDue = roundedNewTotal - sale.amountPaid;
 
         return { newTotal: roundedNewTotal, newBalanceDue: calculatedNewBalanceDue };
-    }, [items, overallDiscount, overallDiscountType, tuningCharges, laborCharges, sale]);
+    }, [items, overallDiscount, overallDiscountType, tuningCharges, laborCharges, outsideServices, sale]);
 
     const handleSaveChanges = () => {
         updateSale(sale.id, {
@@ -268,7 +290,8 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
             overallDiscount: Number(overallDiscount) || 0,
             overallDiscountType: overallDiscountType,
             tuningCharges: Number(tuningCharges) || 0,
-            laborCharges: Number(laborCharges) || 0
+            laborCharges: Number(laborCharges) || 0,
+            outsideServices: outsideServices,
         });
         onClose();
     };
@@ -318,6 +341,21 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
                                 <option value="fixed">Rs.</option>
                                 <option value="percentage">%</option>
                             </select>
+                        </div>
+                    </div>
+                    <div className="pt-4 border-t">
+                        <h3 className="font-semibold text-lg flex items-center justify-between">
+                            <span className="flex items-center gap-2"><Hammer size={16}/> Outside Services</span>
+                            <Button size="sm" variant="ghost" onClick={handleAddService}><PlusCircle size={16}/></Button>
+                        </h3>
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                            {outsideServices.map(service => (
+                                <div key={service.id} className="flex items-center gap-2">
+                                    <Input placeholder="Service Name" value={service.name} onChange={e => handleUpdateService(service.id, 'name', e.target.value)} className="flex-grow"/>
+                                    <Input placeholder="Amount" type="number" value={service.amount || ''} onChange={e => handleUpdateService(service.id, 'amount', e.target.value)} className="w-28"/>
+                                    <Button size="sm" variant="danger" onClick={() => handleRemoveService(service.id)} className="p-2"><X size={16}/></Button>
+                                </div>
+                            ))}
                         </div>
                     </div>
                     <div className="mt-4 p-4 bg-blue-50 rounded-lg space-y-2 border border-blue-200">

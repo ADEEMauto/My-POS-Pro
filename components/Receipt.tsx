@@ -151,6 +151,23 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             )}
                         </tr>
                     )}
+                    {sale.outsideServices && sale.outsideServices.length > 0 && sale.outsideServices.map(service => (
+                        <tr key={service.id} className="align-top text-xs">
+                            {hasItemDiscounts ? (
+                                <>
+                                    <td className="text-center pt-1 px-1"></td>
+                                    <td colSpan={3} className="text-left pt-1 px-1">{service.name} (Ext.)</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(service.amount)}</td>
+                                </>
+                            ) : (
+                                <>
+                                    <td className="text-center pt-1 px-1"></td>
+                                    <td className="text-left pt-1 px-1">{service.name} (Ext.)</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(service.amount)}</td>
+                                </>
+                            )}
+                        </tr>
+                    ))}
                 </tbody>
             </table>
 

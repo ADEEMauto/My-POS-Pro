@@ -1,10 +1,9 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
-import { Product, CartItem, Sale, Customer } from '../types';
+import { Product, CartItem, Sale, Customer, OutsideServiceItem } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, UserPlus, FileSearch, ArrowUpDown } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, UserPlus, FileSearch, ArrowUpDown, Hammer } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -109,6 +108,7 @@ const POS: React.FC = () => {
     const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
     const [tuningCharges, setTuningCharges] = useState<number | string>('');
     const [laborCharges, setLaborCharges] = useState<number | string>('');
+    const [outsideServices, setOutsideServices] = useState<OutsideServiceItem[]>([]);
     
     const [isSaleCompleteModalOpen, setIsSaleCompleteModalOpen] = useState(false);
     const [completedSale, setCompletedSale] = useState<Sale | null>(null);
@@ -320,9 +320,11 @@ const POS: React.FC = () => {
         return overallDiscountType === 'fixed' ? value : (subtotalWithCharges * value) / 100;
     }, [overallDiscount, overallDiscountType, subtotalWithCharges]);
     
+    const totalOutsideServices = useMemo(() => outsideServices.reduce((sum, s) => sum + s.amount, 0), [outsideServices]);
+
     const cartTotal = useMemo(() => {
-        return subtotalWithCharges - overallDiscountAmount;
-    }, [subtotalWithCharges, overallDiscountAmount]);
+        return (subtotalWithCharges - overallDiscountAmount) + totalOutsideServices;
+    }, [subtotalWithCharges, overallDiscountAmount, totalOutsideServices]);
 
     const previousBalance = useMemo(() => currentCustomer?.balance || 0, [currentCustomer]);
     
@@ -390,7 +392,8 @@ const POS: React.FC = () => {
             Number(pointsToRedeem) || 0,
             parseFloat(String(tuningCharges)) || 0,
             parseFloat(String(laborCharges)) || 0,
-            Number(amountPaid) || 0
+            Number(amountPaid) || 0,
+            outsideServices
         );
 
         if (sale) {
@@ -402,6 +405,7 @@ const POS: React.FC = () => {
             setOverallDiscount('');
             setTuningCharges('');
             setLaborCharges('');
+            setOutsideServices([]);
             setCustomerName('');
             setBikeNumber('');
             setContactNumber('');
@@ -495,6 +499,15 @@ const POS: React.FC = () => {
         setContactNumber(customer.contactNumber || '');
         setServiceFrequencyValue(customer.serviceFrequencyValue || '');
         if(customer.serviceFrequencyUnit) setServiceFrequencyUnit(customer.serviceFrequencyUnit);
+    };
+
+    // Outside Services handlers
+    const handleAddService = () => setOutsideServices([...outsideServices, { id: uuidv4(), name: '', amount: 0 }]);
+    const handleUpdateService = (id: string, field: 'name' | 'amount', value: string) => {
+        setOutsideServices(outsideServices.map(s => s.id === id ? { ...s, [field]: field === 'amount' ? Number(value) || 0 : value } : s));
+    };
+    const handleRemoveService = (id: string) => {
+        setOutsideServices(outsideServices.filter(s => s.id !== id));
     };
 
     return (
@@ -663,6 +676,21 @@ const POS: React.FC = () => {
                                 <Input label="Labor (Rs)" type="number" value={laborCharges} onChange={e => setLaborCharges(e.target.value)} />
                             </div>
                         </div>
+                        <div className="pt-4 border-t">
+                            <h3 className="font-semibold text-lg flex items-center justify-between">
+                                <span className="flex items-center gap-2"><Hammer size={16}/> Outside Services</span>
+                                <Button size="sm" variant="ghost" onClick={handleAddService}><PlusCircle size={16}/></Button>
+                            </h3>
+                            <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                                {outsideServices.map(service => (
+                                    <div key={service.id} className="flex items-center gap-2">
+                                        <Input placeholder="Service Name" value={service.name} onChange={e => handleUpdateService(service.id, 'name', e.target.value)} className="flex-grow"/>
+                                        <Input placeholder="Amount" type="number" value={service.amount || ''} onChange={e => handleUpdateService(service.id, 'amount', e.target.value)} className="w-28"/>
+                                        <Button size="sm" variant="danger" onClick={() => handleRemoveService(service.id)} className="p-2"><X size={16}/></Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
 
                     {/* Right side: Summary and Payment */}
@@ -682,8 +710,15 @@ const POS: React.FC = () => {
                                 </select>
                             </div>
                         </div>
-                         <div className="flex justify-between font-bold"><span>Total After Discount:</span> <span>{formatCurrency(cartTotal)}</span></div>
+                         <div className="flex justify-between font-bold"><span>Total After Discount:</span> <span>{formatCurrency(subtotalWithCharges - overallDiscountAmount)}</span></div>
                         
+                         {totalOutsideServices > 0 && (
+                             <div className="flex justify-between text-sm text-cyan-600">
+                                <span>Outside Services:</span>
+                                <span>+ {formatCurrency(totalOutsideServices)}</span>
+                             </div>
+                         )}
+
                         {currentCustomer && (
                              <div className="pt-3 border-t">
                                  <h4 className="font-semibold flex items-center justify-between">

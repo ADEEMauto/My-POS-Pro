@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Expense, Payment, DemandItem } from '../types';
+import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Expense, Payment, DemandItem, OutsideServiceItem } from '../types';
 import useIndexedDB from '../hooks/useIndexedDB';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
@@ -66,7 +66,8 @@ interface AppContextType {
         pointsToRedeem: number,
         tuningCharges: number,
         laborCharges: number,
-        amountPaid: number
+        amountPaid: number,
+        outsideServices: OutsideServiceItem[]
     ) => Sale | null;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
     updateSale: (saleId: string, updates: Partial<Sale>) => void;
@@ -342,7 +343,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // SALES & CUSTOMERS
     const createSale = (...args: Parameters<AppContextType['createSale']>) => {
-        const [cart, overallDiscount, overallDiscountType, customerDetails, pointsToRedeem, tuningCharges, laborCharges, amountPaid] = args;
+        const [cart, overallDiscount, overallDiscountType, customerDetails, pointsToRedeem, tuningCharges, laborCharges, amountPaid, outsideServices] = args;
         
         const now = new Date();
         const year = now.getFullYear().toString().slice(-2);
@@ -392,13 +393,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }, 0);
         
         const subtotalAfterItemDiscount = subtotal - totalItemDiscounts;
-        const totalWithCharges = subtotalAfterItemDiscount + tuningCharges + laborCharges;
+        const totalWithCharges = subtotalAfterItemDiscount + tuningCharges + laborCharges; // Base for overall discount
         
         const overallDiscountAmount = overallDiscountType === 'fixed'
             ? overallDiscount
             : (totalWithCharges * overallDiscount) / 100;
 
-        let cartTotal = totalWithCharges - overallDiscountAmount;
+        const totalOutsideServices = outsideServices.reduce((sum, service) => sum + service.amount, 0);
+
+        let cartTotal = (totalWithCharges - overallDiscountAmount) + totalOutsideServices;
         
         // Customer & Loyalty Logic
         const bikeNumberUpper = customerDetails.bikeNumber.replace(/\s+/g, '').toUpperCase();
@@ -513,6 +516,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             overallDiscountType,
             tuningCharges,
             laborCharges,
+            outsideServices,
+            totalOutsideServices,
             loyaltyDiscount: loyaltyDiscountAmount,
             total: Math.round(grandTotal),
             amountPaid: amountPaid,
@@ -597,7 +602,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 ? saleToReverse.overallDiscount
                 : (totalWithCharges * saleToReverse.overallDiscount) / 100;
 
-            const newCartTotal = totalWithCharges - overallDiscountAmount;
+            const newCartTotal = (totalWithCharges - overallDiscountAmount) + (saleToReverse.totalOutsideServices || 0);
             const grandTotal = newCartTotal + (saleToReverse.previousBalanceBroughtForward || 0) - (saleToReverse.loyaltyDiscount || 0);
             const balanceDue = grandTotal - saleToReverse.amountPaid;
 
@@ -648,7 +653,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? updatedSale.overallDiscount
             : (totalWithCharges * updatedSale.overallDiscount) / 100;
 
-        const cartTotal = totalWithCharges - overallDiscountAmount;
+        const totalOutsideServices = updatedSale.outsideServices?.reduce((sum, s) => sum + s.amount, 0) || 0;
+        const cartTotal = (totalWithCharges - overallDiscountAmount) + totalOutsideServices;
         const grandTotal = cartTotal + (updatedSale.previousBalanceBroughtForward || 0) - (updatedSale.loyaltyDiscount || 0);
         const balanceDue = grandTotal - updatedSale.amountPaid;
         const paymentStatus = balanceDue <= 0 ? 'Paid' : (updatedSale.amountPaid > 0 ? 'Partial' : 'Unpaid');
@@ -657,6 +663,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...updatedSale,
             subtotal,
             totalItemDiscounts,
+            totalOutsideServices,
             total: Math.round(grandTotal),
             balanceDue,
             paymentStatus

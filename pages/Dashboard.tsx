@@ -41,23 +41,32 @@ const Dashboard: React.FC = () => {
     const [isOutOfStockModalOpen, setOutOfStockModalOpen] = useState(false);
 
     const { todaysSalesTotal, todaysLaborCharges } = useMemo(() => {
-        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format, safe from timezone issues
+        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
         let salesTotal = 0;
         let laborCharges = 0;
         sales.forEach(sale => {
             if (new Date(sale.date).toLocaleDateString('en-CA') === todayStr) {
                 const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
                 const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-                const totalWithCharges = subtotalAfterItemDiscounts + charges;
+                const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
 
-                if (totalWithCharges > 0) {
-                    const itemRatio = subtotalAfterItemDiscounts / totalWithCharges;
-                    salesTotal += sale.total * itemRatio;
-                } else if (charges === 0) {
-                    salesTotal += sale.total;
+                const overallDiscountAmount = sale.overallDiscountType === 'fixed'
+                    ? sale.overallDiscount
+                    : (revenueBaseForDiscount * sale.overallDiscount) / 100;
+
+                const totalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
+
+                let itemRevenue = subtotalAfterItemDiscounts;
+                if(revenueBaseForDiscount > 0) {
+                     const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
+                     itemRevenue -= (totalDiscounts * itemRatio);
+                } else {
+                     // If only items exist, all discount applies to them
+                     itemRevenue -= totalDiscounts;
                 }
                 
-                laborCharges += charges;
+                salesTotal += itemRevenue;
+                laborCharges += charges; // This shows gross labor/tuning charges
             }
         });
         return { todaysSalesTotal: salesTotal, todaysLaborCharges: laborCharges };
@@ -321,23 +330,33 @@ const Dashboard: React.FC = () => {
     };
 
     const totalInvestment = inventory.reduce((acc, p) => acc + p.purchasePrice * p.quantity, 0);
-    const totalSales = useMemo(() => {
-        return sales.reduce((acc, sale) => {
+    const { totalSales, totalLaborCharges } = useMemo(() => {
+        let salesTotal = 0;
+        let laborChargesTotal = 0;
+        sales.forEach(sale => {
             const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
             const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-            const totalWithCharges = subtotalAfterItemDiscounts + charges;
+            const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
 
-            if (totalWithCharges > 0) {
-                const itemRatio = subtotalAfterItemDiscounts / totalWithCharges;
-                return acc + (sale.total * itemRatio);
+            const overallDiscountAmount = sale.overallDiscountType === 'fixed'
+                ? sale.overallDiscount
+                : (revenueBaseForDiscount * sale.overallDiscount) / 100;
+            
+            const totalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
+
+            let itemRevenue = subtotalAfterItemDiscounts;
+            if(revenueBaseForDiscount > 0) {
+                 const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
+                 itemRevenue -= (totalDiscounts * itemRatio);
+            } else {
+                 itemRevenue -= totalDiscounts;
             }
-            if (charges === 0) {
-                return acc + sale.total;
-            }
-            return acc;
-        }, 0);
+
+            salesTotal += itemRevenue;
+            laborChargesTotal += charges;
+        });
+        return { totalSales: salesTotal, totalLaborCharges: laborChargesTotal };
     }, [sales]);
-    const totalLaborCharges = sales.reduce((total, sale) => total + (sale.laborCharges || 0) + (sale.tuningCharges || 0), 0);
 
     return (
         <div className="space-y-8">
