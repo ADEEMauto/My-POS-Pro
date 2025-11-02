@@ -549,6 +549,107 @@ const Sales: React.FC = () => {
         }
     };
 
+    const handleDownloadSummaryPdf = async () => {
+        if (soldItemsSummary.length === 0) {
+            toast.error("No items in the summary to download.");
+            return;
+        }
+    
+        const toastId = toast.loading("Generating PDF...", { duration: Infinity });
+    
+        try {
+            const pdfContainer = document.createElement('div');
+            pdfContainer.style.position = 'absolute';
+            pdfContainer.style.left = '-9999px';
+            pdfContainer.style.width = '1000px';
+            pdfContainer.style.padding = '20px';
+            pdfContainer.style.fontFamily = 'Arial, sans-serif';
+            pdfContainer.style.background = 'white';
+            pdfContainer.style.color = 'black';
+    
+            const totalQuantity = soldItemsSummary.reduce((sum, item) => sum + item.quantity, 0);
+            const totalRevenue = soldItemsSummary.reduce((sum, item) => sum + item.total, 0);
+    
+            const tableRows = soldItemsSummary.map(item => `
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 6px;">${item.name}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${item.quantity}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${formatCurrency(item.total)}</td>
+                </tr>
+            `).join('');
+            
+            const logoSize = shopInfo?.pdfLogoSize ?? 50;
+            const logoHtml = shopInfo?.logoUrl 
+                ? `<img src="${shopInfo.logoUrl}" alt="Shop Logo" style="height: ${logoSize}px; width: auto; margin: 0 auto 10px auto; display: block; object-fit: contain;" />`
+                : '';
+    
+            pdfContainer.innerHTML = `
+                <div>
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        ${logoHtml}
+                    </div>
+                    <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Sold Items Summary</h2>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+                        <thead style="background-color: #f2f2f2;">
+                            <tr>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Item</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Total Quantity Sold</th>
+                                <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Total Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                        <tfoot style="background-color: #f2f2f2; font-weight: bold;">
+                             <tr>
+                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">Grand Total:</td>
+                                <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${totalQuantity}</td>
+                                <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${formatCurrency(totalRevenue)}</td>
+                             </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            `;
+            document.body.appendChild(pdfContainer);
+    
+            const canvas = await html2canvas(pdfContainer, { scale: 2, useCORS: true });
+            
+            document.body.removeChild(pdfContainer);
+    
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    
+            let heightLeft = pdfHeight;
+            let position = 0;
+            const margin = 10;
+            const pageHeightWithMargin = pdf.internal.pageSize.getHeight() - (2 * margin);
+    
+            pdf.addImage(imgData, 'PNG', margin, margin, pdfWidth - (2 * margin), pdfHeight);
+            heightLeft -= pageHeightWithMargin;
+    
+            while (heightLeft > 0) {
+                position -= pageHeightWithMargin;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', margin, position + margin, pdfWidth - (2*margin), pdfHeight);
+                heightLeft -= pageHeightWithMargin;
+            }
+    
+            const filename = `sold_items_summary_${new Date().toISOString().split('T')[0]}.pdf`;
+            pdf.save(filename);
+            
+            toast.success("PDF downloaded successfully!", { id: toastId });
+        } catch (error) {
+            console.error("Failed to generate PDF:", error);
+            toast.error("Failed to generate PDF.", { id: toastId });
+        }
+    };
+
 
     return (
         <div className="space-y-6">
@@ -609,13 +710,18 @@ const Sales: React.FC = () => {
                 </div>
 
                  <div className="bg-white rounded-lg shadow-md overflow-hidden">
-                     <div className="p-4 border-b flex justify-between items-center">
-                        <h2 className="text-xl font-semibold flex items-center gap-2"><ShoppingBag/> Sold Items Summary</h2>
-                         <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="p-1 text-sm border rounded-md">
-                            <option value="name">Sort by Name</option>
-                            <option value="quantity">Sort by Quantity</option>
-                            <option value="revenue">Sort by Revenue</option>
-                         </select>
+                     <div className="p-4 border-b flex flex-col sm:flex-row justify-between items-center gap-2">
+                        <h2 className="text-xl font-semibold flex items-center gap-2 shrink-0"><ShoppingBag/> Sold Items Summary</h2>
+                        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="p-1 text-sm border rounded-md">
+                                <option value="name">Sort by Name</option>
+                                <option value="quantity">Sort by Quantity</option>
+                                <option value="revenue">Sort by Revenue</option>
+                            </select>
+                            <Button onClick={handleDownloadSummaryPdf} variant="ghost" size="sm" className="shrink-0 p-2" title="Download Summary PDF">
+                                <FileText size={18} />
+                            </Button>
+                        </div>
                      </div>
                     <div className="max-h-[70vh] overflow-y-auto">
                         <table className="w-full text-sm text-left text-gray-500">
