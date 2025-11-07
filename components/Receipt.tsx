@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Sale } from '../types';
 import { useAppContext } from '../contexts/AppContext';
@@ -16,10 +17,6 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
     const showItemDiscounts = Math.round(sale.totalItemDiscounts) > 0;
     const showOverallDiscount = sale.overallDiscount > 0;
     const showLoyaltyDiscount = (sale.loyaltyDiscount || 0) > 0;
-
-    // Only show subtotal if it's different from the final total AND there are items.
-    // This hides the subtotal line for service-only bills and for simple bills where subtotal equals total.
-    const showSubtotalLine = sale.items.length > 0 && Math.round(sale.subtotal) !== Math.round(sale.total);
 
     const calculateNextServiceDate = (lastVisit: string, value?: number, unit?: 'days' | 'months' | 'years'): string | null => {
         if (!value || !unit) return null;
@@ -117,71 +114,66 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             )}
                         </tr>
                     ))}
-                    {sale.tuningCharges && sale.tuningCharges > 0 && (
+                    {Math.round(sale.tuningCharges || 0) > 0 && (
                         <tr className="align-top text-xs">
                             {hasItemDiscounts ? (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
                                     <td colSpan={3} className="text-left pt-1 px-1">Tuning</td>
-                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges)}</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges!)}</td>
                                 </>
                             ) : (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
                                     <td className="text-left pt-1 px-1">Tuning</td>
-                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges)}</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges!)}</td>
                                 </>
                             )}
                         </tr>
                     )}
-                    {sale.laborCharges && sale.laborCharges > 0 && (
+                    {Math.round(sale.laborCharges || 0) > 0 && (
                         <tr className="align-top text-xs">
                             {hasItemDiscounts ? (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
                                     <td colSpan={3} className="text-left pt-1 px-1">Labor Charges</td>
-                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges)}</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges!)}</td>
                                 </>
                             ) : (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
                                     <td className="text-left pt-1 px-1">Labor Charges</td>
-                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges)}</td>
+                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges!)}</td>
                                 </>
                             )}
                         </tr>
                     )}
-                    {sale.outsideServices && sale.outsideServices.length > 0 && sale.outsideServices.map(service => (
-                        <tr key={service.id} className="align-top text-xs">
-                            {hasItemDiscounts ? (
-                                <>
-                                    <td className="text-center pt-1 px-1"></td>
-                                    <td colSpan={3} className="text-left pt-1 px-1">{service.name} (Ext.)</td>
-                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(service.amount)}</td>
-                                </>
-                            ) : (
-                                <>
-                                    <td className="text-center pt-1 px-1"></td>
-                                    <td className="text-left pt-1 px-1">{service.name} (Ext.)</td>
-                                    <td className="text-right pt-1 px-1">{formatNumberForReceipt(service.amount)}</td>
-                                </>
-                            )}
-                        </tr>
-                    ))}
                 </tbody>
             </table>
 
             {/* 8. Line below items */}
             <hr className="my-1 border-dashed border-black"/>
             
+            {/* Outside Services Section */}
+            {(sale.totalOutsideServices ?? 0) > 0 && sale.outsideServices && sale.outsideServices.length > 0 && (
+                <>
+                    <div className="text-center font-bold text-xs mt-2">Outside Services</div>
+                    <table className="w-full table-fixed my-1">
+                        <tbody>
+                            {sale.outsideServices.map(service => (
+                                <tr key={service.id} className="align-top text-xs">
+                                    <td className="text-left pt-1 px-1 w-[80%]">{service.name}</td>
+                                    <td className="text-right pt-1 px-1 w-[20%]">{formatNumberForReceipt(service.amount)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <hr className="my-1 border-dashed border-black"/>
+                </>
+            )}
+
             {/* 9 & 10. Totals */}
             <div className="space-y-1 text-xs">
-                {showSubtotalLine && (
-                    <div className="flex justify-between">
-                        <span>Subtotal</span>
-                        <span>{formatCurrencyForReceipt(sale.subtotal)}</span>
-                    </div>
-                )}
                 {showItemDiscounts && (
                     <div className="flex justify-between">
                         <span>Item Discounts</span>
