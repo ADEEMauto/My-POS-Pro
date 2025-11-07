@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Sale, SaleItem, Product, OutsideServiceItem } from '../types';
@@ -228,6 +229,8 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
     const [tuningCharges, setTuningCharges] = useState<number | string>(sale.tuningCharges || '');
     const [laborCharges, setLaborCharges] = useState<number | string>(sale.laborCharges || '');
     const [outsideServices, setOutsideServices] = useState<OutsideServiceItem[]>(() => JSON.parse(JSON.stringify(sale.outsideServices || [])));
+    const [customerName, setCustomerName] = useState(sale.customerName);
+    const [bikeNumber, setBikeNumber] = useState(sale.customerId);
     
     const handleItemDiscountChange = (productId: string, value: string) => {
         const numericValue = parseFloat(value);
@@ -275,6 +278,8 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
         
         const totalOutsideServicesAmount = outsideServices.reduce((sum, s) => sum + s.amount, 0);
         const cartTotal = (totalWithCharges - overallDiscountAmount) + totalOutsideServicesAmount;
+        
+        // Use the original previous balance for calculation display
         const totalBeforeLoyalty = cartTotal + (sale.previousBalanceBroughtForward || 0);
         const calculatedNewTotal = totalBeforeLoyalty - (sale.loyaltyDiscount || 0);
         
@@ -285,6 +290,11 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
     }, [items, overallDiscount, overallDiscountType, tuningCharges, laborCharges, outsideServices, sale]);
 
     const handleSaveChanges = () => {
+        if (!bikeNumber.trim() || !customerName.trim()) {
+            toast.error("Bike Number and Customer Name cannot be empty.");
+            return;
+        }
+
         updateSale(sale.id, {
             items: items,
             overallDiscount: Number(overallDiscount) || 0,
@@ -292,6 +302,8 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
             tuningCharges: Number(tuningCharges) || 0,
             laborCharges: Number(laborCharges) || 0,
             outsideServices: outsideServices,
+            customerName: customerName,
+            customerId: bikeNumber.replace(/\s+/g, '').toUpperCase(),
         });
         onClose();
     };
@@ -300,33 +312,42 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; }> = ({ sale, o
         <Modal isOpen={true} onClose={onClose} title={`Edit Sale - ID: ${sale.id}`} size="xl">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                    <h3 className="font-semibold text-lg border-b pb-2">Items & Discounts</h3>
-                    <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
-                        {items.map(item => (
-                            <div key={item.productId} className="p-3 bg-gray-50 rounded-md">
-                                <p className="font-semibold">{item.name}</p>
-                                <p className="text-xs text-gray-500">{item.quantity} x {formatCurrency(item.originalPrice)}</p>
-                                <div className="flex items-center gap-2 mt-2">
-                                    <label htmlFor={`discount-${item.productId}`} className="text-xs text-gray-500">Discount:</label>
-                                    <Input 
-                                        id={`discount-${item.productId}`}
-                                        type="number"
-                                        value={item.discount || ''}
-                                        onChange={e => handleItemDiscountChange(item.productId, e.target.value)}
-                                        className="w-20 h-8 text-xs p-1"
-                                        placeholder="0"
-                                    />
-                                    <select
-                                        value={item.discountType}
-                                        onChange={e => handleItemDiscountTypeChange(item.productId, e.target.value as 'fixed' | 'percentage')}
-                                        className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white"
-                                    >
-                                        <option value="fixed">Rs.</option>
-                                        <option value="percentage">%</option>
-                                    </select>
+                    <div>
+                        <h3 className="font-semibold text-lg border-b pb-2">Customer Details</h3>
+                        <div className="mt-3 space-y-3">
+                            <Input label="Bike Number (Unique ID)" value={bikeNumber} onChange={e => setBikeNumber(e.target.value)} />
+                            <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="pt-4">
+                        <h3 className="font-semibold text-lg border-b pb-2">Items & Discounts</h3>
+                        <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
+                            {items.map(item => (
+                                <div key={item.productId} className="p-3 bg-gray-50 rounded-md">
+                                    <p className="font-semibold">{item.name}</p>
+                                    <p className="text-xs text-gray-500">{item.quantity} x {formatCurrency(item.originalPrice)}</p>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <label htmlFor={`discount-${item.productId}`} className="text-xs text-gray-500">Discount:</label>
+                                        <Input 
+                                            id={`discount-${item.productId}`}
+                                            type="number"
+                                            value={item.discount || ''}
+                                            onChange={e => handleItemDiscountChange(item.productId, e.target.value)}
+                                            className="w-20 h-8 text-xs p-1"
+                                            placeholder="0"
+                                        />
+                                        <select
+                                            value={item.discountType}
+                                            onChange={e => handleItemDiscountTypeChange(item.productId, e.target.value as 'fixed' | 'percentage')}
+                                            className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white"
+                                        >
+                                            <option value="fixed">Rs.</option>
+                                            <option value="percentage">%</option>
+                                        </select>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </div>
                 <div className="space-y-4">
