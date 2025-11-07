@@ -201,12 +201,20 @@ const AddStockModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
 }> = ({ isOpen, onClose }) => {
-    const { inventory, addStock } = useAppContext();
+    const { inventory, addStock, categories } = useAppContext();
     const [step, setStep] = useState(1); // 1 for selection, 2 for details
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [search, setSearch] = useState('');
     const [quantityToAdd, setQuantityToAdd] = useState('');
     const [newSalePrice, setNewSalePrice] = useState('');
+
+    const categoryMap = useMemo(() => {
+        const map = new Map<string, string>();
+        categories.forEach(cat => {
+            map.set(cat.id, cat.name);
+        });
+        return map;
+    }, [categories]);
 
     const filteredProducts = useMemo(() => {
         if (!search) return inventory;
@@ -262,14 +270,20 @@ const AddStockModal: React.FC<{
                         {filteredProducts.length > 0 ? filteredProducts.map(p => (
                             <div 
                                 key={p.id} 
-                                className="p-3 flex justify-between items-center cursor-pointer hover:bg-gray-50"
+                                className="p-3 flex justify-between items-start cursor-pointer hover:bg-gray-50"
                                 onClick={() => handleSelectProduct(p)}
                             >
                                 <div>
                                     <p className="font-semibold">{p.name}</p>
                                     <p className="text-xs text-gray-500">{p.manufacturer}</p>
+                                    <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full inline-block mt-1">
+                                        {categoryMap.get(p.categoryId) || 'N/A'}
+                                        {p.subCategoryId && categoryMap.get(p.subCategoryId) ? ` > ${categoryMap.get(p.subCategoryId)}` : ''}
+                                    </p>
                                 </div>
-                                <span className="text-sm text-gray-600">Stock: {p.quantity}</span>
+                                <div className="text-right shrink-0">
+                                     <span className="text-sm text-gray-600">Stock: {p.quantity}</span>
+                                </div>
                             </div>
                         )) : (
                             <p className="text-center text-gray-500 p-4">No products found.</p>
