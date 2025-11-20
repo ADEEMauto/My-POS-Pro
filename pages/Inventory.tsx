@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
 import { formatCurrency, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye, PackagePlus } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye, PackagePlus, Copy } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -391,6 +392,22 @@ const Inventory: React.FC = () => {
         setEditingProduct(product);
         setModalOpen(true);
     };
+
+    const handleCopy = (product: Product) => {
+        const productCopy: Omit<Product, 'id'> = {
+            name: `${product.name} (Copy)`,
+            categoryId: product.categoryId,
+            subCategoryId: product.subCategoryId,
+            manufacturer: product.manufacturer,
+            location: product.location,
+            quantity: product.quantity,
+            purchasePrice: product.purchasePrice,
+            salePrice: product.salePrice,
+            imageUrl: product.imageUrl,
+            barcode: undefined // Clear barcode to avoid duplicates
+        };
+        addProduct(productCopy);
+    };
     
     const handleDelete = (product: Product) => {
         setProductToDelete(product);
@@ -741,8 +758,9 @@ const Inventory: React.FC = () => {
                                 <td className="px-6 py-4">{formatCurrency(product.salePrice)}</td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
-                                        <button onClick={() => handleEdit(product)} className="text-blue-600 hover:text-blue-800"><Edit size={18}/></button>
-                                        <button onClick={() => handleDelete(product)} className="text-red-600 hover:text-red-800"><Trash2 size={18}/></button>
+                                        <button onClick={() => handleEdit(product)} className="text-blue-600 hover:text-blue-800" title="Edit"><Edit size={18}/></button>
+                                        <button onClick={() => handleCopy(product)} className="text-green-600 hover:text-green-800" title="Copy"><Copy size={18}/></button>
+                                        <button onClick={() => handleDelete(product)} className="text-red-600 hover:text-red-800" title="Delete"><Trash2 size={18}/></button>
                                     </div>
                                 </td>
                             </tr>
@@ -781,6 +799,7 @@ const Inventory: React.FC = () => {
                         </div>
                         <div className="flex justify-end space-x-2 border-t mt-3 pt-3">
                              <Button onClick={() => handleEdit(product)} variant="ghost" size="sm" className="flex items-center gap-1"><Edit size={16}/> Edit</Button>
+                             <Button onClick={() => handleCopy(product)} variant="ghost" size="sm" className="text-green-600 hover:text-green-700 flex items-center gap-1"><Copy size={16}/> Copy</Button>
                              <Button onClick={() => handleDelete(product)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Delete</Button>
                         </div>
                     </div>
