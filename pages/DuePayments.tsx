@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-import { Customer, Payment } from '../types';
+import { Customer } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { DollarSign, User, History, Search } from 'lucide-react';
+import { DollarSign, User, Search } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -68,7 +68,7 @@ const SettlePaymentModal: React.FC<{
 
 
 const DuePayments: React.FC = () => {
-    const { customers, payments, recordCustomerPayment, currentUser } = useAppContext();
+    const { customers, recordCustomerPayment, currentUser } = useAppContext();
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     
@@ -101,11 +101,9 @@ const DuePayments: React.FC = () => {
         );
     }
     
-    const customerMap = useMemo(() => new Map(customers.map(c => [c.id, c.name])), [customers]);
-
     return (
         <div className="space-y-8">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Due Payments & Ledger</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Due Payments</h1>
 
             {/* Customers with Dues Section */}
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
@@ -145,44 +143,6 @@ const DuePayments: React.FC = () => {
                                  </div>
                             </div>
                         ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Payments History Section */}
-             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    <History className="text-primary-600"/> Payments Received History
-                </h2>
-                {payments.length === 0 ? (
-                    <div className="text-center py-8">
-                        <p className="text-gray-500">No payments have been recorded yet.</p>
-                    </div>
-                ) : (
-                    <div className="max-h-96 overflow-y-auto">
-                        <table className="w-full text-sm text-left text-gray-500">
-                             <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
-                                <tr>
-                                    <th className="px-4 py-2">Date</th>
-                                    <th className="px-4 py-2">Customer</th>
-                                    <th className="px-4 py-2 hidden sm:table-cell">Notes</th>
-                                    <th className="px-4 py-2 text-right">Amount Paid</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                                {payments.map(payment => (
-                                    <tr key={payment.id} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2 text-xs whitespace-nowrap">{new Date(payment.date).toLocaleDateString()}</td>
-                                        <td className="px-4 py-2 font-medium text-gray-800">
-                                            {customerMap.get(payment.customerId) || 'Unknown'}
-                                            <span className="block text-xs font-normal text-gray-500 font-mono">{payment.customerId}</span>
-                                        </td>
-                                        <td className="px-4 py-2 text-xs text-gray-600 hidden sm:table-cell">{payment.notes}</td>
-                                        <td className="px-4 py-2 text-right font-bold text-green-600">{formatCurrency(payment.amount)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
                     </div>
                 )}
             </div>

@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale, Customer, OutsideServiceItem } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, UserPlus, FileSearch, ArrowUpDown, Hammer } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, FileSearch, Hammer } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -98,7 +98,7 @@ const CustomerLookupModal: React.FC<{
 
 
 const POS: React.FC = () => {
-    const { inventory, sales, categories, createSale, findProductByBarcode, customers, redemptionRule, updateCustomer, shopInfo, customerTiers } = useAppContext();
+    const { inventory, sales, categories, createSale, findProductByBarcode, customers, redemptionRule, shopInfo, customerTiers } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [sortBy, setSortBy] = useState('most_selling');
@@ -129,7 +129,7 @@ const POS: React.FC = () => {
     // Loyalty Points Redemption
     const [pointsToRedeem, setPointsToRedeem] = useState<number | string>('');
     const currentCustomer = useMemo(() => customers.find(c => c.id === bikeNumber.replace(/\s+/g, '').toUpperCase()), [customers, bikeNumber]);
-    const customerTier = useMemo(() => currentCustomer?.tierId ? customerTiers.find(t => t.id => t.id === currentCustomer.tierId) : null, [currentCustomer, customerTiers]);
+    const customerTier = useMemo(() => currentCustomer?.tierId ? customerTiers.find(t => t.id === currentCustomer.tierId) : null, [currentCustomer, customerTiers]);
     
     // State for WhatsApp modal
     const [showWhatsAppInput, setShowWhatsAppInput] = useState(false);
@@ -530,13 +530,12 @@ const POS: React.FC = () => {
                             {mainCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                         <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500">
-                            <option value="name_asc">Sort By</option>
+                            <option value="most_selling">Most Selling</option>
+                            <option value="least_selling">Least Selling</option>
                             <option value="name_asc">Alphabetical (A-Z)</option>
                             <option value="name_desc">Alphabetical (Z-A)</option>
                             <option value="price_desc">Price: High to Low</option>
                             <option value="price_asc">Price: Low to High</option>
-                            <option value="most_selling">Most Selling</option>
-                            <option value="least_selling">Least Selling</option>
                             <option value="category_asc">Category</option>
                             <option value="manufacturer_asc">Manufacturer</option>
                             <option value="location_asc">Location</option>

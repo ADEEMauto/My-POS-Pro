@@ -507,7 +507,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const paymentStatus = balanceDue <= 0 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid');
         customer.balance = balanceDue > 0 ? balanceDue : 0;
         
-        // Generate Sale ID based on timestamp YYMMDDHHMM
+        // Generate Sale ID based on timestamp YYMMDDHHMM (no seconds)
         const yy = String(now.getFullYear()).slice(-2);
         const mm = String(now.getMonth() + 1).padStart(2, '0');
         const dd = String(now.getDate()).padStart(2, '0');

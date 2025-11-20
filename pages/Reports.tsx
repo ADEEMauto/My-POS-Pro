@@ -86,6 +86,7 @@ const Reports: React.FC = () => {
     const mostSelling = useMemo(() => [...itemSalesData].sort((a,b) => b.quantity - a.quantity).slice(0, 5), [itemSalesData]);
     const leastSelling = useMemo(() => itemSalesData.filter(i => i.quantity > 0).sort((a, b) => a.quantity - b.quantity).slice(0, 5), [itemSalesData]);
 
+    // Calculations retained but not rendered as per request
     const totalInvestment = inventory.reduce((acc, p) => acc + p.purchasePrice * p.quantity, 0);
     const totalRevenue = filteredSales.reduce((acc, s) => acc + s.total, 0);
     const totalCostOfGoodsSold = filteredSales.reduce((acc, sale) => {
