@@ -1,8 +1,11 @@
+
 import React from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { User, LogOut } from 'lucide-react';
 // FIX: Use named imports for react-router-dom components.
-import { Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
+
+const { Link } = ReactRouterDOM as any;
 
 const Header: React.FC<{ onToggleSidebar: () => void }> = ({ onToggleSidebar }) => {
     const { shopInfo, currentUser, logout } = useAppContext();

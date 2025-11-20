@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 // FIX: Use named imports for react-router-dom components.
-import { Link } from 'react-router-dom';
-import { ShoppingCart, Archive, Layers, Users, BarChart2, DollarSign, Package, AlertTriangle, FileText, ClipboardList } from 'lucide-react';
+import * as ReactRouterDOM from 'react-router-dom';
+import { ShoppingCart, Archive, Layers, Users, BarChart2, DollarSign, Package, AlertTriangle, FileText, ClipboardList, Bike } from 'lucide-react';
 import { formatCurrency } from '../utils/helpers';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -12,6 +13,8 @@ import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 // @ts-ignore
 import html2canvas from 'html2canvas';
+
+const { Link } = ReactRouterDOM as any;
 
 const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; color: string }> = ({ title, value, icon, color }) => (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md flex items-center space-x-4">
@@ -34,7 +37,7 @@ const QuickLink: React.FC<{ to: string; label: string; icon: React.ReactNode }> 
 
 
 const Dashboard: React.FC = () => {
-    const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems } = useAppContext();
+    const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems, customers } = useAppContext();
     const isMaster = currentUser?.role === 'master';
 
     const [isLowStockModalOpen, setLowStockModalOpen] = useState(false);
@@ -97,6 +100,12 @@ const Dashboard: React.FC = () => {
         });
         return map;
     }, [categories]);
+
+    const totalBikesVisited = useMemo(() => {
+        const uniqueNamedCustomersCount = customers.filter(c => c.id !== 'WALKIN').length;
+        const walkInSalesCount = sales.filter(s => s.customerId === 'WALKIN').length;
+        return uniqueNamedCustomersCount + walkInSalesCount;
+    }, [customers, sales]);
 
     const handleDownloadLowStockPdf = async () => {
         if (lowStockProducts.length === 0) {
@@ -370,6 +379,7 @@ const Dashboard: React.FC = () => {
             {isMaster && (
                 <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <StatCard title="Total Bikes Visited" value={totalBikesVisited} icon={<Bike className="w-6 h-6 text-white" />} color="bg-indigo-500" />
                         <StatCard title="Total Investment" value={formatCurrency(totalInvestment)} icon={<DollarSign className="w-6 h-6 text-white" />} color="bg-blue-500" />
                         <StatCard title="Total Sales" value={formatCurrency(totalSales)} icon={<ShoppingCart className="w-6 h-6 text-white" />} color="bg-green-500" />
                         <StatCard title="Total Labor & Tuning" value={formatCurrency(totalLaborCharges)} icon={<FileText className="w-6 h-6 text-white" />} color="bg-cyan-500" />

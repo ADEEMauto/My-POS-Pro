@@ -1,7 +1,7 @@
 
 import React from 'react';
 // FIX: Use named imports for react-router-dom components.
-import { Routes, Route, Navigate, HashRouter } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { AppProvider, useAppContext } from './contexts/AppContext';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
@@ -21,6 +21,8 @@ import LoyaltySettings from './pages/LoyaltySettings';
 import Expenses from './pages/Expenses';
 import Demand from './pages/Demand';
 import DuePayments from './pages/DuePayments';
+
+const { Routes, Route, Navigate, HashRouter } = ReactRouterDOM as any;
 
 const AppRoutes: React.FC = () => {
     const { shopInfo, currentUser, loading } = useAppContext();

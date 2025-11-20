@@ -1,15 +1,17 @@
 
 import React from 'react';
 // FIX: Use named imports for react-router-dom components.
-import { NavLink } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { useAppContext } from '../contexts/AppContext';
 import { LayoutDashboard, ShoppingCart, Archive, Layers, Users, BarChart2, User, Settings, X, Receipt, Contact, Award, CreditCard, ClipboardList, ClipboardCheck } from 'lucide-react';
+
+const { NavLink } = ReactRouterDOM as any;
 
 const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onClick: () => void; }> = ({ to, icon, label, onClick }) => (
     <NavLink
         to={to}
         onClick={onClick}
-        className={({ isActive }) =>
+        className={({ isActive }: { isActive: boolean }) =>
             `flex items-center px-4 py-3 text-gray-200 hover:bg-primary-600 hover:text-white rounded-lg transition-colors ${
                 isActive ? 'bg-primary-800 text-white' : ''
             }`
