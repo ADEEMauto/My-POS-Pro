@@ -427,25 +427,28 @@ const Sales: React.FC = () => {
     const isMaster = currentUser?.role === 'master';
 
     const filteredSales = useMemo(() => {
-        let salesToFilter = [...sales];
+        let result = [...sales];
         if (!isMaster) {
             const today = new Date().toLocaleDateString();
-            salesToFilter = sales.filter(s => new Date(s.date).toLocaleDateString() === today);
+            result = result.filter(s => new Date(s.date).toLocaleDateString() === today);
         }
 
-        if (!startDate && !endDate) return salesToFilter;
-
-        return salesToFilter.filter(sale => {
-            const saleDate = new Date(sale.date);
-            const start = startDate ? new Date(startDate) : null;
-            const end = endDate ? new Date(endDate) : null;
-            if (start) start.setHours(0, 0, 0, 0);
-            if (end) end.setHours(23, 59, 59, 999);
-            
-            if (start && saleDate < start) return false;
-            if (end && saleDate > end) return false;
-            return true;
-        });
+        if (startDate || endDate) {
+             result = result.filter(sale => {
+                const saleDate = new Date(sale.date);
+                const start = startDate ? new Date(startDate) : null;
+                const end = endDate ? new Date(endDate) : null;
+                if (start) start.setHours(0, 0, 0, 0);
+                if (end) end.setHours(23, 59, 59, 999);
+                
+                if (start && saleDate < start) return false;
+                if (end && saleDate > end) return false;
+                return true;
+            });
+        }
+        
+        // Sort by date descending (newest first)
+        return result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [sales, startDate, endDate, isMaster]);
 
     const soldItemsSummary = useMemo(() => {

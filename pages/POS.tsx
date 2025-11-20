@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
@@ -100,7 +101,7 @@ const POS: React.FC = () => {
     const { inventory, sales, categories, createSale, findProductByBarcode, customers, redemptionRule, updateCustomer, shopInfo, customerTiers } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
-    const [sortBy, setSortBy] = useState('name_asc');
+    const [sortBy, setSortBy] = useState('most_selling');
     const [cart, setCart] = useState<CartItem[]>([]);
     
     const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
@@ -128,7 +129,7 @@ const POS: React.FC = () => {
     // Loyalty Points Redemption
     const [pointsToRedeem, setPointsToRedeem] = useState<number | string>('');
     const currentCustomer = useMemo(() => customers.find(c => c.id === bikeNumber.replace(/\s+/g, '').toUpperCase()), [customers, bikeNumber]);
-    const customerTier = useMemo(() => currentCustomer?.tierId ? customerTiers.find(t => t.id === currentCustomer.tierId) : null, [currentCustomer, customerTiers]);
+    const customerTier = useMemo(() => currentCustomer?.tierId ? customerTiers.find(t => t.id => t.id === currentCustomer.tierId) : null, [currentCustomer, customerTiers]);
     
     // State for WhatsApp modal
     const [showWhatsAppInput, setShowWhatsAppInput] = useState(false);

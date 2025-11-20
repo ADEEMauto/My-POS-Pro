@@ -458,7 +458,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         let customerIndex = newCustomers.findIndex(c => c.id === customerId);
         let customer: Customer;
 
-        const date = new Date().toISOString();
+        const now = new Date();
+        const date = now.toISOString();
         
         if (customerIndex === -1) {
             customer = {
@@ -506,7 +507,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const paymentStatus = balanceDue <= 0 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid');
         customer.balance = balanceDue > 0 ? balanceDue : 0;
         
-        const saleId = uuidv4().split('-')[0].toUpperCase();
+        // Generate Sale ID based on timestamp YYMMDDHHMM
+        const yy = String(now.getFullYear()).slice(-2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const saleId = `${yy}${mm}${dd}${hh}${min}`;
+
         customer.saleIds.push(saleId);
         newCustomers[customerIndex] = customer;
 

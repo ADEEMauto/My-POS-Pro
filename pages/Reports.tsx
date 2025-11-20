@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { formatCurrency } from '../utils/helpers';
@@ -260,21 +261,6 @@ const Reports: React.FC = () => {
                         <FileText size={18} /> Least Selling Items
                     </Button>
                 </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                     <h2 className="text-xl font-semibold text-gray-700 mb-2">Total Investment</h2>
-                     <p className="text-3xl font-bold text-blue-600">{formatCurrency(totalInvestment)}</p>
-                 </div>
-                 <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                     <h2 className="text-xl font-semibold text-gray-700 mb-2">Total Sales (Filtered)</h2>
-                     <p className="text-3xl font-bold text-green-600">{formatCurrency(totalRevenue)}</p>
-                 </div>
-                  <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                     <h2 className="text-xl font-semibold text-gray-700 mb-2">Total Profit (Filtered)</h2>
-                     <p className="text-3xl font-bold text-indigo-600">{formatCurrency(totalProfit)}</p>
-                 </div>
             </div>
 
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
