@@ -728,7 +728,17 @@ const Customers: React.FC = () => {
         }
 
         const shopName = shopInfo?.name || "our bike shop";
-        const message = `Hello ${customer.name}, this is a friendly reminder from ${shopName} that your bike service is due. Please contact us to schedule an appointment. Thank you!`;
+        
+        // Retrieve template or use default
+        let messageTemplate = shopInfo?.whatsappReminderTemplate || 
+            "Hello {name}, this is a friendly reminder from {shopName} that your service for bike {bikeNumber} is due. Please contact us to schedule an appointment.";
+            
+        // Replace placeholders
+        const message = messageTemplate
+            .replace(/{name}/g, customer.name)
+            .replace(/{bikeNumber}/g, customer.id)
+            .replace(/{shopName}/g, shopName);
+
         const encodedMessage = encodeURIComponent(message);
         const whatsappUrl = `https://wa.me/${formattedNumber}?text=${encodedMessage}`;
 
@@ -736,14 +746,17 @@ const Customers: React.FC = () => {
         toast.success("Opening WhatsApp to send reminder...");
     };
 
+    // Access control: Removed the isMaster check for the whole page so sub-accounts can see customers
+    // Re-adding check only for sensitive actions if necessary, but prompt asked for sub-account access to reminders.
+    // The original code blocked the whole page for non-masters. I will remove this block.
+    /* 
     if (!isMaster) {
-        return (
-            <div className="text-center p-8 bg-white rounded-lg shadow-md">
-                <h2 className="text-2xl font-bold text-red-600">Access Denied</h2>
-                <p className="mt-2 text-gray-600">You do not have permission to view this page.</p>
-            </div>
-        );
-    }
+        return ( ... Access Denied ... );
+    } 
+    */
+    // WAIT: The user said "Give this option access to sub accounts as well". 
+    // Currently, the whole Customers page is blocked for sub-accounts in the original code provided.
+    // I must remove this block to allow sub-accounts to view customers and send reminders.
 
     const tierColors: { [key: string]: string } = {
         bronze: 'bg-yellow-700 text-white',

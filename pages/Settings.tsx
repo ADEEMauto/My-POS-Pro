@@ -1,8 +1,9 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { Download, Upload, Server, AlertTriangle, Building, MapPin, Save, X } from 'lucide-react';
+import { Download, Upload, Server, AlertTriangle, Building, MapPin, Save, X, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useLocalStorage from '../hooks/useLocalStorage';
 import { compressImage } from '../utils/helpers';
@@ -18,7 +19,11 @@ const Settings: React.FC = () => {
         logoUrl: undefined,
         receiptLogoSize: 9,
         pdfLogoSize: 50,
+        whatsappReminderTemplate: '',
     });
+    // Separate state for the template to allow independent saving by sub-accounts if needed, 
+    // although we will save it via saveShopInfo which updates the whole object.
+    const [reminderTemplate, setReminderTemplate] = useState('');
 
     const isMaster = currentUser?.role === 'master';
     
@@ -30,7 +35,9 @@ const Settings: React.FC = () => {
                 logoUrl: shopInfo.logoUrl,
                 receiptLogoSize: shopInfo.receiptLogoSize ?? 9,
                 pdfLogoSize: shopInfo.pdfLogoSize ?? 50,
+                whatsappReminderTemplate: shopInfo.whatsappReminderTemplate,
             });
+            setReminderTemplate(shopInfo.whatsappReminderTemplate || "Hello {name}, this is a friendly reminder from {shopName} that your service for bike {bikeNumber} is due. Please contact us to schedule an appointment.");
         }
     }, [shopInfo]);
 
@@ -86,12 +93,23 @@ const Settings: React.FC = () => {
                 logoUrl: shopDetails.logoUrl,
                 receiptLogoSize: shopDetails.receiptLogoSize,
                 pdfLogoSize: shopDetails.pdfLogoSize,
+                whatsappReminderTemplate: shopDetails.whatsappReminderTemplate,
             });
             toast.success("Shop details updated successfully!");
         } else {
             toast.error("Shop name and address cannot be empty.");
         }
     };
+
+    const handleSaveTemplate = () => {
+        if(shopInfo) {
+            saveShopInfo({
+                ...shopInfo,
+                whatsappReminderTemplate: reminderTemplate
+            });
+            toast.success("WhatsApp reminder template updated!");
+        }
+    }
     
     return (
         <div className="space-y-8 max-w-3xl mx-auto">
@@ -196,6 +214,34 @@ const Settings: React.FC = () => {
                     </form>
                 </div>
             )}
+            
+            {/* Communication Settings - Accessible to Master and Sub accounts */}
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+                <div className="flex items-center gap-3 mb-4">
+                    <MessageSquare className="w-6 h-6 text-green-600" />
+                    <h2 className="text-xl font-semibold text-gray-800">Communication Settings</h2>
+                </div>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Default WhatsApp Service Reminder Template</label>
+                        <p className="text-xs text-gray-500 mb-2">
+                            Use placeholders: <span className="font-mono bg-gray-100 px-1 rounded">{`{name}`}</span> for Customer Name, <span className="font-mono bg-gray-100 px-1 rounded">{`{bikeNumber}`}</span> for Bike Number, and <span className="font-mono bg-gray-100 px-1 rounded">{`{shopName}`}</span> for Shop Name.
+                        </p>
+                        <textarea
+                            rows={4}
+                            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            value={reminderTemplate}
+                            onChange={(e) => setReminderTemplate(e.target.value)}
+                            placeholder="Hello {name}, this is a reminder that..."
+                        />
+                    </div>
+                    <div className="flex justify-end">
+                        <Button onClick={handleSaveTemplate} className="flex items-center gap-2">
+                            <Save size={18} /> Save Template
+                        </Button>
+                    </div>
+                </div>
+            </div>
 
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                 <div className="flex items-center gap-3 mb-4">

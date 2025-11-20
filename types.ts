@@ -1,9 +1,11 @@
+
 export interface ShopInfo {
     name: string;
     address: string;
     logoUrl?: string;
     receiptLogoSize?: number;
     pdfLogoSize?: number;
+    whatsappReminderTemplate?: string;
 }
 
 export type UserRole = 'master' | 'sub';
