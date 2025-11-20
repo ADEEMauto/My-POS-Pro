@@ -231,9 +231,21 @@ const POS: React.FC = () => {
     const addManualItemToCart = () => {
         const itemName = prompt("Enter item name:");
         if (!itemName) return;
-        const itemPrice = parseFloat(prompt("Enter item price:") || '0');
+        const itemPriceInput = prompt("Enter item price:");
+        if (itemPriceInput === null) return;
+        const itemPrice = parseFloat(itemPriceInput || '0');
+        
         if (isNaN(itemPrice) || itemPrice <= 0) {
             toast.error("Invalid price entered.");
+            return;
+        }
+
+        const quantityInput = prompt("Enter quantity:", "1");
+        if (quantityInput === null) return;
+        const quantity = parseInt(quantityInput || '1', 10);
+
+        if (isNaN(quantity) || quantity <= 0) {
+            toast.error("Invalid quantity entered.");
             return;
         }
 
@@ -243,7 +255,7 @@ const POS: React.FC = () => {
             salePrice: itemPrice,
             purchasePrice: 0, // No profit tracking for manual items
             quantity: Infinity, // No stock limit
-            cartQuantity: 1,
+            cartQuantity: quantity,
             discount: 0,
             discountType: 'fixed',
             categoryId: 'manual',
@@ -431,7 +443,8 @@ const POS: React.FC = () => {
         if (receiptRef.current) {
             const toastId = toast.loading("Generating image...");
             try {
-                const canvas = await html2canvas(receiptRef.current, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+                // Using scale: 6 for Ultra HD quality
+                const canvas = await html2canvas(receiptRef.current, { scale: 6, useCORS: true, backgroundColor: '#ffffff' });
                 const link = document.createElement('a');
                 link.download = `receipt-${completedSale?.id}.png`;
                 link.href = canvas.toDataURL('image/png');
@@ -474,8 +487,8 @@ const POS: React.FC = () => {
         try {
             const toastId = toast.loading("Preparing receipt...");
             
-            // To provide a better experience, we download the image and prompt the user to attach it.
-            const canvas = await html2canvas(receiptRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            // Using scale: 6 for Ultra HD quality
+            const canvas = await html2canvas(receiptRef.current, { scale: 6, useCORS: true, backgroundColor: '#ffffff' });
             const link = document.createElement('a');
             link.download = `receipt-${completedSale.id}.png`;
             link.href = canvas.toDataURL('image/png');
