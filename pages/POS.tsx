@@ -4,14 +4,34 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale, Customer, OutsideServiceItem } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, FileSearch, Hammer } from 'lucide-react';
+import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, FileSearch, Hammer, Plus, Bike } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import BarcodeScanner from '../components/BarcodeScanner';
 import Receipt from '../components/Receipt';
 import toast from 'react-hot-toast';
+// @ts-ignore
 import html2canvas from 'html2canvas';
+
+// Interface for a single POS Session (Cart)
+interface POSSession {
+    id: string;
+    name: string; // Display name (e.g., "Order 1" or Bike Number)
+    cart: CartItem[];
+    customerName: string;
+    bikeNumber: string;
+    contactNumber: string;
+    serviceFrequencyValue: number | string;
+    serviceFrequencyUnit: 'days' | 'months' | 'years';
+    tuningCharges: number | string;
+    laborCharges: number | string;
+    overallDiscount: number | string;
+    overallDiscountType: 'fixed' | 'percentage';
+    outsideServices: OutsideServiceItem[];
+    pointsToRedeem: number | string;
+    amountPaid: number | string;
+}
 
 const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) => void; isSelected: boolean; categoryName?: string; }> = ({ product, onSelect, isSelected, categoryName }) => {
     const isOutOfStock = product.quantity <= 0;
@@ -99,47 +119,90 @@ const CustomerLookupModal: React.FC<{
 
 const POS: React.FC = () => {
     const { inventory, sales, categories, createSale, findProductByBarcode, customers, redemptionRule, shopInfo, customerTiers } = useAppContext();
+    
+    // Search & Sorting State
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [sortBy, setSortBy] = useState('most_selling');
-    const [cart, setCart] = useState<CartItem[]>([]);
+
+    // Multi-Session State
+    const createEmptySession = (index: number): POSSession => ({
+        id: uuidv4(),
+        name: `Order ${index + 1}`,
+        cart: [],
+        customerName: '',
+        bikeNumber: '',
+        contactNumber: '',
+        serviceFrequencyValue: '',
+        serviceFrequencyUnit: 'months',
+        tuningCharges: '',
+        laborCharges: '',
+        overallDiscount: '',
+        overallDiscountType: 'fixed',
+        outsideServices: [],
+        pointsToRedeem: '',
+        amountPaid: ''
+    });
+
+    const [sessions, setSessions] = useState<POSSession[]>([createEmptySession(0)]);
+    const [activeSessionId, setActiveSessionId] = useState<string>(sessions[0].id);
+
+    // Derived Active Session
+    const currentSession = useMemo(() => sessions.find(s => s.id === activeSessionId) || sessions[0], [sessions, activeSessionId]);
     
+    // Helper to update current session
+    const updateCurrentSession = (updates: Partial<POSSession>) => {
+        setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, ...updates } : s));
+    };
+
+    // Helper to update session AND rename it if bike number changes
+    const updateSessionAndName = (updates: Partial<POSSession>) => {
+        setSessions(prev => prev.map(s => {
+            if (s.id === activeSessionId) {
+                const updatedSession = { ...s, ...updates };
+                // If bike number is present, use it as tab name, else fallback to default logic or keep existing if generic
+                if (updates.bikeNumber !== undefined) {
+                    updatedSession.name = updates.bikeNumber.trim() || s.name; 
+                    if(!updatedSession.name || updatedSession.name.startsWith('Order ')) {
+                         // If clearing bike number, revert to generic name if customer name is also empty
+                         if(!updatedSession.customerName) updatedSession.name = "New Order";
+                    }
+                }
+                return updatedSession;
+            }
+            return s;
+        }));
+    };
+
+    // Modals State
     const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
-    const [overallDiscount, setOverallDiscount] = useState<number | string>('');
-    const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>('fixed');
-    const [tuningCharges, setTuningCharges] = useState<number | string>('');
-    const [laborCharges, setLaborCharges] = useState<number | string>('');
-    const [outsideServices, setOutsideServices] = useState<OutsideServiceItem[]>([]);
-    
     const [isSaleCompleteModalOpen, setIsSaleCompleteModalOpen] = useState(false);
     const [completedSale, setCompletedSale] = useState<Sale | null>(null);
     const receiptRef = useRef<HTMLDivElement>(null);
-
     const [isScannerModalOpen, setScannerModalOpen] = useState(false);
-    
-    // Customer state for checkout
-    const [customerName, setCustomerName] = useState('');
-    const [bikeNumber, setBikeNumber] = useState('');
-    const [contactNumber, setContactNumber] = useState('');
-    const [serviceFrequencyValue, setServiceFrequencyValue] = useState<number | string>('');
-    const [serviceFrequencyUnit, setServiceFrequencyUnit] = useState<'days' | 'months' | 'years'>('months');
     const [isCustomerLookupOpen, setCustomerLookupOpen] = useState(false);
-    const [amountPaid, setAmountPaid] = useState<number | string>('');
 
-    // Loyalty Points Redemption
-    const [pointsToRedeem, setPointsToRedeem] = useState<number | string>('');
-    const currentCustomer = useMemo(() => customers.find(c => c.id === bikeNumber.replace(/\s+/g, '').toUpperCase()), [customers, bikeNumber]);
-    const customerTier = useMemo(() => currentCustomer?.tierId ? customerTiers.find(t => t.id === currentCustomer.tierId) : null, [currentCustomer, customerTiers]);
-    
-    // State for WhatsApp modal
+    // WhatsApp State
     const [showWhatsAppInput, setShowWhatsAppInput] = useState(false);
     const [whatsAppNumber, setWhatsAppNumber] = useState('');
     const [customerForReceipt, setCustomerForReceipt] = useState<Customer | null>(null);
 
 
+    // --- Derived Computations for Current Session ---
+
+    // Current Customer Lookup
+    const currentCustomer = useMemo(() => {
+        const bikeId = currentSession.bikeNumber.replace(/\s+/g, '').toUpperCase();
+        return customers.find(c => c.id === bikeId);
+    }, [customers, currentSession.bikeNumber]);
+    
+    const customerTier = useMemo(() => currentCustomer?.tierId ? customerTiers.find(t => t.id === currentCustomer.tierId) : null, [currentCustomer, customerTiers]);
+    
+    // Reset redemption points if customer changes
     useEffect(() => {
-        // When a customer is selected, reset redemption points
-        setPointsToRedeem('');
+        if (!currentCustomer && currentSession.pointsToRedeem) {
+             updateCurrentSession({ pointsToRedeem: '' });
+        }
     }, [currentCustomer]);
 
     const categoryMap = useMemo(() => {
@@ -152,7 +215,6 @@ const POS: React.FC = () => {
         const salesCount = new Map<string, number>();
         sales.forEach(sale => {
             sale.items.forEach(item => {
-                // FIX: SaleItem has 'productId', not 'id'. This check is to exclude manually added items from sales stats.
                 if (!item.productId.startsWith('manual-')) {
                     salesCount.set(item.productId, (salesCount.get(item.productId) || 0) + item.quantity);
                 }
@@ -161,6 +223,7 @@ const POS: React.FC = () => {
         return salesCount;
     }, [sales]);
 
+    // --- Inventory Filtering ---
     const filteredInventory = useMemo(() => {
         const lowercasedSearchTerm = searchTerm.toLowerCase();
         const filtered = inventory.filter(product => {
@@ -172,60 +235,53 @@ const POS: React.FC = () => {
         
         filtered.sort((a, b) => {
             switch (sortBy) {
-                case 'name_asc':
-                    return a.name.localeCompare(b.name);
-                case 'name_desc':
-                    return b.name.localeCompare(a.name);
-                case 'price_desc':
-                    return b.salePrice - a.salePrice;
-                case 'price_asc':
-                    return a.salePrice - b.salePrice;
-                case 'most_selling':
-                    return (productSales.get(b.id) || 0) - (productSales.get(a.id) || 0);
-                case 'least_selling':
-                    return (productSales.get(a.id) || 0) - (productSales.get(b.id) || 0);
+                case 'name_asc': return a.name.localeCompare(b.name);
+                case 'name_desc': return b.name.localeCompare(a.name);
+                case 'price_desc': return b.salePrice - a.salePrice;
+                case 'price_asc': return a.salePrice - b.salePrice;
+                case 'most_selling': return (productSales.get(b.id) || 0) - (productSales.get(a.id) || 0);
+                case 'least_selling': return (productSales.get(a.id) || 0) - (productSales.get(b.id) || 0);
                 case 'category_asc': {
                     const catA = categoryMap.get(a.categoryId) || '';
                     const catB = categoryMap.get(b.categoryId) || '';
-                    if (catA.localeCompare(catB) !== 0) {
-                        return catA.localeCompare(catB);
-                    }
-                    const subCatA = a.subCategoryId ? categoryMap.get(a.subCategoryId) || '' : '';
-                    const subCatB = b.subCategoryId ? categoryMap.get(b.subCategoryId) || '' : '';
-                    return subCatA.localeCompare(subCatB);
+                    return catA.localeCompare(catB);
                 }
-                case 'manufacturer_asc':
-                    return a.manufacturer.localeCompare(b.manufacturer);
-                case 'location_asc':
-                    return (a.location || '').localeCompare(b.location || '');
-                default:
-                    return 0;
+                case 'manufacturer_asc': return a.manufacturer.localeCompare(b.manufacturer);
+                case 'location_asc': return (a.location || '').localeCompare(b.location || '');
+                default: return 0;
             }
         });
-
         return filtered;
     }, [inventory, searchTerm, selectedCategory, sortBy, productSales, categoryMap]);
 
     const mainCategories = useMemo(() => categories.filter(c => c.parentId === null), [categories]);
 
+
+    // --- Cart Logic (Operates on Current Session) ---
+
     const addToCart = (productId: string) => {
         const product = inventory.find(p => p.id === productId);
         if (!product) return;
 
-        const existingItem = cart.find(item => item.id === productId);
+        const existingItem = currentSession.cart.find(item => item.id === productId);
+        let newCart;
+
         if (existingItem) {
             if (existingItem.cartQuantity < product.quantity) {
-                 setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item));
+                newCart = currentSession.cart.map(item => item.id === productId ? { ...item, cartQuantity: item.cartQuantity + 1 } : item);
             } else {
                 toast.error(`No more stock for ${product.name}.`);
+                return;
             }
         } else {
             if (product.quantity > 0) {
-                 setCart([...cart, { ...product, cartQuantity: 1, discount: 0, discountType: 'fixed' }]);
+                newCart = [...currentSession.cart, { ...product, cartQuantity: 1, discount: 0, discountType: 'fixed' }];
             } else {
                 toast.error(`${product.name} is out of stock.`);
+                return;
             }
         }
+        updateCurrentSession({ cart: newCart });
     };
     
     const addManualItemToCart = () => {
@@ -253,8 +309,8 @@ const POS: React.FC = () => {
             id: `manual-${uuidv4()}`,
             name: itemName,
             salePrice: itemPrice,
-            purchasePrice: 0, // No profit tracking for manual items
-            quantity: Infinity, // No stock limit
+            purchasePrice: 0,
+            quantity: Infinity,
             cartQuantity: quantity,
             discount: 0,
             discountType: 'fixed',
@@ -263,7 +319,7 @@ const POS: React.FC = () => {
             manufacturer: 'N/A',
             location: 'N/A'
         };
-        setCart([...cart, manualProduct]);
+        updateCurrentSession({ cart: [...currentSession.cart, manualProduct] });
     };
 
     const handleBarcodeScan = (decodedText: string) => {
@@ -279,61 +335,66 @@ const POS: React.FC = () => {
 
     const updateQuantity = (productId: string, newQuantity: number) => {
         const productInStock = inventory.find(p => p.id === productId);
-        const maxQuantity = productInStock ? productInStock.quantity : Infinity; // Infinity for manual items
+        const maxQuantity = productInStock ? productInStock.quantity : Infinity;
         
+        let newCart;
         if (newQuantity <= 0) {
-            setCart(cart.filter(item => item.id !== productId));
+            newCart = currentSession.cart.filter(item => item.id !== productId);
         } else if (newQuantity > maxQuantity) {
             toast.error(`Only ${maxQuantity} units of ${productInStock?.name} available.`);
-            setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: maxQuantity } : item));
+            newCart = currentSession.cart.map(item => item.id === productId ? { ...item, cartQuantity: maxQuantity } : item);
         } else {
-            setCart(cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item));
+            newCart = currentSession.cart.map(item => item.id === productId ? { ...item, cartQuantity: newQuantity } : item);
         }
+        updateCurrentSession({ cart: newCart });
     };
 
      const handleItemDiscountChange = (productId: string, value: string) => {
         const numericValue = parseFloat(value);
-        setCart(cart.map(item => 
+        const newCart = currentSession.cart.map(item => 
             item.id === productId 
             ? { ...item, discount: isNaN(numericValue) ? 0 : numericValue } 
             : item
-        ));
+        );
+        updateCurrentSession({ cart: newCart });
     };
 
     const handleItemDiscountTypeChange = (productId: string, type: 'fixed' | 'percentage') => {
-        setCart(cart.map(item => 
+        const newCart = currentSession.cart.map(item => 
             item.id === productId 
             ? { ...item, discountType: type } 
             : item
-        ));
+        );
+        updateCurrentSession({ cart: newCart });
     };
 
-    const subtotal = useMemo(() => cart.reduce((acc, item) => acc + (item.salePrice * item.cartQuantity), 0), [cart]);
+    // --- Calculations ---
+    const subtotal = useMemo(() => currentSession.cart.reduce((acc, item) => acc + (item.salePrice * item.cartQuantity), 0), [currentSession.cart]);
     
     const totalItemDiscount = useMemo(() => {
-        return cart.reduce((acc, item) => {
+        return currentSession.cart.reduce((acc, item) => {
             const discount = item.discountType === 'fixed'
                 ? item.discount
                 : (item.salePrice * item.discount) / 100;
             return acc + (discount * item.cartQuantity);
         }, 0);
-    }, [cart]);
+    }, [currentSession.cart]);
     
     const subtotalAfterItemDiscount = subtotal - totalItemDiscount;
 
     const subtotalWithCharges = useMemo(() => {
-        const numericTuningCharges = parseFloat(String(tuningCharges)) || 0;
-        const numericLaborCharges = parseFloat(String(laborCharges)) || 0;
+        const numericTuningCharges = parseFloat(String(currentSession.tuningCharges)) || 0;
+        const numericLaborCharges = parseFloat(String(currentSession.laborCharges)) || 0;
         return subtotalAfterItemDiscount + numericTuningCharges + numericLaborCharges;
-    }, [subtotalAfterItemDiscount, tuningCharges, laborCharges]);
+    }, [subtotalAfterItemDiscount, currentSession.tuningCharges, currentSession.laborCharges]);
 
     const overallDiscountAmount = useMemo(() => {
-        const value = parseFloat(String(overallDiscount));
+        const value = parseFloat(String(currentSession.overallDiscount));
         if (isNaN(value) || value < 0) return 0;
-        return overallDiscountType === 'fixed' ? value : (subtotalWithCharges * value) / 100;
-    }, [overallDiscount, overallDiscountType, subtotalWithCharges]);
+        return currentSession.overallDiscountType === 'fixed' ? value : (subtotalWithCharges * value) / 100;
+    }, [currentSession.overallDiscount, currentSession.overallDiscountType, subtotalWithCharges]);
     
-    const totalOutsideServices = useMemo(() => outsideServices.reduce((sum, s) => sum + s.amount, 0), [outsideServices]);
+    const totalOutsideServices = useMemo(() => currentSession.outsideServices.reduce((sum, s) => sum + s.amount, 0), [currentSession.outsideServices]);
 
     const cartTotal = useMemo(() => {
         return (subtotalWithCharges - overallDiscountAmount) + totalOutsideServices;
@@ -346,8 +407,8 @@ const POS: React.FC = () => {
     }, [cartTotal, previousBalance]);
 
     const loyaltyDiscountAmount = useMemo(() => {
-        if (!currentCustomer || !pointsToRedeem) return 0;
-        const points = Number(pointsToRedeem);
+        if (!currentCustomer || !currentSession.pointsToRedeem) return 0;
+        const points = Number(currentSession.pointsToRedeem);
         if (isNaN(points) || points <= 0 || points > currentCustomer.loyaltyPoints) return 0;
         
         let discount = 0;
@@ -358,73 +419,109 @@ const POS: React.FC = () => {
             discount = (totalBeforeLoyalty * percentage) / 100;
         }
         return discount > totalBeforeLoyalty ? totalBeforeLoyalty : discount;
-    }, [pointsToRedeem, currentCustomer, redemptionRule, totalBeforeLoyalty]);
+    }, [currentSession.pointsToRedeem, currentCustomer, redemptionRule, totalBeforeLoyalty]);
 
     const totalDue = useMemo(() => {
         const finalTotal = totalBeforeLoyalty - loyaltyDiscountAmount;
         return finalTotal > 0 ? finalTotal : 0;
     }, [totalBeforeLoyalty, loyaltyDiscountAmount]);
 
-    // Effect to update amountPaid when totalDue changes
+    // Auto-fill amount paid when totalDue settles
     useEffect(() => {
         if(isCheckoutModalOpen) {
-            setAmountPaid(Math.round(totalDue));
+             updateCurrentSession({ amountPaid: Math.round(totalDue) });
         }
     }, [totalDue, isCheckoutModalOpen]);
 
+
+    // --- Session Management Actions ---
+
+    const handleAddSession = () => {
+        const newSession = createEmptySession(sessions.length);
+        setSessions([...sessions, newSession]);
+        setActiveSessionId(newSession.id);
+    };
+
+    const handleCloseSession = (e: React.MouseEvent, sessionId: string) => {
+        e.stopPropagation();
+        
+        const sessionToClose = sessions.find(s => s.id === sessionId);
+        if(sessionToClose && sessionToClose.cart.length > 0) {
+            if(!window.confirm(`"Order ${sessionToClose.name}" has items in cart. Are you sure you want to close it?`)) {
+                return;
+            }
+        }
+
+        const remainingSessions = sessions.filter(s => s.id !== sessionId);
+        
+        if (remainingSessions.length === 0) {
+            const newSession = createEmptySession(0);
+            setSessions([newSession]);
+            setActiveSessionId(newSession.id);
+        } else {
+            setSessions(remainingSessions);
+            if (activeSessionId === sessionId) {
+                setActiveSessionId(remainingSessions[remainingSessions.length - 1].id);
+            }
+        }
+    };
+
+
     const handleCheckout = () => {
-        const numericAmountPaid = Number(amountPaid) || 0;
+        const numericAmountPaid = Number(currentSession.amountPaid) || 0;
         const roundedTotalDue = Math.round(totalDue);
 
-        if (numericAmountPaid < roundedTotalDue && (!bikeNumber.trim() || !customerName.trim())) {
+        if (numericAmountPaid < roundedTotalDue && (!currentSession.bikeNumber.trim() || !currentSession.customerName.trim())) {
             toast.error("Customer details (Bike No & Name) are required when the bill is not fully paid.");
             return;
         }
         
-        let finalCustomerName = customerName.trim();
-        let finalBikeNumber = bikeNumber.trim();
+        let finalCustomerName = currentSession.customerName.trim();
+        let finalBikeNumber = currentSession.bikeNumber.trim();
 
         if (!finalCustomerName && !finalBikeNumber) {
             finalCustomerName = 'Walk-in';
-            // Use a single, static ID for all walk-in customers to consolidate them.
             finalBikeNumber = 'WALKIN';
         } else if (!finalBikeNumber) {
-            // If only name is given, generate a unique ID.
             finalBikeNumber = `${finalCustomerName.replace(/\s+/g, '').toUpperCase()}-${Date.now()}`;
         } else if (!finalCustomerName) {
-            // If only bike number is given, find existing name or generate a default one.
             const existingCustomer = customers.find(c => c.id === finalBikeNumber.replace(/\s+/g, '').toUpperCase());
             finalCustomerName = existingCustomer ? existingCustomer.name : `Customer ${finalBikeNumber}`;
         }
 
         const sale = createSale(
-            cart,
-            parseFloat(String(overallDiscount)) || 0,
-            overallDiscountType,
-            { customerName: finalCustomerName, bikeNumber: finalBikeNumber, contactNumber, serviceFrequencyValue: Number(serviceFrequencyValue) || undefined, serviceFrequencyUnit: serviceFrequencyValue ? serviceFrequencyUnit : undefined },
-            Number(pointsToRedeem) || 0,
-            parseFloat(String(tuningCharges)) || 0,
-            parseFloat(String(laborCharges)) || 0,
-            Number(amountPaid) || 0,
-            outsideServices
+            currentSession.cart,
+            parseFloat(String(currentSession.overallDiscount)) || 0,
+            currentSession.overallDiscountType,
+            { 
+                customerName: finalCustomerName, 
+                bikeNumber: finalBikeNumber, 
+                contactNumber: currentSession.contactNumber, 
+                serviceFrequencyValue: Number(currentSession.serviceFrequencyValue) || undefined, 
+                serviceFrequencyUnit: currentSession.serviceFrequencyValue ? currentSession.serviceFrequencyUnit : undefined 
+            },
+            Number(currentSession.pointsToRedeem) || 0,
+            parseFloat(String(currentSession.tuningCharges)) || 0,
+            parseFloat(String(currentSession.laborCharges)) || 0,
+            Number(currentSession.amountPaid) || 0,
+            currentSession.outsideServices
         );
 
         if (sale) {
             setCompletedSale(sale);
             setIsSaleCompleteModalOpen(true);
             setCheckoutModalOpen(false);
-            // Reset state for next sale
-            setCart([]);
-            setOverallDiscount('');
-            setTuningCharges('');
-            setLaborCharges('');
-            setOutsideServices([]);
-            setCustomerName('');
-            setBikeNumber('');
-            setContactNumber('');
-            setServiceFrequencyValue('');
-            setPointsToRedeem('');
-            setAmountPaid('');
+            
+            // Remove the completed session and switch
+            const remainingSessions = sessions.filter(s => s.id !== activeSessionId);
+            if (remainingSessions.length === 0) {
+                const newSession = createEmptySession(0);
+                setSessions([newSession]);
+                setActiveSessionId(newSession.id);
+            } else {
+                setSessions(remainingSessions);
+                setActiveSessionId(remainingSessions[0].id);
+            }
         }
     };
     
@@ -435,7 +532,7 @@ const POS: React.FC = () => {
             document.body.innerHTML = printContents;
             window.print();
             document.body.innerHTML = originalContents;
-            window.location.reload(); // Reload to restore styles and event handlers
+            window.location.reload();
         }
     };
 
@@ -443,7 +540,6 @@ const POS: React.FC = () => {
         if (receiptRef.current) {
             const toastId = toast.loading("Generating image...");
             try {
-                // Using scale: 6 for Ultra HD quality
                 const canvas = await html2canvas(receiptRef.current, { scale: 6, useCORS: true, backgroundColor: '#ffffff' });
                 const link = document.createElement('a');
                 link.download = `receipt-${completedSale?.id}.png`;
@@ -486,8 +582,6 @@ const POS: React.FC = () => {
         
         try {
             const toastId = toast.loading("Preparing receipt...");
-            
-            // Using scale: 6 for Ultra HD quality
             const canvas = await html2canvas(receiptRef.current, { scale: 6, useCORS: true, backgroundColor: '#ffffff' });
             const link = document.createElement('a');
             link.download = `receipt-${completedSale.id}.png`;
@@ -495,33 +589,34 @@ const POS: React.FC = () => {
             link.click();
 
             toast.success("Receipt downloaded. Please attach it in WhatsApp.", { id: toastId, duration: 5000 });
-
             const whatsappUrl = `https://wa.me/${formattedNumber}?text=${encodedMessage}`;
             window.open(whatsappUrl, '_blank');
 
         } catch (error) {
             toast.error("Could not generate receipt image for sharing.");
-            console.error("WhatsApp share error:", error);
         }
         setShowWhatsAppInput(false);
         setWhatsAppNumber('');
     };
 
     const handleSelectCustomer = (customer: Customer) => {
-        setBikeNumber(customer.id);
-        setCustomerName(customer.name);
-        setContactNumber(customer.contactNumber || '');
-        setServiceFrequencyValue(customer.serviceFrequencyValue || '');
-        if(customer.serviceFrequencyUnit) setServiceFrequencyUnit(customer.serviceFrequencyUnit);
+        updateSessionAndName({
+            bikeNumber: customer.id,
+            customerName: customer.name,
+            contactNumber: customer.contactNumber || '',
+            serviceFrequencyValue: customer.serviceFrequencyValue || '',
+            serviceFrequencyUnit: customer.serviceFrequencyUnit || 'months'
+        });
     };
 
     // Outside Services handlers
-    const handleAddService = () => setOutsideServices([...outsideServices, { id: uuidv4(), name: '', amount: 0 }]);
+    const handleAddService = () => updateCurrentSession({ outsideServices: [...currentSession.outsideServices, { id: uuidv4(), name: '', amount: 0 }] });
     const handleUpdateService = (id: string, field: 'name' | 'amount', value: string) => {
-        setOutsideServices(outsideServices.map(s => s.id === id ? { ...s, [field]: field === 'amount' ? Number(value) || 0 : value } : s));
+        const updatedServices = currentSession.outsideServices.map(s => s.id === id ? { ...s, [field]: field === 'amount' ? Number(value) || 0 : value } : s);
+        updateCurrentSession({ outsideServices: updatedServices });
     };
     const handleRemoveService = (id: string) => {
-        setOutsideServices(outsideServices.filter(s => s.id !== id));
+        updateCurrentSession({ outsideServices: currentSession.outsideServices.filter(s => s.id !== id) });
     };
 
     return (
@@ -564,7 +659,7 @@ const POS: React.FC = () => {
                             key={product.id} 
                             product={product} 
                             onSelect={addToCart} 
-                            isSelected={cart.some(item => item.id === product.id)}
+                            isSelected={currentSession.cart.some(item => item.id === product.id)}
                             categoryName={categoryMap.get(product.categoryId)}
                         />
                     ))}
@@ -572,93 +667,129 @@ const POS: React.FC = () => {
             </div>
 
             {/* Right Sidebar - Cart */}
-            <div className="w-full md:w-96 bg-white shadow-lg p-4 flex flex-col border-l">
-                <h2 className="text-xl font-bold mb-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2"><ShoppingCart /> Current Sale</div>
-                    {cart.length > 0 && <Button variant="danger" size="sm" onClick={() => setCart([])}><Trash2 size={16} /></Button>}
-                </h2>
-
-                {cart.length > 0 && (
-                    <div className="bg-primary-600 text-white rounded-lg p-3 text-center mb-4 shadow-inner">
-                        <p className="text-xs opacity-80 uppercase tracking-wider">Total Amount</p>
-                        <p className="text-3xl font-bold tracking-tight">{formatCurrency(subtotalAfterItemDiscount)}</p>
-                    </div>
-                )}
-
-                {/* Checkout and Manual Add buttons moved to the top */}
-                <div className="space-y-2 mb-4">
-                    <Button onClick={() => setCheckoutModalOpen(true)} className="w-full">
-                        {cart.length > 0 ? 'Proceed to Checkout' : 'Add Charges / Checkout'}
-                    </Button>
-                    <Button onClick={addManualItemToCart} variant="ghost" className="w-full flex items-center justify-center gap-2">
-                        <PlusCircle size={18} /> Add Manual Item
-                    </Button>
-                </div>
-                
-                <div className="flex-grow overflow-y-auto -mr-4 pr-4 space-y-3">
-                    {cart.length === 0 ? (
-                        <p className="text-gray-500 text-center mt-8">Your cart is empty.</p>
-                    ) : (
-                        cart.map(item => (
-                            <div key={item.id} className="flex items-start gap-3 p-2 bg-gray-50 rounded-lg">
-                                <img src={item.imageUrl || 'https://picsum.photos/200'} alt={item.name} className="w-16 h-16 object-cover rounded-md"/>
-                                <div className="flex-grow">
-                                    <p className="font-semibold text-sm">{item.name}</p>
-                                    <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <Input 
-                                            type="number" 
-                                            value={item.cartQuantity} 
-                                            onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))} 
-                                            className="w-16 h-8 text-center"
-                                        />
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-2">
-                                        <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
-                                        <Input 
-                                            id={`discount-${item.id}`}
-                                            type="number"
-                                            value={item.discount || ''}
-                                            onChange={e => handleItemDiscountChange(item.id, e.target.value)}
-                                            className="w-20 h-8 text-xs p-1"
-                                            placeholder="0"
-                                        />
-                                        <select
-                                            value={item.discountType}
-                                            onChange={e => handleItemDiscountTypeChange(item.id, e.target.value as 'fixed' | 'percentage')}
-                                            className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white"
-                                        >
-                                            <option value="fixed">Rs.</option>
-                                            <option value="percentage">%</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <button onClick={() => updateQuantity(item.id, 0)} className="text-gray-400 hover:text-red-500"><X size={18}/></button>
+            <div className="w-full md:w-96 bg-white shadow-lg flex flex-col border-l">
+                {/* Active Sessions Tabs */}
+                <div className="flex items-center overflow-x-auto bg-gray-100 border-b scrollbar-thin">
+                    {sessions.map((session) => (
+                        <div 
+                            key={session.id}
+                            onClick={() => setActiveSessionId(session.id)}
+                            className={`flex items-center px-3 py-2 cursor-pointer min-w-[100px] justify-between border-r border-gray-200 select-none transition-colors ${
+                                activeSessionId === session.id 
+                                ? 'bg-white text-primary-700 font-bold border-t-2 border-t-primary-600' 
+                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            }`}
+                        >
+                            <div className="flex items-center gap-2 truncate mr-2">
+                                <Bike size={14} className={activeSessionId === session.id ? "text-primary-600" : "text-gray-400"} />
+                                <span className="truncate text-sm max-w-[80px]" title={session.name}>{session.name}</span>
                             </div>
-                        ))
-                    )}
+                            <button 
+                                onClick={(e) => handleCloseSession(e, session.id)}
+                                className="text-gray-400 hover:text-red-500 rounded-full p-0.5 hover:bg-gray-300"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    ))}
+                    <button 
+                        onClick={handleAddSession}
+                        className="p-2 text-gray-500 hover:text-primary-600 hover:bg-gray-200"
+                        title="New Order"
+                    >
+                        <Plus size={18} />
+                    </button>
                 </div>
 
-                <div className="border-t pt-4 mt-4 space-y-2">
-                    <div className="flex justify-between font-semibold">
-                        <span>Subtotal</span>
-                        <span>{formatCurrency(subtotal)}</span>
-                    </div>
-                    {totalItemDiscount > 0 && (
-                        <div className="flex justify-between text-sm text-red-600">
-                            <span>Item Discounts</span>
-                            <span>-{formatCurrency(totalItemDiscount)}</span>
+                <div className="p-4 flex-grow flex flex-col overflow-hidden">
+                    <h2 className="text-xl font-bold mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2"><ShoppingCart /> Current Sale</div>
+                        {currentSession.cart.length > 0 && (
+                            <Button variant="danger" size="sm" onClick={() => updateCurrentSession({ cart: [] })}><Trash2 size={16} /></Button>
+                        )}
+                    </h2>
+
+                    {currentSession.cart.length > 0 && (
+                        <div className="bg-primary-600 text-white rounded-lg p-3 text-center mb-4 shadow-inner">
+                            <p className="text-xs opacity-80 uppercase tracking-wider">Total Amount</p>
+                            <p className="text-3xl font-bold tracking-tight">{formatCurrency(subtotalAfterItemDiscount)}</p>
                         </div>
                     )}
-                    <div className="flex justify-between font-bold text-xl pt-2 border-t">
-                        <span>Total</span>
-                        <span>{formatCurrency(subtotalAfterItemDiscount)}</span>
+
+                    <div className="space-y-2 mb-4">
+                        <Button onClick={() => setCheckoutModalOpen(true)} className="w-full">
+                            {currentSession.cart.length > 0 ? 'Proceed to Checkout' : 'Add Charges / Checkout'}
+                        </Button>
+                        <Button onClick={addManualItemToCart} variant="ghost" className="w-full flex items-center justify-center gap-2">
+                            <PlusCircle size={18} /> Add Manual Item
+                        </Button>
+                    </div>
+                    
+                    <div className="flex-grow overflow-y-auto -mr-4 pr-4 space-y-3">
+                        {currentSession.cart.length === 0 ? (
+                            <p className="text-gray-500 text-center mt-8">Your cart is empty.</p>
+                        ) : (
+                            currentSession.cart.map(item => (
+                                <div key={item.id} className="flex items-start gap-3 p-2 bg-gray-50 rounded-lg">
+                                    <img src={item.imageUrl || 'https://picsum.photos/200'} alt={item.name} className="w-16 h-16 object-cover rounded-md"/>
+                                    <div className="flex-grow">
+                                        <p className="font-semibold text-sm">{item.name}</p>
+                                        <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <Input 
+                                                type="number" 
+                                                value={item.cartQuantity} 
+                                                onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))} 
+                                                className="w-16 h-8 text-center"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
+                                            <Input 
+                                                id={`discount-${item.id}`}
+                                                type="number"
+                                                value={item.discount || ''}
+                                                onChange={e => handleItemDiscountChange(item.id, e.target.value)}
+                                                className="w-20 h-8 text-xs p-1"
+                                                placeholder="0"
+                                            />
+                                            <select
+                                                value={item.discountType}
+                                                onChange={e => handleItemDiscountTypeChange(item.id, e.target.value as 'fixed' | 'percentage')}
+                                                className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white"
+                                            >
+                                                <option value="fixed">Rs.</option>
+                                                <option value="percentage">%</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => updateQuantity(item.id, 0)} className="text-gray-400 hover:text-red-500"><X size={18}/></button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    <div className="border-t pt-4 mt-4 space-y-2">
+                        <div className="flex justify-between font-semibold">
+                            <span>Subtotal</span>
+                            <span>{formatCurrency(subtotal)}</span>
+                        </div>
+                        {totalItemDiscount > 0 && (
+                            <div className="flex justify-between text-sm text-red-600">
+                                <span>Item Discounts</span>
+                                <span>-{formatCurrency(totalItemDiscount)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between font-bold text-xl pt-2 border-t">
+                            <span>Total</span>
+                            <span>{formatCurrency(subtotalAfterItemDiscount)}</span>
+                        </div>
                     </div>
                 </div>
             </div>
             
             {/* Modals */}
-            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title="Checkout" size="2xl">
+            <Modal isOpen={isCheckoutModalOpen} onClose={() => setCheckoutModalOpen(false)} title={`Checkout: ${currentSession.name}`} size="2xl">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     {/* Left side: Customer and Charges */}
                     <div className="space-y-4">
@@ -668,14 +799,14 @@ const POS: React.FC = () => {
                                 <FileSearch size={16}/> Find Existing
                             </Button>
                         </h3>
-                        <Input label="Bike Number (Unique ID)" value={bikeNumber} onChange={e => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())} placeholder="e.g., KHI1234" />
-                        <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} />
-                        <Input label="Contact Number" type="tel" value={contactNumber} onChange={e => setContactNumber(e.target.value)} />
+                        <Input label="Bike Number (Unique ID)" value={currentSession.bikeNumber} onChange={e => updateSessionAndName({ bikeNumber: e.target.value.toUpperCase() })} placeholder="e.g., KHI1234" />
+                        <Input label="Customer Name" value={currentSession.customerName} onChange={e => updateSessionAndName({ customerName: e.target.value })} />
+                        <Input label="Contact Number" type="tel" value={currentSession.contactNumber} onChange={e => updateCurrentSession({ contactNumber: e.target.value })} />
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Service Frequency</label>
                             <div className="flex items-center gap-2 mt-1">
-                                <Input type="number" placeholder="e.g., 3" min="1" value={serviceFrequencyValue} onChange={(e) => setServiceFrequencyValue(e.target.value)} className="w-1/3" />
-                                <select value={serviceFrequencyUnit} onChange={(e) => setServiceFrequencyUnit(e.target.value as 'days' | 'months' | 'years')} className="flex-grow p-2 border border-gray-300 rounded-md">
+                                <Input type="number" placeholder="e.g., 3" min="1" value={currentSession.serviceFrequencyValue} onChange={(e) => updateCurrentSession({ serviceFrequencyValue: e.target.value })} className="w-1/3" />
+                                <select value={currentSession.serviceFrequencyUnit} onChange={(e) => updateCurrentSession({ serviceFrequencyUnit: e.target.value as 'days' | 'months' | 'years' })} className="flex-grow p-2 border border-gray-300 rounded-md">
                                     <option value="days">Days</option>
                                     <option value="months">Months</option>
                                     <option value="years">Years</option>
@@ -685,8 +816,8 @@ const POS: React.FC = () => {
                         <div className="pt-4 border-t">
                             <h3 className="font-semibold text-lg">Additional Charges</h3>
                             <div className="flex gap-4">
-                                <Input label="Tuning (Rs)" type="number" value={tuningCharges} onChange={e => setTuningCharges(e.target.value)} />
-                                <Input label="Labor (Rs)" type="number" value={laborCharges} onChange={e => setLaborCharges(e.target.value)} />
+                                <Input label="Tuning (Rs)" type="number" value={currentSession.tuningCharges} onChange={e => updateCurrentSession({ tuningCharges: e.target.value })} />
+                                <Input label="Labor (Rs)" type="number" value={currentSession.laborCharges} onChange={e => updateCurrentSession({ laborCharges: e.target.value })} />
                             </div>
                         </div>
                         <div className="pt-4 border-t">
@@ -695,7 +826,7 @@ const POS: React.FC = () => {
                                 <Button size="sm" variant="ghost" onClick={handleAddService}><PlusCircle size={16}/></Button>
                             </h3>
                             <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                                {outsideServices.map(service => (
+                                {currentSession.outsideServices.map(service => (
                                     <div key={service.id} className="flex items-center gap-2">
                                         <Input placeholder="Service Name" value={service.name} onChange={e => handleUpdateService(service.id, 'name', e.target.value)} className="flex-grow"/>
                                         <Input placeholder="Amount" type="number" value={service.amount || ''} onChange={e => handleUpdateService(service.id, 'amount', e.target.value)} className="w-28"/>
@@ -710,14 +841,14 @@ const POS: React.FC = () => {
                     <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
                         <h3 className="font-semibold text-lg border-b pb-2">Order Summary</h3>
                         <div className="flex justify-between text-sm"><span>Cart Total:</span> <span>{formatCurrency(subtotalAfterItemDiscount)}</span></div>
-                        <div className="flex justify-between text-sm"><span>Charges:</span> <span>{formatCurrency((parseFloat(String(tuningCharges)) || 0) + (parseFloat(String(laborCharges)) || 0))}</span></div>
+                        <div className="flex justify-between text-sm"><span>Charges:</span> <span>{formatCurrency((parseFloat(String(currentSession.tuningCharges)) || 0) + (parseFloat(String(currentSession.laborCharges)) || 0))}</span></div>
                         <div className="flex justify-between font-semibold text-sm"><span>Subtotal:</span> <span>{formatCurrency(subtotalWithCharges)}</span></div>
                         
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Overall Discount</label>
                             <div className="flex items-center gap-2">
-                                <Input type="number" value={overallDiscount} onChange={e => setOverallDiscount(e.target.value)} />
-                                <select value={overallDiscountType} onChange={e => setOverallDiscountType(e.target.value as 'fixed' | 'percentage')} className="p-2 border border-gray-300 rounded-md">
+                                <Input type="number" value={currentSession.overallDiscount} onChange={e => updateCurrentSession({ overallDiscount: e.target.value })} />
+                                <select value={currentSession.overallDiscountType} onChange={e => updateCurrentSession({ overallDiscountType: e.target.value as 'fixed' | 'percentage' })} className="p-2 border border-gray-300 rounded-md">
                                     <option value="fixed">Rs.</option>
                                     <option value="percentage">%</option>
                                 </select>
@@ -742,8 +873,8 @@ const POS: React.FC = () => {
                                 <Input 
                                     label="Points to Redeem" 
                                     type="number" 
-                                    value={pointsToRedeem}
-                                    onChange={e => setPointsToRedeem(e.target.value)}
+                                    value={currentSession.pointsToRedeem}
+                                    onChange={e => updateCurrentSession({ pointsToRedeem: e.target.value })}
                                     max={currentCustomer.loyaltyPoints}
                                     min="0"
                                     placeholder={`1 point = ${formatCurrency(redemptionRule.value / redemptionRule.points)}`}
@@ -764,8 +895,8 @@ const POS: React.FC = () => {
                             <span>{formatCurrency(totalDue)}</span>
                         </div>
                          <div className="pt-3 border-t">
-                             <Input label="Amount Paid" type="number" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} required />
-                             {Number(amountPaid) < Math.round(totalDue) && <p className="text-xs text-red-500 mt-1">Remaining balance will be added to customer's due amount.</p>}
+                             <Input label="Amount Paid" type="number" value={currentSession.amountPaid} onChange={e => updateCurrentSession({ amountPaid: e.target.value })} required />
+                             {Number(currentSession.amountPaid) < Math.round(totalDue) && <p className="text-xs text-red-500 mt-1">Remaining balance will be added to customer's due amount.</p>}
                          </div>
                     </div>
                 </div>
