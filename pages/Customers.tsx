@@ -746,17 +746,7 @@ const Customers: React.FC = () => {
         toast.success("Opening WhatsApp to send reminder...");
     };
 
-    // Access control: Removed the isMaster check for the whole page so sub-accounts can see customers
-    // Re-adding check only for sensitive actions if necessary, but prompt asked for sub-account access to reminders.
-    // The original code blocked the whole page for non-masters. I will remove this block.
-    /* 
-    if (!isMaster) {
-        return ( ... Access Denied ... );
-    } 
-    */
-    // WAIT: The user said "Give this option access to sub accounts as well". 
-    // Currently, the whole Customers page is blocked for sub-accounts in the original code provided.
-    // I must remove this block to allow sub-accounts to view customers and send reminders.
+    // Access restriction removed as requested for sub-account access.
 
     const tierColors: { [key: string]: string } = {
         bronze: 'bg-yellow-700 text-white',

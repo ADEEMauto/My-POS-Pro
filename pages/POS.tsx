@@ -725,48 +725,50 @@ const POS: React.FC = () => {
                         </Button>
                     </div>
                     
-                    <div className="flex-grow overflow-y-auto -mr-4 pr-4 space-y-3">
+                    <div className="flex-grow overflow-y-auto -mr-4 pr-4">
                         {currentSession.cart.length === 0 ? (
                             <p className="text-gray-500 text-center mt-8">Your cart is empty.</p>
                         ) : (
-                            <>
-                                {currentSession.cart.map(item => (
-                                    <div key={item.id} className="flex items-start gap-3 p-2 bg-gray-50 rounded-lg">
-                                        <img src={item.imageUrl || 'https://picsum.photos/200'} alt={item.name} className="w-16 h-16 object-cover rounded-md"/>
-                                        <div className="flex-grow">
-                                            <p className="font-semibold text-sm">{item.name}</p>
-                                            <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <Input 
-                                                    type="number" 
-                                                    value={item.cartQuantity} 
-                                                    onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))} 
-                                                    className="w-16 h-8 text-center"
-                                                />
+                            <div>
+                                <div className="space-y-3">
+                                    {currentSession.cart.map(item => (
+                                        <div key={item.id} className="flex items-start gap-3 p-2 bg-gray-50 rounded-lg">
+                                            <img src={item.imageUrl || 'https://picsum.photos/200'} alt={item.name} className="w-16 h-16 object-cover rounded-md"/>
+                                            <div className="flex-grow">
+                                                <p className="font-semibold text-sm">{item.name}</p>
+                                                <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <Input 
+                                                        type="number" 
+                                                        value={item.cartQuantity} 
+                                                        onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))} 
+                                                        className="w-16 h-8 text-center"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
+                                                    <Input 
+                                                        id={`discount-${item.id}`}
+                                                        type="number"
+                                                        value={item.discount || ''}
+                                                        onChange={e => handleItemDiscountChange(item.id, e.target.value)}
+                                                        className="w-20 h-8 text-xs p-1"
+                                                        placeholder="0"
+                                                    />
+                                                    <select
+                                                        value={item.discountType}
+                                                        onChange={e => handleItemDiscountTypeChange(item.id, e.target.value as 'fixed' | 'percentage')}
+                                                        className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white"
+                                                    >
+                                                        <option value="fixed">Rs.</option>
+                                                        <option value="percentage">%</option>
+                                                    </select>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
-                                                <Input 
-                                                    id={`discount-${item.id}`}
-                                                    type="number"
-                                                    value={item.discount || ''}
-                                                    onChange={e => handleItemDiscountChange(item.id, e.target.value)}
-                                                    className="w-20 h-8 text-xs p-1"
-                                                    placeholder="0"
-                                                />
-                                                <select
-                                                    value={item.discountType}
-                                                    onChange={e => handleItemDiscountTypeChange(item.id, e.target.value as 'fixed' | 'percentage')}
-                                                    className="h-8 text-xs p-1 border border-gray-300 rounded-md bg-white"
-                                                >
-                                                    <option value="fixed">Rs.</option>
-                                                    <option value="percentage">%</option>
-                                                </select>
-                                            </div>
+                                            <button onClick={() => updateQuantity(item.id, 0)} className="text-gray-400 hover:text-red-500"><X size={18}/></button>
                                         </div>
-                                        <button onClick={() => updateQuantity(item.id, 0)} className="text-gray-400 hover:text-red-500"><X size={18}/></button>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                                 <div className="border-t pt-4 mt-4 space-y-2 pb-4">
                                     <div className="flex justify-between font-semibold">
                                         <span>Subtotal</span>
@@ -783,7 +785,7 @@ const POS: React.FC = () => {
                                         <span>{formatCurrency(subtotalAfterItemDiscount)}</span>
                                     </div>
                                 </div>
-                            </>
+                            </div>
                         )}
                     </div>
                 </div>

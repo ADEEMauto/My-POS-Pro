@@ -379,10 +379,12 @@ const Inventory: React.FC = () => {
     }, [categories]);
 
     const handleSaveProduct = (productData: Omit<Product, 'id'> | Product) => {
-        if ('id' in productData) {
+        if ('id' in productData && productData.id !== 'temp-copy') {
             updateProduct(productData);
         } else {
-            addProduct(productData);
+            // If it was a copy (temp-copy ID) or new product, remove ID if present and add
+            const { id, ...rest } = productData as any;
+            addProduct(rest);
         }
         setModalOpen(false);
         setEditingProduct(undefined);
@@ -394,19 +396,14 @@ const Inventory: React.FC = () => {
     };
 
     const handleCopy = (product: Product) => {
-        const productCopy: Omit<Product, 'id'> = {
+        const productCopy = {
+            ...product,
+            id: 'temp-copy', // Temporary ID to signal it's a copy in progress
             name: `${product.name} (Copy)`,
-            categoryId: product.categoryId,
-            subCategoryId: product.subCategoryId,
-            manufacturer: product.manufacturer,
-            location: product.location,
-            quantity: product.quantity,
-            purchasePrice: product.purchasePrice,
-            salePrice: product.salePrice,
-            imageUrl: product.imageUrl,
-            barcode: undefined // Clear barcode to avoid duplicates
+            barcode: '', // Clear barcode to avoid duplicates
         };
-        addProduct(productCopy);
+        setEditingProduct(productCopy);
+        setModalOpen(true);
     };
     
     const handleDelete = (product: Product) => {
@@ -807,7 +804,7 @@ const Inventory: React.FC = () => {
             </div>
 
 
-            <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setEditingProduct(undefined); }} title={editingProduct?.id ? 'Edit Product' : 'Add New Product'} size="2xl">
+            <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setEditingProduct(undefined); }} title={editingProduct?.id ? (editingProduct.id === 'temp-copy' ? 'Add Copy Product' : 'Edit Product') : 'Add New Product'} size="2xl">
                 <ProductForm product={editingProduct} onSave={handleSaveProduct} onCancel={() => { setModalOpen(false); setEditingProduct(undefined); }} />
             </Modal>
             
