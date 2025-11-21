@@ -45,6 +45,7 @@ const Sidebar: React.FC<{ isOpen: boolean, onToggle: () => void }> = ({ isOpen, 
     const subLinks = [
         { to: "/", icon: <LayoutDashboard className="w-5 h-5" />, label: "Dashboard" },
         { to: "/pos", icon: <ShoppingCart className="w-5 h-5" />, label: "POS" },
+        { to: "/customers", icon: <Contact className="w-5 h-5" />, label: "Customers" },
         { to: "/settings", icon: <Settings className="w-5 h-5" />, label: "Settings" },
     ];
     
