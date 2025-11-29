@@ -746,8 +746,6 @@ const Customers: React.FC = () => {
         toast.success("Opening WhatsApp to send reminder...");
     };
 
-    // Access restriction removed as requested for sub-account access.
-
     const tierColors: { [key: string]: string } = {
         bronze: 'bg-yellow-700 text-white',
         silver: 'bg-gray-400 text-white',

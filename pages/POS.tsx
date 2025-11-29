@@ -349,6 +349,16 @@ const POS: React.FC = () => {
         updateCurrentSession({ cart: newCart });
     };
 
+    const handleItemPriceChange = (productId: string, value: string) => {
+        const numericValue = parseFloat(value);
+        const newCart = currentSession.cart.map(item => 
+            item.id === productId 
+            ? { ...item, salePrice: isNaN(numericValue) ? 0 : numericValue } 
+            : item
+        );
+        updateCurrentSession({ cart: newCart });
+    };
+
      const handleItemDiscountChange = (productId: string, value: string) => {
         const numericValue = parseFloat(value);
         const newCart = currentSession.cart.map(item => 
@@ -736,15 +746,30 @@ const POS: React.FC = () => {
                                             <img src={item.imageUrl || 'https://picsum.photos/200'} alt={item.name} className="w-16 h-16 object-cover rounded-md"/>
                                             <div className="flex-grow">
                                                 <p className="font-semibold text-sm">{item.name}</p>
-                                                <p className="text-xs text-gray-500">{formatCurrency(item.salePrice)}</p>
+                                                
                                                 <div className="flex items-center gap-2 mt-1">
-                                                    <Input 
-                                                        type="number" 
-                                                        value={item.cartQuantity} 
-                                                        onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))} 
-                                                        className="w-16 h-8 text-center"
-                                                    />
+                                                    <div className="flex flex-col">
+                                                        <label className="text-[10px] text-gray-500 font-medium">Price</label>
+                                                        <input 
+                                                            type="number" 
+                                                            value={item.salePrice} 
+                                                            onChange={e => handleItemPriceChange(item.id, e.target.value)}
+                                                            className="w-20 h-8 text-xs p-1 border border-gray-300 rounded-md text-center focus:ring-primary-500 focus:border-primary-500"
+                                                            min="0"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <label className="text-[10px] text-gray-500 font-medium">Qty</label>
+                                                        <input 
+                                                            type="number" 
+                                                            value={item.cartQuantity} 
+                                                            onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))} 
+                                                            className="w-16 h-8 text-xs p-1 border border-gray-300 rounded-md text-center focus:ring-primary-500 focus:border-primary-500"
+                                                            min="1"
+                                                        />
+                                                    </div>
                                                 </div>
+
                                                 <div className="flex items-center gap-2 mt-2">
                                                     <label htmlFor={`discount-${item.id}`} className="text-xs text-gray-500">Discount:</label>
                                                     <Input 
