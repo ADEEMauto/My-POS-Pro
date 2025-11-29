@@ -6,7 +6,7 @@ import { formatCurrency } from '../utils/helpers';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Product } from '../types';
 import Button from '../components/ui/Button';
-import { FileText, Wrench, Hammer, DollarSign } from 'lucide-react';
+import { FileText, Wrench, Hammer, DollarSign, ShoppingBag } from 'lucide-react';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -95,6 +95,34 @@ const Reports: React.FC = () => {
         })).sort((a, b) => a.date.localeCompare(b.date));
 
         return { totalTuning, totalLabor, chartData };
+    }, [filteredSales]);
+
+    const itemSalesRevenue = useMemo(() => {
+        let total = 0;
+        filteredSales.forEach(sale => {
+            const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
+            const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+            const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
+
+            const overallDiscountAmount = sale.overallDiscountType === 'fixed'
+                ? sale.overallDiscount
+                : (revenueBaseForDiscount * sale.overallDiscount) / 100;
+
+            const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
+
+            let itemRevenue = subtotalAfterItemDiscounts;
+            
+            // Distribute global discounts proportionally between items and services
+            if (revenueBaseForDiscount > 0) {
+                const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
+                itemRevenue -= (totalGlobalDiscounts * itemRatio);
+            } else {
+                 itemRevenue -= totalGlobalDiscounts;
+            }
+            
+            total += itemRevenue;
+        });
+        return total;
     }, [filteredSales]);
 
     const itemSalesData = useMemo(() => {
@@ -295,6 +323,16 @@ const Reports: React.FC = () => {
                         <FileText size={18} /> Least Selling Items
                     </Button>
                 </div>
+            </div>
+
+            {/* Item Revenue Stat */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <StatCard 
+                    title="Net Revenue from Items (Excl. Services)" 
+                    value={formatCurrency(itemSalesRevenue)} 
+                    icon={<ShoppingBag className="w-6 h-6 text-white" />} 
+                    color="bg-purple-600" 
+                />
             </div>
 
             {/* Total Sales Chart */}
