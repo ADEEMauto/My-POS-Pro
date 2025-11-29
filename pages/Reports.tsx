@@ -6,12 +6,24 @@ import { formatCurrency } from '../utils/helpers';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Product } from '../types';
 import Button from '../components/ui/Button';
-import { FileText } from 'lucide-react';
+import { FileText, Wrench, Hammer, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
 // @ts-ignore
 import html2canvas from 'html2canvas';
+
+const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; color: string }> = ({ title, value, icon, color }) => (
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md flex items-center space-x-4">
+        <div className={`p-3 rounded-full ${color}`}>
+            {icon}
+        </div>
+        <div>
+            <p className="text-sm text-gray-500">{title}</p>
+            <p className="text-2xl font-bold text-gray-800">{value}</p>
+        </div>
+    </div>
+);
 
 const Reports: React.FC = () => {
     const { sales, inventory, currentUser, categories, shopInfo } = useAppContext();
@@ -56,6 +68,35 @@ const Reports: React.FC = () => {
         return Object.keys(dailySales).map(date => ({ date, sales: dailySales[date] })).sort((a,b) => a.date.localeCompare(b.date));
     }, [filteredSales]);
 
+    const serviceMetrics = useMemo(() => {
+        let totalTuning = 0;
+        let totalLabor = 0;
+        const dailyServices: { [key: string]: { tuning: number, labor: number } } = {};
+
+        filteredSales.forEach(sale => {
+            const t = sale.tuningCharges || 0;
+            const l = sale.laborCharges || 0;
+            totalTuning += t;
+            totalLabor += l;
+
+            if (t > 0 || l > 0) {
+                const date = new Date(sale.date).toLocaleDateString('en-CA');
+                if (!dailyServices[date]) dailyServices[date] = { tuning: 0, labor: 0 };
+                dailyServices[date].tuning += t;
+                dailyServices[date].labor += l;
+            }
+        });
+
+        const chartData = Object.keys(dailyServices).map(date => ({
+            date,
+            tuning: dailyServices[date].tuning,
+            labor: dailyServices[date].labor,
+            total: dailyServices[date].tuning + dailyServices[date].labor
+        })).sort((a, b) => a.date.localeCompare(b.date));
+
+        return { totalTuning, totalLabor, chartData };
+    }, [filteredSales]);
+
     const itemSalesData = useMemo(() => {
         const itemSales: { [key: string]: { product: Product, quantity: number, revenue: number, profit: number, profitPercentage: number } } = {};
         inventory.forEach(p => {
@@ -85,14 +126,6 @@ const Reports: React.FC = () => {
     const mostProfitable = useMemo(() => [...itemSalesData].filter(i => i.profitPercentage > 0).sort((a,b) => b.profitPercentage - a.profitPercentage).slice(0, 5), [itemSalesData]);
     const mostSelling = useMemo(() => [...itemSalesData].sort((a,b) => b.quantity - a.quantity).slice(0, 5), [itemSalesData]);
     const leastSelling = useMemo(() => itemSalesData.filter(i => i.quantity > 0).sort((a, b) => a.quantity - b.quantity).slice(0, 5), [itemSalesData]);
-
-    // Calculations retained but not rendered as per request
-    const totalInvestment = inventory.reduce((acc, p) => acc + p.purchasePrice * p.quantity, 0);
-    const totalRevenue = filteredSales.reduce((acc, s) => acc + s.total, 0);
-    const totalCostOfGoodsSold = filteredSales.reduce((acc, sale) => {
-        return acc + sale.items.reduce((itemAcc, item) => itemAcc + ((item.purchasePrice || 0) * item.quantity), 0);
-    }, 0);
-    const totalProfit = totalRevenue - totalCostOfGoodsSold;
 
     const handleDownloadReportPdf = async (reportData: (Product | { product: Product, quantity: number })[], reportTitle: string, filenamePrefix: string) => {
         if (reportData.length === 0) {
@@ -264,18 +297,62 @@ const Reports: React.FC = () => {
                 </div>
             </div>
 
+            {/* Total Sales Chart */}
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                <h2 className="text-xl font-semibold mb-4">Sales Overview</h2>
+                <h2 className="text-xl font-semibold mb-4">Total Sales Overview</h2>
                  <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={salesDataForChart}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" />
                         <YAxis tickFormatter={(value) => `Rs.${value / 1000}k`} />
-                        <Tooltip formatter={(value: number) => [formatCurrency(value), 'Sales']} />
+                        <Tooltip formatter={(value: number) => [formatCurrency(value), 'Total Sales']} />
                         <Legend />
-                        <Bar dataKey="sales" fill="#ff4747" />
+                        <Bar dataKey="sales" name="Total Sales" fill="#ff4747" />
                     </BarChart>
                 </ResponsiveContainer>
+            </div>
+
+            {/* Service Revenue Analysis Section */}
+            <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <StatCard 
+                        title="Total Tuning Revenue" 
+                        value={formatCurrency(serviceMetrics.totalTuning)} 
+                        icon={<Wrench className="w-6 h-6 text-white" />} 
+                        color="bg-blue-500" 
+                    />
+                    <StatCard 
+                        title="Total Labor Revenue" 
+                        value={formatCurrency(serviceMetrics.totalLabor)} 
+                        icon={<Hammer className="w-6 h-6 text-white" />} 
+                        color="bg-cyan-500" 
+                    />
+                    <StatCard 
+                        title="Total Service Revenue" 
+                        value={formatCurrency(serviceMetrics.totalTuning + serviceMetrics.totalLabor)} 
+                        icon={<DollarSign className="w-6 h-6 text-white" />} 
+                        color="bg-green-500" 
+                    />
+                </div>
+
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+                    <h2 className="text-xl font-semibold mb-4">Service Revenue Analysis (Tuning & Labor)</h2>
+                    {serviceMetrics.chartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={serviceMetrics.chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="date" />
+                                <YAxis tickFormatter={(value) => `Rs.${value}`} />
+                                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                                <Legend />
+                                <Bar dataKey="tuning" name="Tuning Charges" stackId="a" fill="#3b82f6" />
+                                <Bar dataKey="labor" name="Labor Charges" stackId="a" fill="#06b6d4" />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <p className="text-center text-gray-500 py-10">No service revenue data for the selected period.</p>
+                    )}
+                </div>
             </div>
 
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md col-span-1 lg:col-span-3">
