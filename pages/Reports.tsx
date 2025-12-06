@@ -401,13 +401,13 @@ const Reports: React.FC = () => {
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
                 <h2 className="text-xl font-semibold mb-4">Total Sales Overview</h2>
                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={salesDataForChart}>
+                    <BarChart data={salesDataForChart} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" />
                         <YAxis tickFormatter={(value) => `Rs.${value / 1000}k`} />
                         <Tooltip formatter={(value: number) => [formatCurrency(value), 'Total Sales']} />
                         <Legend />
-                        <Bar dataKey="sales" name="Total Sales" fill="#ff4747" />
+                        <Bar dataKey="sales" name="Total Sales" fill="#ff4747" label={{ position: 'top' }} />
                     </BarChart>
                 </ResponsiveContainer>
             </div>
@@ -439,14 +439,14 @@ const Reports: React.FC = () => {
                     <h2 className="text-xl font-semibold mb-4">Service Revenue Analysis (Tuning & Labor)</h2>
                     {serviceMetrics.chartData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={serviceMetrics.chartData}>
+                            <BarChart data={serviceMetrics.chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="date" />
                                 <YAxis tickFormatter={(value) => `Rs.${value}`} />
                                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
                                 <Legend />
-                                <Bar dataKey="tuning" name="Tuning Charges" stackId="a" fill="#3b82f6" />
-                                <Bar dataKey="labor" name="Labor Charges" stackId="a" fill="#06b6d4" />
+                                <Bar dataKey="tuning" name="Tuning Charges" stackId="a" fill="#3b82f6" label={{ position: 'center', fill: '#fff', fontSize: 10 }} />
+                                <Bar dataKey="labor" name="Labor Charges" stackId="a" fill="#06b6d4" label={{ position: 'top', fontSize: 10 }} />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -458,13 +458,13 @@ const Reports: React.FC = () => {
                     <h2 className="text-xl font-semibold mb-4 flex items-center gap-2"><Bike size={24} className="text-purple-600"/> Bikes Visited Overview</h2>
                     {bikesVisitedData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={bikesVisitedData}>
+                            <BarChart data={bikesVisitedData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="date" />
                                 <YAxis />
                                 <Tooltip formatter={(value: number) => [value, 'Bikes Visited']} />
                                 <Legend />
-                                <Bar dataKey="visits" name="Number of Bikes" fill="#8884d8" />
+                                <Bar dataKey="visits" name="Number of Bikes" fill="#8884d8" label={{ position: 'top' }} />
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
