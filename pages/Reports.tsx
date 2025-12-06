@@ -4,9 +4,9 @@ import { useAppContext } from '../contexts/AppContext';
 import { formatCurrency } from '../utils/helpers';
 // @ts-ignore
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Product } from '../types';
+import { Product, Sale } from '../types';
 import Button from '../components/ui/Button';
-import { FileText, Wrench, Hammer, DollarSign, ShoppingBag } from 'lucide-react';
+import { FileText, Wrench, Hammer, DollarSign, ShoppingBag, TrendingUp } from 'lucide-react';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -19,7 +19,7 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
             {icon}
         </div>
         <div>
-            <p className="text-sm text-gray-500">{title}</p>
+            {title && <p className="text-sm text-gray-500">{title}</p>}
             <p className="text-2xl font-bold text-gray-800">{value}</p>
         </div>
     </div>
@@ -124,6 +124,28 @@ const Reports: React.FC = () => {
         });
         return total;
     }, [filteredSales]);
+
+    const { todaysProfit, overallProfit } = useMemo(() => {
+        const calculateProfit = (salesList: Sale[]) => {
+            return salesList.reduce((acc, sale) => {
+                const revenue = sale.total;
+                // Calculate Cost of Goods Sold (COGS)
+                const cogs = sale.items.reduce((sum, item) => sum + ((item.purchasePrice || 0) * item.quantity), 0);
+                
+                // Profit = Revenue - COGS
+                // Note: We treat service charges (which are part of revenue) as 100% profit here as we don't track service costs per sale.
+                return acc + (revenue - cogs);
+            }, 0);
+        };
+
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        const todaySales = sales.filter(s => new Date(s.date).toLocaleDateString('en-CA') === todayStr);
+        
+        return {
+            todaysProfit: calculateProfit(todaySales),
+            overallProfit: calculateProfit(sales)
+        };
+    }, [sales]);
 
     const itemSalesData = useMemo(() => {
         const itemSales: { [key: string]: { product: Product, quantity: number, revenue: number, profit: number, profitPercentage: number } } = {};
@@ -325,13 +347,25 @@ const Reports: React.FC = () => {
                 </div>
             </div>
 
-            {/* Item Revenue Stat */}
+            {/* Item Revenue Stat & Profits */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                  <StatCard 
                     title="Net Revenue from Items (Excl. Services)" 
                     value={formatCurrency(itemSalesRevenue)} 
                     icon={<ShoppingBag className="w-6 h-6 text-white" />} 
                     color="bg-purple-600" 
+                />
+                 <StatCard 
+                    title="" 
+                    value={formatCurrency(todaysProfit)} 
+                    icon={<TrendingUp className="w-6 h-6 text-white" />} 
+                    color="bg-green-500" 
+                />
+                 <StatCard 
+                    title="" 
+                    value={formatCurrency(overallProfit)} 
+                    icon={<DollarSign className="w-6 h-6 text-white" />} 
+                    color="bg-blue-600" 
                 />
             </div>
 
