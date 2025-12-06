@@ -62,7 +62,8 @@ export interface OutsideServiceItem {
 
 export interface Sale {
     id: string;
-    customerId: string; // The bike number
+    customerId: string; // UUID for new customers, BikeNumber for legacy
+    bikeNumber?: string; // Snapshot of bike number
     customerName: string;
     items: SaleItem[];
     subtotal: number; // Sum of original prices before any discounts
@@ -95,7 +96,8 @@ export interface Sale {
 
 
 export interface Customer {
-    id: string; // Bike number, unique identifier
+    id: string; // UUID or Bike number (legacy)
+    bikeNumber?: string; // The actual bike number
     name: string;
     saleIds: string[];
     firstSeen: string; // ISO Date string
