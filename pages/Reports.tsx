@@ -128,13 +128,32 @@ const Reports: React.FC = () => {
     const { todaysProfit, overallProfit } = useMemo(() => {
         const calculateProfit = (salesList: Sale[]) => {
             return salesList.reduce((acc, sale) => {
-                const revenue = sale.total;
-                // Calculate Cost of Goods Sold (COGS)
+                // 1. Calculate Item Revenue (Net) strictly for items
+                const subtotalAfterItemDiscounts = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+                const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
+
+                const overallDiscountAmount = sale.overallDiscountType === 'fixed'
+                    ? sale.overallDiscount
+                    : (revenueBaseForDiscount * sale.overallDiscount) / 100;
+
+                const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
+
+                let itemRevenue = subtotalAfterItemDiscounts;
+
+                // Distribute global discounts proportionally between items and services to get accurate item revenue
+                if (revenueBaseForDiscount > 0) {
+                    const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
+                    itemRevenue -= (totalGlobalDiscounts * itemRatio);
+                } else {
+                    itemRevenue -= totalGlobalDiscounts;
+                }
+
+                // 2. Calculate Cost of Goods Sold (COGS)
                 const cogs = sale.items.reduce((sum, item) => sum + ((item.purchasePrice || 0) * item.quantity), 0);
                 
-                // Profit = Revenue - COGS
-                // Note: We treat service charges (which are part of revenue) as 100% profit here as we don't track service costs per sale.
-                return acc + (revenue - cogs);
+                // 3. Profit = Net Item Revenue - COGS
+                return acc + (itemRevenue - cogs);
             }, 0);
         };
 
