@@ -6,7 +6,7 @@ import { formatDate, formatCurrency, downloadFile } from '../utils/helpers';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Button from '../components/ui/Button';
-import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare, Star, ChevronsRight, Download, Flame, Award, AlertCircle, DollarSign } from 'lucide-react';
+import { Search, User, ShoppingCart, Calendar, Eye, Bell, MessageSquare, Star, ChevronsRight, Download, Flame, Award, AlertCircle, DollarSign, Trash2, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const isServiceDue = (customer: Customer): { due: boolean; message: string } => {
@@ -613,9 +613,10 @@ const CustomerDetailsModal: React.FC<{
 
 
 const Customers: React.FC = () => {
-    const { customers, sales, currentUser, updateCustomer, shopInfo, loyaltyTransactions, loyaltyExpirySettings, customerTiers } = useAppContext();
+    const { customers, sales, currentUser, updateCustomer, deleteCustomer, shopInfo, loyaltyTransactions, loyaltyExpirySettings, customerTiers } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+    const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
     const [sortBy, setSortBy] = useState('balance_desc');
 
     const isMaster = currentUser?.role === 'master';
@@ -707,6 +708,17 @@ const Customers: React.FC = () => {
 
     const handleViewDetails = (customer: Customer) => {
         setSelectedCustomer(customer);
+    };
+
+    const handleDeleteCustomer = (customer: Customer) => {
+        setCustomerToDelete(customer);
+    };
+
+    const confirmDeleteCustomer = () => {
+        if (customerToDelete) {
+            deleteCustomer(customerToDelete.id);
+            setCustomerToDelete(null);
+        }
     };
 
     const getCustomerSales = (customer: Customer | null): Sale[] => {
@@ -849,9 +861,16 @@ const Customers: React.FC = () => {
                                 )}
                             </div>
                             <div className="mt-4 pt-3 border-t space-y-2">
-                                <Button onClick={() => handleViewDetails(customer)} variant="secondary" className="w-full flex items-center justify-center gap-2">
-                                    <Eye size={16} /> View Details
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button onClick={() => handleViewDetails(customer)} variant="secondary" className="flex-1 flex items-center justify-center gap-2">
+                                        <Eye size={16} /> View Details
+                                    </Button>
+                                    {isMaster && (
+                                        <Button onClick={() => handleDeleteCustomer(customer)} variant="secondary" className="text-red-600 hover:text-red-700 hover:bg-red-50" title="Delete Customer">
+                                            <Trash2 size={16} />
+                                        </Button>
+                                    )}
+                                </div>
                                 {serviceStatus.due && customer.contactNumber && (
                                      <Button 
                                         onClick={() => handleSendWhatsAppReminder(customer)}
@@ -876,6 +895,26 @@ const Customers: React.FC = () => {
                     onSave={(details) => updateCustomer(selectedCustomer.id, details)}
                 />
             )}
+
+            <Modal
+                isOpen={!!customerToDelete}
+                onClose={() => setCustomerToDelete(null)}
+                title="Confirm Customer Deletion"
+                size="md"
+            >
+                <div className="text-center">
+                    <XCircle className="mx-auto h-12 w-12 text-red-500" />
+                    <p className="mt-4 text-gray-700">Are you sure you want to delete the profile for: <br/><strong className="text-gray-900">{customerToDelete?.name}</strong>?</p>
+                    <p className="text-sm text-gray-500 mt-2">
+                        This will remove the customer's profile, points balance, and tier status. 
+                        However, <strong>past sales records will be preserved</strong> for financial reporting.
+                    </p>
+                </div>
+                <div className="flex justify-center gap-4 mt-6">
+                    <Button variant="secondary" onClick={() => setCustomerToDelete(null)}>Cancel</Button>
+                    <Button variant="danger" onClick={confirmDeleteCustomer}>Yes, Delete</Button>
+                </div>
+            </Modal>
         </div>
     );
 };

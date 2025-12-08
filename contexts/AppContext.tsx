@@ -102,6 +102,7 @@ interface AppContextType extends AppData {
 
     // Customers & Loyalty
     updateCustomer: (id: string, updates: Partial<Customer>) => boolean;
+    deleteCustomer: (id: string) => void;
     adjustCustomerPoints: (customerId: string, points: number, reason: string) => boolean;
     recordCustomerPayment: (customerId: string, amount: number, notes?: string) => boolean;
     
@@ -422,7 +423,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 loyaltyDiscount = (pointsRedeemed / rule.points) * rule.value;
             } else {
                 const percentage = (pointsRedeemed / rule.points) * rule.value;
-                const totalBeforeLoyalty = (subtotalWithCharges - overallDiscountAmount) + (customerDetails.bikeNumber ? (appData.customers.find(c => c.id === customerDetails.bikeNumber)?.balance || 0) : 0);
+                const totalBeforeLoyalty = (subtotalWithCharges - overallDiscountAmount) + (customerDetails.bikeNumber ? (appData.customers.find(c => c.id === customerDetails.bikeNumber && c.name === customerDetails.customerName)?.balance || 0) : 0);
                 loyaltyDiscount = (totalBeforeLoyalty * percentage) / 100;
             }
         }
@@ -432,8 +433,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const total = Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServicesCost;
         
         // Handle Customer Logic
-        let customerId = customerDetails.bikeNumber;
-        const existingCustomer = appData.customers.find(c => c.id === customerId);
+        // Identification logic: Check both Name and Bike Number
+        const normalizedBike = customerDetails.bikeNumber.replace(/\s+/g, '').toUpperCase();
+        const normalizedName = customerDetails.customerName.trim().toLowerCase();
+
+        let customerId = normalizedBike;
+        
+        // Try to find an existing customer matching both name and bike
+        const existingCustomer = appData.customers.find(c => 
+            c.id === normalizedBike && c.name.toLowerCase() === normalizedName
+        );
+        
+        // If not found by exact match, check if ID (Bike) is taken by someone else
+        const idTaken = appData.customers.some(c => c.id === normalizedBike && c.name.toLowerCase() !== normalizedName);
+
+        if (!existingCustomer && idTaken) {
+             // Bike number exists but name is different. Create a new UUID customer but keep the bike number field for display.
+             // We use UUID as ID to allow multiple people to "own" the same bike number record if needed, or just differentiate them.
+             customerId = uuidv4();
+        } else if (!existingCustomer && !idTaken) {
+             // New customer, ID available (or WALKIN)
+             customerId = normalizedBike;
+        } else if (existingCustomer) {
+             customerId = existingCustomer.id;
+        }
         
         const saleId = uuidv4();
         
@@ -450,18 +473,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         let pointsEarned = 0;
         let promotionApplied: { name: string, multiplier: number } | undefined;
         
-        // Only calculate points if fully paid or logic allows partial. Assuming points on paid amount or total invoice?
-        // Usually points are on spend.
-        const spendForPoints = subtotalWithCharges; // Excluding outside services and previous balance?
-        // Let's stick to simple: Points on Total Bill (minus outside services if they are pass-through?)
-        // Let's use `subtotalWithCharges - overallDiscountAmount`.
-        const netSpend = Math.max(0, subtotalWithCharges - overallDiscountAmount);
+        // Calculate Net Item Revenue for points
+        // Formula: Net Item Revenue = Item Subtotal (after item discounts) - Allocated Overall Discount
+        const subtotalAfterItemDiscounts = subtotal; // Already calculated above
+        const revenueBaseForAllocation = subtotalAfterItemDiscounts + totalCharges;
+
+        let netItemRevenue = subtotalAfterItemDiscounts;
+        
+        if (revenueBaseForAllocation > 0) {
+            const itemRatio = subtotalAfterItemDiscounts / revenueBaseForAllocation;
+            const allocatedOverallDiscount = overallDiscountAmount * itemRatio;
+            const allocatedLoyaltyDiscount = loyaltyDiscount * itemRatio;
+            
+            netItemRevenue = subtotalAfterItemDiscounts - allocatedOverallDiscount - allocatedLoyaltyDiscount;
+        } else {
+             netItemRevenue = 0;
+        }
+        
+        // Ensure strictly positive for points calculation
+        const spendForPoints = Math.max(0, netItemRevenue);
 
         // Find applicable rule
-        const applicableRule = appData.earningRules.find(r => netSpend >= r.minSpend && (r.maxSpend === null || netSpend < r.maxSpend));
+        const applicableRule = appData.earningRules.find(r => spendForPoints >= r.minSpend && (r.maxSpend === null || spendForPoints < r.maxSpend));
         
         if (applicableRule) {
-            pointsEarned = Math.floor((netSpend / 100) * applicableRule.pointsPerHundred);
+            pointsEarned = Math.floor((spendForPoints / 100) * applicableRule.pointsPerHundred);
         }
 
         // Apply Promotions
@@ -627,6 +663,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         let updatedSales = [...appData.sales];
         let updatedCustomers = [...appData.customers];
         let updatedTransactions = [...appData.loyaltyTransactions];
+        let updatedPayments = [...appData.payments];
         
         if (remainingItems.length === 0) {
             // Full Reversal / Delete Sale
@@ -659,8 +696,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             toast.success("Sale deleted completely.");
         } else {
             // Partial Reversal
+            // This part is tricky with complex rules. For now, we adjust totals but keep points/discounts as is 
+            // because partial return logic with proportional discounts is complex.
+            // A safer approach for this simple app is to suggest deleting and re-creating if simple reversal isn't enough.
+            // Here we just put items back and adjust sale totals.
+            
             const newSubtotal = remainingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            const newTotal = Math.max(0, sale.total - itemsToReturn.reduce((acc, i) => acc + (i.price * i.quantity), 0));
+            
+            // Need to recalculate discounts roughly or just subtract returned item value
+            const returnedValue = itemsToReturn.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+            const newTotal = Math.max(0, sale.total - returnedValue);
 
             const updatedSale = {
                 ...sale,
@@ -677,7 +722,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             inventory: updatedInventory,
             sales: updatedSales,
             customers: updatedCustomers,
-            loyaltyTransactions: updatedTransactions
+            loyaltyTransactions: updatedTransactions,
+            payments: updatedPayments
         });
     };
     
@@ -709,6 +755,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updateCustomer = (id: string, updates: Partial<Customer>) => {
         updateData({ customers: appData.customers.map(c => c.id === id ? { ...c, ...updates } : c) });
         return true;
+    };
+
+    const deleteCustomer = (id: string) => {
+        updateData({ customers: appData.customers.filter(c => c.id !== id) });
+        toast.success("Customer deleted.");
     };
 
     const adjustCustomerPoints = (customerId: string, points: number, reason: string) => {
@@ -848,6 +899,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             createSale,
             reverseSale,
             updateCustomer,
+            deleteCustomer,
             adjustCustomerPoints,
             recordCustomerPayment,
             updateEarningRules,
