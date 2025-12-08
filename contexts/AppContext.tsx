@@ -98,6 +98,7 @@ interface AppContextType extends AppData {
         amountPaid: number,
         outsideServices: OutsideServiceItem[]
     ) => Sale | null;
+    updateSale: (updatedSale: Sale) => void;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
 
     // Customers & Loyalty
@@ -677,6 +678,142 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return newSale;
     };
 
+    const updateSale = (updatedSale: Sale) => {
+        const oldSale = appData.sales.find(s => s.id === updatedSale.id);
+        if (!oldSale) return;
+
+        // 1. Inventory Diff
+        let newInventory = [...appData.inventory];
+        
+        // Revert old inventory usage
+        oldSale.items.forEach(item => {
+            if(!item.productId.startsWith('manual-')) {
+                const prod = newInventory.find(p => p.id === item.productId);
+                if(prod) prod.quantity += item.quantity;
+            }
+        });
+
+        // Apply new inventory usage
+        updatedSale.items.forEach(item => {
+             if(!item.productId.startsWith('manual-')) {
+                const prod = newInventory.find(p => p.id === item.productId);
+                if(prod) prod.quantity -= item.quantity;
+            }
+        });
+
+        // 2. Customer & Loyalty Logic
+        let newCustomers = [...appData.customers];
+        const customer = newCustomers.find(c => c.id === updatedSale.customerId);
+
+        // Remove old transactions
+        let newTransactions = appData.loyaltyTransactions.filter(t => t.relatedSaleId !== updatedSale.id);
+
+        if (customer) {
+            // Revert Old Financials
+            customer.balance -= oldSale.balanceDue;
+            // Revert points: subtract earned, add back redeemed
+            customer.loyaltyPoints = customer.loyaltyPoints - (oldSale.pointsEarned || 0) + (oldSale.redeemedPoints || 0);
+            
+            // Recalculate Points for New Sale (Re-using logic)
+            let pointsEarned = 0;
+            // Same logic as createSale for netItemRevenue
+            const subtotalAfterItemDiscounts = updatedSale.subtotal; // Assuming updatedSale.subtotal is correct item subtotal
+            const charges = (updatedSale.laborCharges || 0) + (updatedSale.tuningCharges || 0);
+            const revenueBase = subtotalAfterItemDiscounts + charges;
+            
+            const overallDiscountAmount = updatedSale.overallDiscountType === 'fixed'
+                ? updatedSale.overallDiscount
+                : (revenueBase * updatedSale.overallDiscount) / 100;
+
+            const totalGlobalDiscounts = overallDiscountAmount + (updatedSale.loyaltyDiscount || 0);
+
+            let netItemRevenue = subtotalAfterItemDiscounts;
+             if (revenueBase > 0) {
+                const itemRatio = subtotalAfterItemDiscounts / revenueBase;
+                netItemRevenue -= (totalGlobalDiscounts * itemRatio);
+            } else {
+                 netItemRevenue = 0;
+            }
+            const spendForPoints = Math.max(0, netItemRevenue);
+            
+            // Re-eval earning rule
+            const applicableRule = appData.earningRules.find(r => spendForPoints >= r.minSpend && (r.maxSpend === null || spendForPoints < r.maxSpend));
+            if (applicableRule) {
+                pointsEarned = Math.floor((spendForPoints / 100) * applicableRule.pointsPerHundred);
+            }
+            
+            // Re-apply promotion if it was applied (keep same promotion or check current date? 
+            // Better to keep same promo multiplier if it exists on the sale object, or re-eval active promo?
+            // For simplicity, let's assume we re-evaluate active promotions based on CURRENT date or keep existing multiplier if stored.
+            // But updatedSale passed from UI might not have recalculated points. Let's rely on standard logic.
+            const now = new Date();
+             const activePromo = appData.promotions.find(p => new Date(p.startDate) <= now && new Date(p.endDate) >= now);
+            if (activePromo) {
+                pointsEarned = Math.floor(pointsEarned * activePromo.multiplier);
+                updatedSale.promotionApplied = { name: activePromo.name, multiplier: activePromo.multiplier };
+            } else {
+                updatedSale.promotionApplied = undefined;
+            }
+
+            // Tier multiplier
+            let tierMultiplier = 1;
+            if (customer.tierId) {
+                 const tier = appData.customerTiers.find(t => t.id === customer.tierId);
+                 if (tier) tierMultiplier = tier.pointsMultiplier;
+            }
+            pointsEarned = Math.floor(pointsEarned * tierMultiplier);
+            updatedSale.pointsEarned = pointsEarned;
+            
+            // Apply New Financials
+            customer.balance += updatedSale.balanceDue;
+            // Apply new points: add earned, subtract redeemed
+            customer.loyaltyPoints = customer.loyaltyPoints + pointsEarned - (updatedSale.redeemedPoints || 0);
+            
+            // Update other customer fields if needed
+            customer.name = updatedSale.customerName;
+            
+            // Add new transactions
+             if ((updatedSale.redeemedPoints || 0) > 0) {
+                newTransactions.push({
+                    id: uuidv4(),
+                    customerId: customer.id,
+                    type: 'redeemed',
+                    points: updatedSale.redeemedPoints!,
+                    date: new Date().toISOString(), // Use current time for edit log or keep original? Keeping original date might be confusing if points change. Using new txn.
+                    relatedSaleId: updatedSale.id,
+                    pointsBefore: customer.loyaltyPoints + (updatedSale.redeemedPoints || 0) - pointsEarned, // Approximation
+                    pointsAfter: customer.loyaltyPoints - pointsEarned // Approximation
+                });
+            }
+            if (pointsEarned > 0) {
+                 newTransactions.push({
+                    id: uuidv4(),
+                    customerId: customer.id,
+                    type: 'earned',
+                    points: pointsEarned,
+                    date: new Date().toISOString(),
+                    relatedSaleId: updatedSale.id,
+                    pointsBefore: customer.loyaltyPoints - pointsEarned,
+                    pointsAfter: customer.loyaltyPoints
+                });
+            }
+            
+            updatedSale.finalLoyaltyPoints = customer.loyaltyPoints;
+        }
+
+        // 4. Update Sales List
+        const newSales = appData.sales.map(s => s.id === updatedSale.id ? updatedSale : s);
+
+        updateData({
+            inventory: newInventory,
+            sales: newSales,
+            customers: newCustomers,
+            loyaltyTransactions: newTransactions
+        });
+        
+        toast.success("Sale updated successfully.");
+    };
+
     const reverseSale = (saleId: string, itemsToReturn: SaleItem[]) => {
         const sale = appData.sales.find(s => s.id === saleId);
         if (!sale) return;
@@ -924,6 +1061,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             updateCategory,
             deleteCategory,
             createSale,
+            updateSale,
             reverseSale,
             updateCustomer,
             deleteCustomer,

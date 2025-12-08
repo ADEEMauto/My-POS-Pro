@@ -3,11 +3,185 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Sale, SaleItem } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { Search, RotateCcw, FileText, Eye, AlertCircle } from 'lucide-react';
+import { Search, RotateCcw, FileText, Eye, AlertCircle, Edit, Trash2 } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Receipt from '../components/Receipt';
+import toast from 'react-hot-toast';
+
+// --- Edit Sale Modal ---
+const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; onSave: (updatedSale: Sale) => void }> = ({ sale, onClose, onSave }) => {
+    const [customerName, setCustomerName] = useState(sale.customerName);
+    const [bikeNumber, setBikeNumber] = useState(sale.bikeNumber || '');
+    const [items, setItems] = useState<SaleItem[]>(JSON.parse(JSON.stringify(sale.items))); // Deep copy
+    const [tuningCharges, setTuningCharges] = useState(sale.tuningCharges || 0);
+    const [laborCharges, setLaborCharges] = useState(sale.laborCharges || 0);
+    const [overallDiscount, setOverallDiscount] = useState(sale.overallDiscount || 0);
+    const [overallDiscountType, setOverallDiscountType] = useState<'fixed' | 'percentage'>(sale.overallDiscountType);
+    const [amountPaid, setAmountPaid] = useState(sale.amountPaid);
+    
+    // Derived Calculations (Replicating logic from POS/CreateSale)
+    const subtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const subtotalWithCharges = subtotal + tuningCharges + laborCharges;
+    const overallDiscountAmount = overallDiscountType === 'fixed' 
+        ? overallDiscount 
+        : (subtotalWithCharges * overallDiscount / 100);
+    
+    const loyaltyDiscount = sale.loyaltyDiscount || 0; // Not editable currently
+    const totalOutsideServices = sale.totalOutsideServices || 0; // Not editable currently for simplicity
+    
+    const total = Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServices;
+    const balanceDue = Math.max(0, (total + (sale.previousBalanceBroughtForward || 0)) - amountPaid);
+
+    const handleItemChange = (index: number, field: keyof SaleItem, value: any) => {
+        const newItems = [...items];
+        const item = { ...newItems[index] };
+
+        if (field === 'quantity') {
+            item.quantity = Number(value);
+        } else if (field === 'price') {
+             item.price = Number(value);
+             // When price is manually edited, we treat it as final price. 
+             // Ideally we should adjust discount, but for editing, just setting price is often enough.
+             item.originalPrice = Number(value); // Reset original to avoid confusion? Or keep logic?
+             item.discount = 0; // Reset discount if manual price set directly
+        }
+
+        // Recalculate price if needed (e.g. if we exposed discount field editing)
+        // For now, simpler to edit Quantity and Final Price directly.
+        newItems[index] = item;
+        setItems(newItems);
+    };
+
+    const handleDeleteItem = (index: number) => {
+        if(window.confirm("Remove item from sale?")) {
+            const newItems = items.filter((_, i) => i !== index);
+            setItems(newItems);
+        }
+    };
+
+    const handleSave = () => {
+        if (!customerName.trim()) {
+            toast.error("Customer name is required");
+            return;
+        }
+
+        const updatedSale: Sale = {
+            ...sale,
+            customerName,
+            bikeNumber,
+            items,
+            tuningCharges,
+            laborCharges,
+            subtotal,
+            overallDiscount,
+            overallDiscountType,
+            total,
+            amountPaid,
+            balanceDue,
+            // Note: pointsEarned will be recalculated in AppContext based on new total
+        };
+        onSave(updatedSale);
+        onClose();
+    };
+
+    return (
+        <Modal isOpen={true} onClose={onClose} title="Edit Sale" size="2xl">
+            <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-md">
+                     <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} />
+                     <Input label="Bike Number" value={bikeNumber} onChange={e => setBikeNumber(e.target.value)} />
+                </div>
+
+                <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-100 text-gray-700">
+                            <tr>
+                                <th className="p-2">Item</th>
+                                <th className="p-2 w-20">Qty</th>
+                                <th className="p-2 w-24">Price</th>
+                                <th className="p-2 text-right">Total</th>
+                                <th className="p-2 w-10"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {items.map((item, index) => (
+                                <tr key={index}>
+                                    <td className="p-2">{item.name}</td>
+                                    <td className="p-2">
+                                        <input 
+                                            type="number" 
+                                            value={item.quantity} 
+                                            onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
+                                            className="w-full border rounded p-1"
+                                            min="0"
+                                        />
+                                    </td>
+                                    <td className="p-2">
+                                         <input 
+                                            type="number" 
+                                            value={item.price} 
+                                            onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                                            className="w-full border rounded p-1"
+                                            min="0"
+                                        />
+                                    </td>
+                                    <td className="p-2 text-right">{formatCurrency(item.price * item.quantity)}</td>
+                                    <td className="p-2 text-center">
+                                        <button onClick={() => handleDeleteItem(index)} className="text-red-500 hover:text-red-700">
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <Input label="Tuning Charges" type="number" value={tuningCharges} onChange={e => setTuningCharges(Number(e.target.value))} />
+                     <Input label="Labor Charges" type="number" value={laborCharges} onChange={e => setLaborCharges(Number(e.target.value))} />
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-grow">
+                         <label className="block text-sm font-medium text-gray-700 mb-1">Overall Discount</label>
+                         <div className="flex gap-2">
+                             <Input type="number" value={overallDiscount} onChange={e => setOverallDiscount(Number(e.target.value))} />
+                             <select 
+                                value={overallDiscountType} 
+                                onChange={e => setOverallDiscountType(e.target.value as 'fixed' | 'percentage')}
+                                className="p-2 border rounded-md"
+                             >
+                                 <option value="fixed">Rs</option>
+                                 <option value="percentage">%</option>
+                             </select>
+                         </div>
+                    </div>
+                     <div className="flex-grow">
+                        <Input label="Amount Paid" type="number" value={amountPaid} onChange={e => setAmountPaid(Number(e.target.value))} />
+                     </div>
+                </div>
+                
+                <div className="bg-gray-100 p-4 rounded-md space-y-1 text-right">
+                    <p>Subtotal: {formatCurrency(subtotal)}</p>
+                    <p>Charges: {formatCurrency(tuningCharges + laborCharges)}</p>
+                    <p className="text-red-600">Discount: -{formatCurrency(overallDiscountAmount + loyaltyDiscount)}</p>
+                    {totalOutsideServices > 0 && <p className="text-cyan-600">Outside Services: +{formatCurrency(totalOutsideServices)}</p>}
+                    <p className="font-bold text-lg">Total: {formatCurrency(total)}</p>
+                    <p>Previous Balance: {formatCurrency(sale.previousBalanceBroughtForward || 0)}</p>
+                    <p className="font-bold text-lg border-t pt-1 mt-1">Balance Due: {formatCurrency(balanceDue)}</p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button onClick={handleSave}>Save Changes</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
 
 // --- Reverse Sale Modal ---
 const ReverseSaleModal: React.FC<{ sale: Sale; onClose: () => void; onConfirm: (itemsToReturn: SaleItem[]) => void }> = ({ sale, onClose, onConfirm }) => {
@@ -92,10 +266,11 @@ const ReverseSaleModal: React.FC<{ sale: Sale; onClose: () => void; onConfirm: (
 
 // --- Main Sales Component ---
 const Sales: React.FC = () => {
-    const { sales, reverseSale, currentUser } = useAppContext();
+    const { sales, reverseSale, updateSale, currentUser } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [viewingSale, setViewingSale] = useState<Sale | null>(null);
     const [saleToReverse, setSaleToReverse] = useState<Sale | null>(null);
+    const [saleToEdit, setSaleToEdit] = useState<Sale | null>(null);
 
     const isMaster = currentUser?.role === 'master';
 
@@ -122,6 +297,10 @@ const Sales: React.FC = () => {
             }
         }
     };
+    
+    const handleUpdateSale = (updatedSale: Sale) => {
+        updateSale(updatedSale);
+    }
 
     return (
         <div className="space-y-6">
@@ -181,9 +360,12 @@ const Sales: React.FC = () => {
                                             <Button variant="secondary" size="sm" onClick={() => setViewingSale(sale)} title="View Receipt">
                                                 <Eye size={16}/>
                                             </Button>
+                                            <Button variant="secondary" size="sm" onClick={() => setSaleToEdit(sale)} title="Edit Sale" className="text-blue-600 hover:text-blue-700">
+                                                <Edit size={16}/>
+                                            </Button>
                                             {isMaster && (
-                                                <Button variant="secondary" size="sm" onClick={() => setSaleToReverse(sale)} title="Return / Reverse" className="text-red-600 hover:text-red-700">
-                                                    <RotateCcw size={16}/>
+                                                <Button variant="secondary" size="sm" onClick={() => setSaleToReverse(sale)} title="Return / Delete" className="text-red-600 hover:text-red-700">
+                                                    <Trash2 size={16}/>
                                                 </Button>
                                             )}
                                         </div>
@@ -210,6 +392,14 @@ const Sales: React.FC = () => {
                         <Button variant="secondary" onClick={() => setViewingSale(null)}>Close</Button>
                     </div>
                 </Modal>
+            )}
+
+            {saleToEdit && (
+                <EditSaleModal 
+                    sale={saleToEdit}
+                    onClose={() => setSaleToEdit(null)}
+                    onSave={handleUpdateSale}
+                />
             )}
 
             {saleToReverse && (
