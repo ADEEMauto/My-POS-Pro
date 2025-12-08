@@ -132,48 +132,54 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { data, setData, loading: dbLoading } = useIndexedDB<AppData>(INITIAL_DATA);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    
+    // Initialize currentUser from LocalStorage for immediate availability (Optimization)
+    const [currentUser, setCurrentUser] = useState<User | null>(() => {
+        try {
+            const storedUser = localStorage.getItem('shopsync_current_user');
+            return storedUser ? JSON.parse(storedUser) : null;
+        } catch (e) {
+            console.error("Failed to parse stored user", e);
+            return null;
+        }
+    });
+    
     const [isAuthReady, setIsAuthReady] = useState(false);
 
     // Ensure data is never null after loading
     const appData = data || INITIAL_DATA;
 
-    // Restore session logic
-    useEffect(() => {
-        // Wait for DB to load
-        if (dbLoading) return;
-        
-        // Prevent running multiple times if auth is already determined
-        if (isAuthReady) return;
+    // Helper to update full state
+    const updateData = useCallback(async (updates: Partial<AppData>) => {
+        await setData({ ...appData, ...updates });
+    }, [appData, setData]);
 
-        const storedUserId = localStorage.getItem('shopsync_user_id');
-        console.log("AppContext: Database Loaded. Users found:", appData.users.length);
-        console.log("AppContext: Stored User ID:", storedUserId);
-        
-        if (storedUserId) {
-            if (appData.users.length > 0) {
-                const user = appData.users.find(u => u.id === storedUserId);
-                if (user) {
-                    console.log("AppContext: Session Restored for:", user.username);
-                    setCurrentUser(user);
-                } else {
-                    console.warn("AppContext: Stored user ID not found in database users list.");
-                }
+    // Session Management Effect
+    useEffect(() => {
+        if (dbLoading) return;
+
+        // Verify currentUser against DB when loaded
+        if (currentUser) {
+            const dbUser = appData.users.find(u => u.id === currentUser.id);
+            if (!dbUser) {
+                console.warn("User in local storage not found in DB. Logging out.");
+                setCurrentUser(null);
+                localStorage.removeItem('shopsync_current_user');
+                localStorage.removeItem('shopsync_user_id');
             } else {
-                console.log("AppContext: Database users list is empty. Waiting for setup.");
+                // Update local user state with fresh DB data if needed (e.g. role change)
+                if (JSON.stringify(dbUser) !== JSON.stringify(currentUser)) {
+                    setCurrentUser(dbUser);
+                    localStorage.setItem('shopsync_current_user', JSON.stringify(dbUser));
+                }
             }
         }
         
         setIsAuthReady(true);
-    }, [dbLoading, isAuthReady, appData.users]);
+    }, [dbLoading, appData.users, currentUser]);
 
     // Global loading state: True if DB is loading OR auth check hasn't finished
     const loading = dbLoading || !isAuthReady;
-
-    // Helper to update full state
-    const updateData = async (updates: Partial<AppData>) => {
-        await setData({ ...appData, ...updates });
-    };
 
     // Auth Logic
     const login = async (username: string, passwordHash: string): Promise<boolean> => {
@@ -190,6 +196,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const user = appData.users.find(u => u.username === username && u.passwordHash === hash);
         if (user) {
             setCurrentUser(user);
+            localStorage.setItem('shopsync_current_user', JSON.stringify(user));
             localStorage.setItem('shopsync_user_id', user.id);
             toast.success(`Welcome back, ${user.username}!`);
             return true;
@@ -201,6 +208,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const logout = () => {
         setCurrentUser(null);
+        localStorage.removeItem('shopsync_current_user');
         localStorage.removeItem('shopsync_user_id');
         toast.success("Logged out successfully");
     };
@@ -229,9 +237,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
         
         try {
-            // Wait for DB write to confirm persistence before setting local auth state
             await updateData({ users: [newUser] });
             setCurrentUser(newUser);
+            localStorage.setItem('shopsync_current_user', JSON.stringify(newUser));
             localStorage.setItem('shopsync_user_id', newUser.id);
             toast.success("Master account created!");
             return true;
@@ -281,9 +289,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     const updateUser = async (id: string, updates: Partial<User>) => {
-        await updateData({ users: appData.users.map(u => u.id === id ? { ...u, ...updates } : u) });
+        const updatedUsers = appData.users.map(u => u.id === id ? { ...u, ...updates } : u);
+        await updateData({ users: updatedUsers });
+        
         if(currentUser && currentUser.id === id) {
-            setCurrentUser({ ...currentUser, ...updates });
+            const updatedCurrentUser = { ...currentUser, ...updates };
+            setCurrentUser(updatedCurrentUser);
+            localStorage.setItem('shopsync_current_user', JSON.stringify(updatedCurrentUser));
         }
         toast.success("Profile updated.");
         return true;
