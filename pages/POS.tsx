@@ -481,8 +481,9 @@ const POS: React.FC = () => {
         const numericAmountPaid = Number(currentSession.amountPaid) || 0;
         const roundedTotalDue = Math.round(totalDue);
 
-        if (numericAmountPaid < roundedTotalDue && (!currentSession.bikeNumber.trim() || !currentSession.customerName.trim())) {
-            toast.error("Customer details (Bike No & Name) are required when the bill is not fully paid.");
+        // Name is required if bill is unpaid. Bike number is optional as it can be auto-generated if Name is present.
+        if (numericAmountPaid < roundedTotalDue && !currentSession.customerName.trim()) {
+            toast.error("Customer Name is required for unpaid bills.");
             return;
         }
         
@@ -493,7 +494,8 @@ const POS: React.FC = () => {
             finalCustomerName = 'Walk-in';
             finalBikeNumber = 'WALKIN';
         } else if (!finalBikeNumber) {
-            finalBikeNumber = `${finalCustomerName.replace(/\s+/g, '').toUpperCase()}-${Date.now()}`;
+            // Leave empty, let AppContext handle sequential generation
+            finalBikeNumber = '';
         } else if (!finalCustomerName) {
             const existingCustomer = customers.find(c => c.id === finalBikeNumber.replace(/\s+/g, '').toUpperCase());
             finalCustomerName = existingCustomer ? existingCustomer.name : `Customer ${finalBikeNumber}`;
@@ -827,8 +829,8 @@ const POS: React.FC = () => {
                                 <FileSearch size={16}/> Find Existing
                             </Button>
                         </h3>
-                        <Input label="Bike Number (Unique ID)" value={currentSession.bikeNumber} onChange={e => updateSessionAndName({ bikeNumber: e.target.value.toUpperCase() })} placeholder="e.g., KHI1234" />
-                        <Input label="Customer Name" value={currentSession.customerName} onChange={e => updateSessionAndName({ customerName: e.target.value })} />
+                        <Input label="Bike Number (Unique ID)" value={currentSession.bikeNumber} onChange={e => updateSessionAndName({ bikeNumber: e.target.value.toUpperCase() })} placeholder="e.g., KHI1234 (Leave empty to auto-generate)" />
+                        <Input label="Customer Name" value={currentSession.customerName} onChange={e => updateSessionAndName({ customerName: e.target.value })} required/>
                         <Input label="Contact Number" type="tel" value={currentSession.contactNumber} onChange={e => updateCurrentSession({ contactNumber: e.target.value })} />
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Service Frequency</label>

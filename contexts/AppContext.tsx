@@ -143,12 +143,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Auth Logic
     const login = async (username: string, passwordHash: string): Promise<boolean> => {
-        // Simple hash check (In production, use proper hashing)
-        // Here we assume passwordHash passed is plain text to be hashed or already hashed depending on UI
-        // But for this simple app, we are just storing what is passed. 
-        // NOTE: The UI calls this with plain text, we should probably hash it here or assume UI did it.
-        // Looking at Auth.tsx, it passes plain text. Let's simpleHash it here for matching.
-        
         const simpleHash = async (str: string) => {
             const encoder = new TextEncoder();
             const d = encoder.encode(str);
@@ -387,6 +381,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return null;
         }
 
+        // Auto-generate Bike Number if Name is present but Bike Number is missing
+        if (customerDetails.customerName.trim() && !customerDetails.bikeNumber.trim()) {
+            const existingIds = appData.customers.reduce((acc, c) => {
+                if (/^\d+$/.test(c.id)) {
+                    const num = parseInt(c.id, 10);
+                    return num > acc ? num : acc;
+                }
+                return acc;
+            }, 0);
+            
+            customerDetails.bikeNumber = String(existingIds + 1);
+        }
+
         const saleItems: SaleItem[] = cartItems.map(item => ({
             productId: item.id,
             name: item.name,
@@ -433,32 +440,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const total = Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServicesCost;
         
         // Handle Customer Logic
-        // Identification logic: Check both Name and Bike Number
         const normalizedBike = customerDetails.bikeNumber.replace(/\s+/g, '').toUpperCase();
         const normalizedName = customerDetails.customerName.trim().toLowerCase();
 
         let customerId = normalizedBike;
-        
-        // Try to find an existing customer matching both name and bike
         const existingCustomer = appData.customers.find(c => 
             c.id === normalizedBike && c.name.toLowerCase() === normalizedName
         );
-        
-        // If not found by exact match, check if ID (Bike) is taken by someone else
         const idTaken = appData.customers.some(c => c.id === normalizedBike && c.name.toLowerCase() !== normalizedName);
 
         if (!existingCustomer && idTaken) {
-             // Bike number exists but name is different. Create a new UUID customer but keep the bike number field for display.
-             // We use UUID as ID to allow multiple people to "own" the same bike number record if needed, or just differentiate them.
              customerId = uuidv4();
         } else if (!existingCustomer && !idTaken) {
-             // New customer, ID available (or WALKIN)
              customerId = normalizedBike;
         } else if (existingCustomer) {
              customerId = existingCustomer.id;
         }
         
-        const saleId = uuidv4();
+        // Generate Sale ID (YYMMDDHHMM)
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(-2);
+        const mo = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mi = String(now.getMinutes()).padStart(2, '0');
+        
+        let generatedSaleId = `${yy}${mo}${dd}${hh}${mi}`;
+        let saleId = generatedSaleId;
+        
+        // Ensure uniqueness if multiple sales happen in the same minute
+        let counter = 1;
+        while (appData.sales.some(s => s.id === saleId)) {
+            saleId = `${generatedSaleId}-${counter}`;
+            counter++;
+        }
         
         let previousBalance = 0;
         if (existingCustomer) {
@@ -474,23 +489,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         let promotionApplied: { name: string, multiplier: number } | undefined;
         
         // Calculate Net Item Revenue for points
-        // Formula: Net Item Revenue = Item Subtotal (after item discounts) - Allocated Overall Discount
-        const subtotalAfterItemDiscounts = subtotal; // Already calculated above
-        const revenueBaseForAllocation = subtotalAfterItemDiscounts + totalCharges;
+        // Strictly from items in inventory (excluding tuning, labor, outside services)
+        const subtotalAfterItemDiscounts = subtotal; // subtotal is items total after item discounts
+        const revenueBaseForAllocation = subtotalAfterItemDiscounts + totalCharges; // Items + Tuning + Labor
 
         let netItemRevenue = subtotalAfterItemDiscounts;
         
         if (revenueBaseForAllocation > 0) {
+            // Determine proportion of revenue coming from items vs services to allocate global discounts correctly
             const itemRatio = subtotalAfterItemDiscounts / revenueBaseForAllocation;
             const allocatedOverallDiscount = overallDiscountAmount * itemRatio;
             const allocatedLoyaltyDiscount = loyaltyDiscount * itemRatio;
             
+            // Deduct allocated discounts to get net revenue purely from items
             netItemRevenue = subtotalAfterItemDiscounts - allocatedOverallDiscount - allocatedLoyaltyDiscount;
         } else {
              netItemRevenue = 0;
         }
         
-        // Ensure strictly positive for points calculation
+        // Points are generated only from the net money earned from items
         const spendForPoints = Math.max(0, netItemRevenue);
 
         // Find applicable rule
@@ -501,7 +518,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         // Apply Promotions
-        const now = new Date();
         const activePromo = appData.promotions.find(p => new Date(p.startDate) <= now && new Date(p.endDate) >= now);
         if (activePromo) {
             pointsEarned = Math.floor(pointsEarned * activePromo.multiplier);
@@ -620,13 +636,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         // TIER EVALUATION (Basic)
-        // Recalculate tier for customer
         if (appData.customerTiers.length > 0) {
             updatedCustomers = updatedCustomers.map(c => {
                  if (c.id === customerId) {
-                    // Logic to check tiers... simplified here.
-                    // Just place holder for real tier logic which is complex with rolling periods.
-                    // Ideally, we run a check function here.
                     const bestTier = evaluateTier(c, appData.customerTiers, [...appData.sales, newSale]);
                     return { ...c, tierId: bestTier ? bestTier.id : null };
                  }
@@ -696,14 +708,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             toast.success("Sale deleted completely.");
         } else {
             // Partial Reversal
-            // This part is tricky with complex rules. For now, we adjust totals but keep points/discounts as is 
-            // because partial return logic with proportional discounts is complex.
-            // A safer approach for this simple app is to suggest deleting and re-creating if simple reversal isn't enough.
-            // Here we just put items back and adjust sale totals.
+            // Just adjust totals roughly. Complex partial returns logic omitted for simplicity.
             
             const newSubtotal = remainingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            
-            // Need to recalculate discounts roughly or just subtract returned item value
             const returnedValue = itemsToReturn.reduce((acc, i) => acc + (i.price * i.quantity), 0);
             const newTotal = Math.max(0, sale.total - returnedValue);
 
