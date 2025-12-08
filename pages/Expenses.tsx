@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
@@ -105,7 +106,7 @@ const Expenses: React.FC = () => {
     const isMaster = currentUser?.role === 'master';
 
     const existingCategories = useMemo(() => {
-        return [...new Set(expenses.map(e => e.category))].sort();
+        return [...new Set(expenses.map(e => e.category))].sort() as string[];
     }, [expenses]);
     
     const filteredExpenses = useMemo(() => {

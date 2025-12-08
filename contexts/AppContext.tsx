@@ -1,32 +1,27 @@
 
-import React, { createContext, useContext, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { ShopInfo, User, UserRole, Category, Product, Sale, SaleItem, Customer, CartItem, EarningRule, RedemptionRule, Promotion, LoyaltyTransaction, LoyaltyExpirySettings, CustomerTier, Expense, Payment, DemandItem, OutsideServiceItem } from '../types';
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import useIndexedDB from '../hooks/useIndexedDB';
+import { 
+    ShopInfo, User, Category, Product, Sale, Customer, 
+    LoyaltyTransaction, EarningRule, RedemptionRule, Promotion, 
+    LoyaltyExpirySettings, CustomerTier, Expense, Payment, DemandItem,
+    CartItem, SaleItem, OutsideServiceItem
+} from '../types';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
-
-// Helper for hashing passwords
-const simpleHash = async (password: string): Promise<string> => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
+import { v4 as uuidv4 } from 'uuid';
 
 interface AppData {
     shopInfo: ShopInfo | null;
     users: User[];
-    currentUser: User | null;
-    inventory: Product[];
     categories: Category[];
+    inventory: Product[];
     sales: Sale[];
     customers: Customer[];
+    loyaltyTransactions: LoyaltyTransaction[];
     earningRules: EarningRule[];
     redemptionRule: RedemptionRule;
     promotions: Promotion[];
-    loyaltyTransactions: LoyaltyTransaction[];
     loyaltyExpirySettings: LoyaltyExpirySettings;
     customerTiers: CustomerTier[];
     expenses: Expense[];
@@ -34,569 +29,580 @@ interface AppData {
     demandItems: DemandItem[];
 }
 
+const INITIAL_DATA: AppData = {
+    shopInfo: null,
+    users: [],
+    categories: SAMPLE_CATEGORIES,
+    inventory: [],
+    sales: [],
+    customers: [],
+    loyaltyTransactions: [],
+    earningRules: [],
+    redemptionRule: { method: 'fixedValue', points: 1, value: 1 },
+    promotions: [],
+    loyaltyExpirySettings: {
+        enabled: false,
+        inactivityPeriodValue: 1,
+        inactivityPeriodUnit: 'years',
+        pointsLifespanValue: 1,
+        pointsLifespanUnit: 'years',
+        reminderPeriodValue: 1,
+        reminderPeriodUnit: 'months'
+    },
+    customerTiers: [],
+    expenses: [],
+    payments: [],
+    demandItems: []
+};
 
-interface AppContextType {
-    shopInfo: ShopInfo | null;
-    saveShopInfo: (info: ShopInfo) => void;
-    users: User[];
+interface AppContextType extends AppData {
+    loading: boolean;
     currentUser: User | null;
-    signUp: (username: string, password: string) => Promise<boolean>;
-    login: (username: string, password: string) => Promise<boolean>;
+    
+    // Auth
+    login: (username: string, passwordHash: string) => Promise<boolean>;
     logout: () => void;
-    addUser: (username: string, password: string) => Promise<boolean>;
-    deleteUser: (userId: string) => void;
-    updateUser: (userId: string, updates: Partial<Omit<User, 'id'>>) => Promise<boolean>;
-    inventory: Product[];
+    signUp: (username: string, passwordHash: string) => Promise<boolean>;
+    addUser: (username: string, passwordHash: string) => Promise<boolean>;
+    deleteUser: (id: string) => void;
+    updateUser: (id: string, updates: Partial<User>) => Promise<boolean>;
+
+    // Shop
+    saveShopInfo: (info: ShopInfo) => void;
+    backupData: () => void;
+    restoreData: (data: AppData) => void;
+
+    // Inventory
     addProduct: (product: Omit<Product, 'id'>) => void;
     updateProduct: (product: Product) => void;
-    deleteProduct: (productId: string) => void;
-    addStock: (productId: string, quantity: number, newSalePrice?: number) => void;
+    deleteProduct: (id: string) => void;
+    addStock: (id: string, quantity: number, newPrice?: number) => void;
     findProductByBarcode: (barcode: string) => Product | undefined;
     addSampleData: () => void;
     importFromExcel: (data: any[]) => void;
-    categories: Category[];
+
+    // Categories
     addCategory: (name: string, parentId: string | null) => void;
     updateCategory: (id: string, name: string) => void;
     deleteCategory: (id: string) => void;
-    sales: Sale[];
+
+    // Sales
     createSale: (
-        cart: CartItem[], 
+        cartItems: CartItem[], 
         overallDiscount: number, 
-        overallDiscountType: 'fixed' | 'percentage', 
-        customerDetails: { customerName: string; bikeNumber: string; contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days'|'months'|'years' },
-        pointsToRedeem: number,
+        overallDiscountType: 'fixed' | 'percentage',
+        customerDetails: { customerName: string, bikeNumber: string, contactNumber: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' },
+        pointsRedeemed: number,
         tuningCharges: number,
         laborCharges: number,
         amountPaid: number,
         outsideServices: OutsideServiceItem[]
     ) => Sale | null;
     reverseSale: (saleId: string, itemsToReturn: SaleItem[]) => void;
-    updateSale: (saleId: string, updates: Partial<Sale>) => void;
-    customers: Customer[];
-    updateCustomer: (customerId: string, updates: Partial<Customer>) => boolean;
+
+    // Customers & Loyalty
+    updateCustomer: (id: string, updates: Partial<Customer>) => boolean;
     adjustCustomerPoints: (customerId: string, points: number, reason: string) => boolean;
     recordCustomerPayment: (customerId: string, amount: number, notes?: string) => boolean;
-    earningRules: EarningRule[];
+    
+    // Loyalty Settings
     updateEarningRules: (rules: EarningRule[]) => void;
-    redemptionRule: RedemptionRule;
     updateRedemptionRule: (rule: RedemptionRule) => void;
-    promotions: Promotion[];
     addPromotion: (promo: Omit<Promotion, 'id'>) => void;
     updatePromotion: (promo: Promotion) => void;
-    deletePromotion: (promoId: string) => void;
-    loyaltyTransactions: LoyaltyTransaction[];
-    loyaltyExpirySettings: LoyaltyExpirySettings;
+    deletePromotion: (id: string) => void;
     updateLoyaltyExpirySettings: (settings: LoyaltyExpirySettings) => void;
-    customerTiers: CustomerTier[];
     updateCustomerTiers: (tiers: CustomerTier[]) => void;
-    expenses: Expense[];
+
+    // Expenses
     addExpense: (expense: Omit<Expense, 'id'>) => void;
     updateExpense: (expense: Expense) => void;
-    deleteExpense: (expenseId: string) => void;
-    payments: Payment[];
-    demandItems: DemandItem[];
+    deleteExpense: (id: string) => void;
+
+    // Demand
     addDemandItem: (item: Omit<DemandItem, 'id'>) => void;
     addMultipleDemandItems: (items: Omit<DemandItem, 'id'>[]) => void;
     updateDemandItem: (item: DemandItem) => void;
-    deleteDemandItem: (itemId: string) => void;
-    backupData: () => void;
-    restoreData: (data: AppData) => void;
-    loading: boolean;
+    deleteDemandItem: (id: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const initialData: AppData = {
-    shopInfo: null,
-    users: [],
-    currentUser: null,
-    inventory: [],
-    categories: [],
-    sales: [],
-    customers: [],
-    earningRules: [{ id: 'default', minSpend: 0, maxSpend: null, pointsPerHundred: 1 }],
-    redemptionRule: { method: 'fixedValue', points: 1, value: 1 },
-    promotions: [],
-    loyaltyTransactions: [],
-    loyaltyExpirySettings: {
-        enabled: false,
-        inactivityPeriodValue: 12, inactivityPeriodUnit: 'months',
-        pointsLifespanValue: 24, pointsLifespanUnit: 'months',
-        reminderPeriodValue: 1, reminderPeriodUnit: 'months',
-    },
-    customerTiers: [{
-        id: 'base-tier',
-        name: 'Standard',
-        minVisits: 0,
-        minSpend: 0,
-        periodValue: 12,
-        periodUnit: 'months',
-        pointsMultiplier: 1,
-        rank: 0,
-    }],
-    expenses: [],
-    payments: [],
-    demandItems: [],
-};
+export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const { data, setData, loading } = useIndexedDB<AppData>(INITIAL_DATA);
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
 
+    // Ensure data is never null after loading
+    const appData = data || INITIAL_DATA;
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { data, setData, loading } = useIndexedDB<AppData>(initialData);
-    
-    // Derived state for easier access
-    const shopInfo = data?.shopInfo || null;
-    const users = data?.users || [];
-    const currentUser = data?.currentUser || null;
-    const inventory = data?.inventory || [];
-    const categories = data?.categories || [];
-    const sales = data?.sales || [];
-    const customers = data?.customers || [];
-    const earningRules = data?.earningRules || initialData.earningRules;
-    const redemptionRule = data?.redemptionRule || initialData.redemptionRule;
-    const promotions = data?.promotions || [];
-    const loyaltyTransactions = data?.loyaltyTransactions || [];
-    const loyaltyExpirySettings = data?.loyaltyExpirySettings || initialData.loyaltyExpirySettings;
-    const customerTiers = data?.customerTiers || initialData.customerTiers;
-    const expenses = data?.expenses || [];
-    const payments = data?.payments || [];
-    const demandItems = data?.demandItems || [];
-
-
-    const saveShopInfo = (info: ShopInfo) => {
-        setData({ ...data!, shopInfo: info });
+    // Helper to update full state
+    const updateData = (updates: Partial<AppData>) => {
+        setData({ ...appData, ...updates });
     };
 
-    const signUp = async (username: string, password: string): Promise<boolean> => {
-        if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
-            toast.error("Username already exists.");
-            return false;
-        }
-        const passwordHash = await simpleHash(password);
-        const isFirstUser = users.length === 0;
-        const newUser: User = {
-            id: uuidv4(),
-            username,
-            passwordHash,
-            role: isFirstUser ? 'master' : 'sub',
+    // Auth Logic
+    const login = async (username: string, passwordHash: string): Promise<boolean> => {
+        // Simple hash check (In production, use proper hashing)
+        // Here we assume passwordHash passed is plain text to be hashed or already hashed depending on UI
+        // But for this simple app, we are just storing what is passed. 
+        // NOTE: The UI calls this with plain text, we should probably hash it here or assume UI did it.
+        // Looking at Auth.tsx, it passes plain text. Let's simpleHash it here for matching.
+        
+        const simpleHash = async (str: string) => {
+            const encoder = new TextEncoder();
+            const d = encoder.encode(str);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', d);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         };
-        setData({ ...data!, users: [...users, newUser] });
-        toast.success(isFirstUser ? "Master account created! Please log in." : "User created successfully!");
-        return true;
-    };
-    
-    const addUser = async (username: string, password: string): Promise<boolean> => {
-        if (currentUser?.role !== 'master') {
-            toast.error("Only master users can add new users.");
-            return false;
-        }
-        return signUp(username, password);
-    };
-
-    const deleteUser = (userId: string) => {
-        if (currentUser?.role !== 'master') {
-            toast.error("Permission denied.");
-            return;
-        }
-        setData({ ...data!, users: users.filter(u => u.id !== userId) });
-        toast.success("User deleted.");
-    };
-    
-    const updateUser = async (userId: string, updates: Partial<Omit<User, 'id'>>) => {
-        const userToUpdate = users.find(u => u.id === userId);
-        if(!userToUpdate) {
-            toast.error("User not found.");
-            return false;
-        }
-
-        // Check for username uniqueness if it's being changed
-        if (updates.username && updates.username !== userToUpdate.username) {
-            if (users.some(u => u.username.toLowerCase() === updates.username?.toLowerCase() && u.id !== userId)) {
-                toast.error("Username already exists.");
-                return false;
-            }
-        }
         
-        const updatedUsers = users.map(u => u.id === userId ? { ...u, ...updates } : u);
-        
-        // If the current user is being updated, update the currentUser object as well
-        const newCurrentUser = userId === currentUser?.id ? { ...currentUser, ...updates } : currentUser;
+        const hash = await simpleHash(passwordHash);
 
-        setData({ ...data!, users: updatedUsers, currentUser: newCurrentUser });
-        toast.success("Profile updated successfully!");
-        return true;
-    };
-
-
-    const login = async (username: string, password: string): Promise<boolean> => {
-        const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+        const user = appData.users.find(u => u.username === username && u.passwordHash === hash);
         if (user) {
-            const passwordHash = await simpleHash(password);
-            if (user.passwordHash === passwordHash) {
-                setData({ ...data!, currentUser: user });
-                toast.success(`Welcome back, ${user.username}!`);
-                return true;
-            }
+            setCurrentUser(user);
+            toast.success(`Welcome back, ${user.username}!`);
+            return true;
+        } else {
+            toast.error("Invalid credentials");
+            return false;
         }
-        toast.error("Invalid credentials.");
-        return false;
     };
 
     const logout = () => {
-        setData({ ...data!, currentUser: null });
-        toast.success("Logged out successfully.");
+        setCurrentUser(null);
+        toast.success("Logged out successfully");
     };
 
+    const signUp = async (username: string, passwordHash: string): Promise<boolean> => {
+        if (appData.users.length > 0) {
+            toast.error("Master account already exists.");
+            return false;
+        }
+
+        const simpleHash = async (str: string) => {
+            const encoder = new TextEncoder();
+            const d = encoder.encode(str);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', d);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        };
+        
+        const hash = await simpleHash(passwordHash);
+        
+        const newUser: User = {
+            id: uuidv4(),
+            username,
+            passwordHash: hash,
+            role: 'master'
+        };
+        
+        updateData({ users: [newUser] });
+        setCurrentUser(newUser);
+        toast.success("Master account created!");
+        return true;
+    };
+
+    const addUser = async (username: string, passwordHash: string): Promise<boolean> => {
+         if (appData.users.some(u => u.username === username)) {
+            toast.error("Username already exists.");
+            return false;
+        }
+
+        const simpleHash = async (str: string) => {
+            const encoder = new TextEncoder();
+            const d = encoder.encode(str);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', d);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        };
+
+        const hash = await simpleHash(passwordHash);
+
+        const newUser: User = {
+            id: uuidv4(),
+            username,
+            passwordHash: hash,
+            role: 'sub'
+        };
+        
+        updateData({ users: [...appData.users, newUser] });
+        toast.success("User added successfully.");
+        return true;
+    };
+
+    const deleteUser = (id: string) => {
+        updateData({ users: appData.users.filter(u => u.id !== id) });
+        toast.success("User deleted.");
+    };
+
+    const updateUser = async (id: string, updates: Partial<User>) => {
+        updateData({ users: appData.users.map(u => u.id === id ? { ...u, ...updates } : u) });
+        if(currentUser && currentUser.id === id) {
+            setCurrentUser({ ...currentUser, ...updates });
+        }
+        toast.success("Profile updated.");
+        return true;
+    };
+
+    // Shop Info
+    const saveShopInfo = (info: ShopInfo) => {
+        updateData({ shopInfo: info });
+    };
+
+    const backupData = () => {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "shopsync_backup_" + new Date().toISOString() + ".json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        toast.success("Backup downloaded.");
+    };
+
+    const restoreData = (newData: AppData) => {
+        // Validate basic structure
+        if (!newData.users || !newData.inventory) {
+            toast.error("Invalid backup file structure.");
+            return;
+        }
+        setData(newData);
+        toast.success("Data restored successfully.");
+    };
+
+    // Inventory
     const addProduct = (product: Omit<Product, 'id'>) => {
         const newProduct = { ...product, id: uuidv4() };
-        setData({ ...data!, inventory: [...inventory, newProduct] });
+        updateData({ inventory: [...appData.inventory, newProduct] });
         toast.success("Product added.");
     };
 
     const updateProduct = (product: Product) => {
-        setData({ ...data!, inventory: inventory.map(p => p.id === product.id ? product : p) });
+        updateData({ inventory: appData.inventory.map(p => p.id === product.id ? product : p) });
         toast.success("Product updated.");
     };
 
     const deleteProduct = (id: string) => {
-        setData({ ...data!, inventory: inventory.filter(p => p.id !== id) });
+        updateData({ inventory: appData.inventory.filter(p => p.id !== id) });
         toast.success("Product deleted.");
     };
 
-    const addStock = (id: string, qty: number, price?: number) => {
-        const product = inventory.find(p => p.id === id);
-        if (product) {
-            const updates: Partial<Product> = { quantity: product.quantity + qty };
-            if (price !== undefined) updates.salePrice = price;
-            updateProduct({ ...product, ...updates });
-        }
+    const addStock = (id: string, quantity: number, newPrice?: number) => {
+        updateData({
+            inventory: appData.inventory.map(p => {
+                if (p.id === id) {
+                    return {
+                        ...p,
+                        quantity: p.quantity + quantity,
+                        salePrice: newPrice !== undefined ? newPrice : p.salePrice
+                    };
+                }
+                return p;
+            })
+        });
+        toast.success("Stock updated.");
     };
-    
-    const findProductByBarcode = (barcode: string) => inventory.find(p => p.barcode === barcode);
-    
+
+    const findProductByBarcode = (barcode: string) => {
+        return appData.inventory.find(p => p.barcode === barcode);
+    };
+
     const addSampleData = () => {
-         const newProducts = SAMPLE_PRODUCTS.map(p => ({ ...p, id: uuidv4() }));
-         const newCategories = SAMPLE_CATEGORIES;
-         setData({...data!, inventory: [...inventory, ...newProducts], categories: [...categories, ...newCategories]});
-         toast.success("Sample data added.");
+        const products: Product[] = SAMPLE_PRODUCTS.map(p => ({ ...p, id: uuidv4() }));
+        updateData({ inventory: [...appData.inventory, ...products] });
+        toast.success("Sample products added.");
     };
 
     const importFromExcel = (json: any[]) => {
-         const newProducts: Product[] = json.map((row: any) => ({
-             id: uuidv4(),
-             name: row['Name'] || 'Unknown',
-             categoryId: row['Category ID'] || 'uncategorized',
-             subCategoryId: row['SubCategory ID'] || null,
-             manufacturer: row['Manufacturer'] || 'N/A',
-             location: row['Location'] || '',
-             quantity: Number(row['Quantity']) || 0,
-             purchasePrice: Number(row['Purchase Price (Rs)']) || 0,
-             salePrice: Number(row['Sale Price (Rs)']) || 0,
-             barcode: row['Barcode'] ? String(row['Barcode']) : undefined,
-             imageUrl: row['Image URL'] || undefined
-         }));
-         setData({...data!, inventory: [...inventory, ...newProducts]});
-         toast.success(`Imported ${newProducts.length} products.`);
+        let addedCount = 0;
+        const newProducts: Product[] = [];
+        
+        json.forEach(row => {
+            const name = row['Name'];
+            const categoryId = row['Category ID'];
+            const price = row['Sale Price (Rs)'];
+            
+            if (name && categoryId && price) {
+                 newProducts.push({
+                    id: uuidv4(),
+                    name: row['Name'],
+                    manufacturer: row['Manufacturer'] || 'N/A',
+                    categoryId: row['Category ID'],
+                    subCategoryId: row['SubCategory ID'] || null,
+                    location: row['Location'] || '',
+                    barcode: row['Barcode'] ? String(row['Barcode']) : undefined,
+                    quantity: Number(row['Quantity']) || 0,
+                    purchasePrice: Number(row['Purchase Price (Rs)']) || 0,
+                    salePrice: Number(row['Sale Price (Rs)']),
+                    imageUrl: row['Image URL'] || undefined
+                });
+                addedCount++;
+            }
+        });
+
+        if (addedCount > 0) {
+             updateData({ inventory: [...appData.inventory, ...newProducts] });
+             toast.success(`${addedCount} products imported.`);
+        } else {
+            toast.error("No valid products found in Excel.");
+        }
     };
 
+    // Categories
     const addCategory = (name: string, parentId: string | null) => {
-        const newCat = { id: uuidv4(), name, parentId };
-        setData({ ...data!, categories: [...categories, newCat] });
+        updateData({ categories: [...appData.categories, { id: uuidv4(), name, parentId }] });
     };
 
     const updateCategory = (id: string, name: string) => {
-        setData({ ...data!, categories: categories.map(c => c.id === id ? { ...c, name } : c) });
+        updateData({ categories: appData.categories.map(c => c.id === id ? { ...c, name } : c) });
     };
 
     const deleteCategory = (id: string) => {
-        const idsToDelete = new Set<string>();
-        const collectIds = (catId: string) => {
-            idsToDelete.add(catId);
-            categories.filter(c => c.parentId === catId).forEach(c => collectIds(c.id));
-        };
-        collectIds(id);
-        setData({ ...data!, categories: categories.filter(c => !idsToDelete.has(c.id)) });
+        // Also delete subcategories and unset categories in products
+        const idsToDelete = [id, ...appData.categories.filter(c => c.parentId === id).map(c => c.id)];
+        
+        updateData({
+            categories: appData.categories.filter(c => !idsToDelete.includes(c.id)),
+            inventory: appData.inventory.map(p => idsToDelete.includes(p.categoryId) ? { ...p, categoryId: 'uncategorized' } : p)
+        });
+        toast.success("Category deleted.");
     };
 
-    // Helper to calculate points earned on items only
-    const calculateNetItemRevenue = (
-        items: SaleItem[],
-        tuningCharges: number,
-        laborCharges: number,
-        overallDiscountAmount: number,
-        totalOutsideServices: number,
-        loyaltyDiscountAmount: number
-    ): number => {
-        // 1. Calculate Item Subtotal after item-level discounts
-        const itemSubtotal = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-
-        // 2. Determine base for overall discount (Items + Services)
-        const revenueBaseForDiscount = itemSubtotal + tuningCharges + laborCharges;
-
-        // 3. Proportion of overall discount allocated to items
-        const itemRatioForOverallDiscount = revenueBaseForDiscount > 0 ? (itemSubtotal / revenueBaseForDiscount) : 0;
-        const itemShareOfOverallDiscount = overallDiscountAmount * itemRatioForOverallDiscount;
-
-        // 4. Net Item Revenue before loyalty redemption
-        const netItemRevenueBeforeLoyalty = itemSubtotal - itemShareOfOverallDiscount;
-
-        // 5. Determine total bill value that loyalty points are paying off
-        // (Items + Services + OutsideServices - OverallDiscount)
-        const totalBillBeforeLoyalty = (revenueBaseForDiscount - overallDiscountAmount) + totalOutsideServices;
-
-        // 6. Proportion of loyalty discount allocated to items
-        // (We deduct the portion of points used to pay for items, so points are earned on PAID item amount)
-        const itemRatioForLoyalty = totalBillBeforeLoyalty > 0 ? (netItemRevenueBeforeLoyalty / totalBillBeforeLoyalty) : 0;
-        const itemShareOfLoyaltyDiscount = loyaltyDiscountAmount * itemRatioForLoyalty;
-
-        // 7. Final Net Item Revenue (Money earned from sale of items)
-        const finalItemRevenue = Math.max(0, netItemRevenueBeforeLoyalty - itemShareOfLoyaltyDiscount);
-
-        return finalItemRevenue;
-    };
-
+    // Sales Logic
     const createSale = (
-        cart: CartItem[], 
+        cartItems: CartItem[], 
         overallDiscount: number, 
-        overallDiscountType: 'fixed' | 'percentage', 
-        customerDetails: { customerName: string; bikeNumber: string; contactNumber?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days'|'months'|'years' },
-        pointsToRedeem: number,
+        overallDiscountType: 'fixed' | 'percentage',
+        customerDetails: { customerName: string, bikeNumber: string, contactNumber: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' },
+        pointsRedeemed: number,
         tuningCharges: number,
         laborCharges: number,
         amountPaid: number,
         outsideServices: OutsideServiceItem[]
     ) => {
-        // Deduct inventory
-        const newInventory = inventory.map(product => {
-            const cartItem = cart.find(c => c.id === product.id);
-            if (cartItem && !cartItem.id.startsWith('manual-')) {
-                return { ...product, quantity: product.quantity - cartItem.cartQuantity };
-            }
-            return product;
-        });
-
-        const saleItems: SaleItem[] = cart.map(item => {
-            const discountAmount = item.discountType === 'fixed' ? item.discount : (item.salePrice * item.discount / 100);
-            return {
-                productId: item.id,
-                name: item.name,
-                quantity: item.cartQuantity,
-                originalPrice: item.salePrice,
-                discount: item.discount,
-                discountType: item.discountType,
-                price: item.salePrice - discountAmount,
-                purchasePrice: item.purchasePrice
-            };
-        });
-
-        const subtotal = cart.reduce((acc, item) => acc + (item.salePrice * item.cartQuantity), 0);
-        
-        const subtotalAfterItemDiscounts = saleItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-
-        const totalItemDiscounts = subtotal - subtotalAfterItemDiscounts;
-
-        const revenueBaseForDiscount = subtotalAfterItemDiscounts + tuningCharges + laborCharges;
-
-        const overallDiscountAmount = overallDiscountType === 'fixed'
-            ? overallDiscount
-            : (revenueBaseForDiscount * overallDiscount) / 100;
-        
-        // Find or create customer
-        // Logic: Same name AND same bike number = Same Customer. Otherwise different.
-        const bikeNum = customerDetails.bikeNumber.replace(/\s+/g, '').toUpperCase();
-        const custName = customerDetails.customerName.trim();
-        const isWalkIn = bikeNum === 'WALKIN';
-
-        let customer: Customer | undefined;
-        
-        if (isWalkIn) {
-             // For Walk-ins, we can optionally use a shared 'WALKIN' customer or just null.
-             // Existing app used 'WALKIN' ID. Let's keep it consistent.
-             customer = customers.find(c => c.id === 'WALKIN');
-        } else {
-             customer = customers.find(c => {
-                 const cBike = c.bikeNumber || c.id; // Fallback for legacy data where id=bikeNumber
-                 return cBike === bikeNum && c.name.toLowerCase() === custName.toLowerCase();
-             });
+        if (cartItems.length === 0 && tuningCharges === 0 && laborCharges === 0 && outsideServices.length === 0) {
+            toast.error("Cart is empty.");
+            return null;
         }
 
-        const isNewCustomer = !customer;
-        const now = new Date().toISOString();
-        let customerId: string;
+        const saleItems: SaleItem[] = cartItems.map(item => ({
+            productId: item.id,
+            name: item.name,
+            quantity: item.cartQuantity,
+            originalPrice: item.salePrice,
+            purchasePrice: item.purchasePrice,
+            discount: item.discount,
+            discountType: item.discountType,
+            price: item.discountType === 'fixed' 
+                ? item.salePrice - item.discount 
+                : item.salePrice * (1 - item.discount / 100)
+        }));
 
-        if (isNewCustomer) {
-            customerId = isWalkIn ? 'WALKIN' : uuidv4();
-        } else {
-            customerId = customer!.id;
-        }
+        const subtotal = saleItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+        const totalItemDiscounts = cartItems.reduce((acc, item) => {
+            const discountAmount = item.discountType === 'fixed' 
+                ? item.discount 
+                : (item.salePrice * item.discount / 100);
+            return acc + (discountAmount * item.cartQuantity);
+        }, 0);
 
-        // Loyalty Redemption Logic
-        let loyaltyDiscountAmount = 0;
-        let redeemedPoints = 0;
+        const totalCharges = tuningCharges + laborCharges;
+        const subtotalWithCharges = subtotal + totalCharges;
+        
+        const overallDiscountAmount = overallDiscountType === 'fixed' 
+            ? overallDiscount 
+            : (subtotalWithCharges * overallDiscount / 100);
 
-        if (customer && pointsToRedeem > 0) {
-            if (customer.loyaltyPoints >= pointsToRedeem) {
-                 redeemedPoints = pointsToRedeem;
-                 if (redemptionRule.method === 'fixedValue') {
-                     loyaltyDiscountAmount = (pointsToRedeem / redemptionRule.points) * redemptionRule.value;
-                 } else {
-                     // Percentage logic usually applies to the whole bill.
-                     // Calculate total before loyalty to determine discount amount
-                     const totalBeforeLoyalty = (revenueBaseForDiscount - overallDiscountAmount) + outsideServices.reduce((sum, s) => sum + s.amount, 0) + (customer.balance || 0);
-                     const percentage = (pointsToRedeem / redemptionRule.points) * redemptionRule.value;
-                     loyaltyDiscountAmount = (totalBeforeLoyalty * percentage) / 100;
-                 }
+        // Calculate Loyalty Discount
+        let loyaltyDiscount = 0;
+        if (pointsRedeemed > 0) {
+            const rule = appData.redemptionRule;
+            if (rule.method === 'fixedValue') {
+                loyaltyDiscount = (pointsRedeemed / rule.points) * rule.value;
             } else {
-                toast.error("Insufficient loyalty points.");
-                redeemedPoints = 0;
+                const percentage = (pointsRedeemed / rule.points) * rule.value;
+                const totalBeforeLoyalty = (subtotalWithCharges - overallDiscountAmount) + (customerDetails.bikeNumber ? (appData.customers.find(c => c.id === customerDetails.bikeNumber)?.balance || 0) : 0);
+                loyaltyDiscount = (totalBeforeLoyalty * percentage) / 100;
             }
         }
-
-        const totalOutsideServices = outsideServices.reduce((sum, s) => sum + s.amount, 0);
-
-        const total = (revenueBaseForDiscount - overallDiscountAmount) + totalOutsideServices - loyaltyDiscountAmount;
         
-        // --- Earning Points Logic ---
-        let pointsEarned = 0;
-        const pointsBase = calculateNetItemRevenue(
-            saleItems, 
-            tuningCharges, 
-            laborCharges, 
-            overallDiscountAmount, 
-            totalOutsideServices, 
-            loyaltyDiscountAmount
-        );
+        const totalOutsideServicesCost = outsideServices.reduce((sum, s) => sum + s.amount, 0);
 
-        let finalLoyaltyPoints = customer ? customer.loyaltyPoints - redeemedPoints : 0;
-        let appliedPromotion: { name: string, multiplier: number } | undefined;
-        let appliedTier: { name: string, multiplier: number } | undefined;
-
-        if (customerId && !isWalkIn) {
-             const applicableRule = earningRules
-                .sort((a, b) => b.minSpend - a.minSpend)
-                .find(r => pointsBase >= r.minSpend && (r.maxSpend === null || pointsBase <= r.maxSpend));
-             
-             if (applicableRule) {
-                 let multiplier = 1;
-                 
-                 const nowDate = new Date();
-                 const activePromo = promotions.find(p => {
-                     const start = new Date(p.startDate);
-                     const end = new Date(p.endDate);
-                     start.setHours(0,0,0,0);
-                     end.setHours(23,59,59,999);
-                     return nowDate >= start && nowDate <= end;
-                 });
-
-                 if (activePromo) {
-                     multiplier *= activePromo.multiplier;
-                     appliedPromotion = { name: activePromo.name, multiplier: activePromo.multiplier };
-                 }
-
-                 if (customer?.tierId) {
-                     const tier = customerTiers.find(t => t.id === customer.tierId);
-                     if (tier) {
-                         multiplier *= tier.pointsMultiplier;
-                         appliedTier = { name: tier.name, multiplier: tier.pointsMultiplier };
-                     }
-                 }
-                 
-                 pointsEarned = Math.floor((pointsBase / 100) * applicableRule.pointsPerHundred * multiplier);
-             }
-             finalLoyaltyPoints += pointsEarned;
-        } else {
-            finalLoyaltyPoints = 0;
-            redeemedPoints = 0;
-            pointsEarned = 0;
+        const total = Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServicesCost;
+        
+        // Handle Customer Logic
+        let customerId = customerDetails.bikeNumber;
+        const existingCustomer = appData.customers.find(c => c.id === customerId);
+        
+        const saleId = uuidv4();
+        
+        let previousBalance = 0;
+        if (existingCustomer) {
+            previousBalance = existingCustomer.balance;
         }
 
-        const balanceDue = total - amountPaid;
-        const newBalance = (customer?.balance || 0) + balanceDue;
+        const finalAmountDue = total + previousBalance;
+        const balanceDue = Math.max(0, finalAmountDue - amountPaid);
+        const paymentStatus = balanceDue <= 0 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid');
+
+        // Loyalty Points Calculation
+        let pointsEarned = 0;
+        let promotionApplied: { name: string, multiplier: number } | undefined;
+        
+        // Only calculate points if fully paid or logic allows partial. Assuming points on paid amount or total invoice?
+        // Usually points are on spend.
+        const spendForPoints = subtotalWithCharges; // Excluding outside services and previous balance?
+        // Let's stick to simple: Points on Total Bill (minus outside services if they are pass-through?)
+        // Let's use `subtotalWithCharges - overallDiscountAmount`.
+        const netSpend = Math.max(0, subtotalWithCharges - overallDiscountAmount);
+
+        // Find applicable rule
+        const applicableRule = appData.earningRules.find(r => netSpend >= r.minSpend && (r.maxSpend === null || netSpend < r.maxSpend));
+        
+        if (applicableRule) {
+            pointsEarned = Math.floor((netSpend / 100) * applicableRule.pointsPerHundred);
+        }
+
+        // Apply Promotions
+        const now = new Date();
+        const activePromo = appData.promotions.find(p => new Date(p.startDate) <= now && new Date(p.endDate) >= now);
+        if (activePromo) {
+            pointsEarned = Math.floor(pointsEarned * activePromo.multiplier);
+            promotionApplied = { name: activePromo.name, multiplier: activePromo.multiplier };
+        }
+        
+        // Tier Multiplier
+        let tierMultiplier = 1;
+        if (existingCustomer && existingCustomer.tierId) {
+             const tier = appData.customerTiers.find(t => t.id === existingCustomer.tierId);
+             if (tier) tierMultiplier = tier.pointsMultiplier;
+        }
+        pointsEarned = Math.floor(pointsEarned * tierMultiplier);
 
         const newSale: Sale = {
-            id: uuidv4().substring(0, 8).toUpperCase(),
-            customerId: customerId,
+            id: saleId,
+            customerId,
             customerName: customerDetails.customerName,
-            bikeNumber: bikeNum, // Store bike number snapshot
+            bikeNumber: customerDetails.bikeNumber,
             items: saleItems,
-            subtotal,
+            subtotal: subtotal,
             totalItemDiscounts,
             overallDiscount,
             overallDiscountType,
-            loyaltyDiscount: loyaltyDiscountAmount,
+            loyaltyDiscount,
             tuningCharges,
             laborCharges,
             outsideServices,
-            totalOutsideServices,
+            totalOutsideServices: totalOutsideServicesCost,
             total,
             amountPaid,
-            paymentStatus: balanceDue <= 0.5 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid'),
+            paymentStatus,
             balanceDue,
-            previousBalanceBroughtForward: customer?.balance || 0,
-            date: now,
+            previousBalanceBroughtForward: previousBalance,
+            date: new Date().toISOString(),
             pointsEarned,
-            redeemedPoints,
-            finalLoyaltyPoints,
-            promotionApplied: appliedPromotion,
-            tierApplied: appliedTier
+            redeemedPoints: pointsRedeemed,
+            finalLoyaltyPoints: (existingCustomer?.loyaltyPoints || 0) - pointsRedeemed + pointsEarned,
+            promotionApplied,
+            tierApplied: tierMultiplier > 1 ? { name: 'Tier Bonus', multiplier: tierMultiplier } : undefined
         };
 
-        const updatedCustomer: Customer = {
-            id: customerId,
-            bikeNumber: bikeNum,
-            name: customerDetails.customerName,
-            saleIds: customer ? [...customer.saleIds, newSale.id] : [newSale.id],
-            firstSeen: customer ? customer.firstSeen : now,
-            lastSeen: now,
-            contactNumber: customerDetails.contactNumber || customer?.contactNumber,
-            serviceFrequencyValue: customerDetails.serviceFrequencyValue || customer?.serviceFrequencyValue,
-            serviceFrequencyUnit: customerDetails.serviceFrequencyUnit || customer?.serviceFrequencyUnit,
-            servicingNotes: customer?.servicingNotes,
-            nextServiceDate: customer?.nextServiceDate,
-            loyaltyPoints: finalLoyaltyPoints,
-            tierId: customer?.tierId || customerTiers.find(t => t.rank === 0)?.id || null,
-            balance: Math.max(0, newBalance),
-            manualVisitAdjustment: customer?.manualVisitAdjustment || 0
-        };
+        // Update Inventory
+        const updatedInventory = appData.inventory.map(p => {
+            const saleItem = saleItems.find(i => i.productId === p.id);
+            if (saleItem) {
+                return { ...p, quantity: p.quantity - saleItem.quantity };
+            }
+            return p;
+        });
 
-        const newTransactions: LoyaltyTransaction[] = [];
-        if (pointsEarned > 0) {
-            newTransactions.push({
-                id: uuidv4(),
-                customerId,
-                type: 'earned',
-                points: pointsEarned,
-                date: now,
-                relatedSaleId: newSale.id,
-                pointsBefore: (customer?.loyaltyPoints || 0) - redeemedPoints,
-                pointsAfter: finalLoyaltyPoints
-            });
-        }
-        if (redeemedPoints > 0) {
+        // Update Customer
+        let updatedCustomers = [...appData.customers];
+        let newTransactions = [...appData.loyaltyTransactions];
+        
+        // Add loyalty transactions
+        if (pointsRedeemed > 0) {
             newTransactions.push({
                 id: uuidv4(),
                 customerId,
                 type: 'redeemed',
-                points: redeemedPoints,
-                date: now,
-                relatedSaleId: newSale.id,
-                pointsBefore: customer!.loyaltyPoints,
-                pointsAfter: customer!.loyaltyPoints - redeemedPoints
+                points: pointsRedeemed,
+                date: newSale.date,
+                relatedSaleId: saleId,
+                pointsBefore: existingCustomer ? existingCustomer.loyaltyPoints : 0,
+                pointsAfter: (existingCustomer ? existingCustomer.loyaltyPoints : 0) - pointsRedeemed
+            });
+        }
+        
+        if (pointsEarned > 0) {
+             newTransactions.push({
+                id: uuidv4(),
+                customerId,
+                type: 'earned',
+                points: pointsEarned,
+                date: newSale.date,
+                relatedSaleId: saleId,
+                pointsBefore: (existingCustomer ? existingCustomer.loyaltyPoints : 0) - pointsRedeemed,
+                pointsAfter: (existingCustomer ? existingCustomer.loyaltyPoints : 0) - pointsRedeemed + pointsEarned
             });
         }
 
-        let updatedCustomers;
-        if (isNewCustomer) {
-            updatedCustomers = [...customers, updatedCustomer];
-        } else {
-            updatedCustomers = customers.map(c => c.id === customerId ? updatedCustomer : c);
+        if (existingCustomer) {
+            updatedCustomers = updatedCustomers.map(c => {
+                if (c.id === customerId) {
+                    return {
+                        ...c,
+                        name: customerDetails.customerName, // Update name if changed
+                        contactNumber: customerDetails.contactNumber || c.contactNumber,
+                        saleIds: [saleId, ...c.saleIds],
+                        lastSeen: newSale.date,
+                        balance: balanceDue,
+                        loyaltyPoints: c.loyaltyPoints - pointsRedeemed + pointsEarned,
+                        serviceFrequencyValue: customerDetails.serviceFrequencyValue || c.serviceFrequencyValue,
+                        serviceFrequencyUnit: customerDetails.serviceFrequencyUnit || c.serviceFrequencyUnit
+                    };
+                }
+                return c;
+            });
+        } else if (customerDetails.bikeNumber && customerDetails.bikeNumber !== 'WALKIN') {
+            updatedCustomers.push({
+                id: customerId,
+                name: customerDetails.customerName,
+                bikeNumber: customerDetails.bikeNumber,
+                contactNumber: customerDetails.contactNumber,
+                saleIds: [saleId],
+                firstSeen: newSale.date,
+                lastSeen: newSale.date,
+                loyaltyPoints: pointsEarned,
+                balance: balanceDue,
+                tierId: null,
+                serviceFrequencyValue: customerDetails.serviceFrequencyValue,
+                serviceFrequencyUnit: customerDetails.serviceFrequencyUnit,
+                manualVisitAdjustment: 0
+            });
         }
 
-        setData({
-            ...data!,
-            inventory: newInventory,
-            sales: [...sales, newSale],
+        // TIER EVALUATION (Basic)
+        // Recalculate tier for customer
+        if (appData.customerTiers.length > 0) {
+            updatedCustomers = updatedCustomers.map(c => {
+                 if (c.id === customerId) {
+                    // Logic to check tiers... simplified here.
+                    // Just place holder for real tier logic which is complex with rolling periods.
+                    // Ideally, we run a check function here.
+                    const bestTier = evaluateTier(c, appData.customerTiers, [...appData.sales, newSale]);
+                    return { ...c, tierId: bestTier ? bestTier.id : null };
+                 }
+                 return c;
+            });
+        }
+
+        updateData({
+            inventory: updatedInventory,
+            sales: [newSale, ...appData.sales],
             customers: updatedCustomers,
-            loyaltyTransactions: [...loyaltyTransactions, ...newTransactions]
+            loyaltyTransactions: newTransactions
         });
 
         toast.success("Sale completed successfully!");
@@ -604,11 +610,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const reverseSale = (saleId: string, itemsToReturn: SaleItem[]) => {
-        const sale = sales.find(s => s.id === saleId);
+        const sale = appData.sales.find(s => s.id === saleId);
         if (!sale) return;
 
         // 1. Restore Inventory
-        const updatedInventory = inventory.map(product => {
+        const updatedInventory = appData.inventory.map(product => {
             const itemToReturn = itemsToReturn.find(i => i.productId === product.id);
             if (itemToReturn && !itemToReturn.productId.startsWith('manual-')) {
                 return { ...product, quantity: product.quantity + itemToReturn.quantity };
@@ -618,49 +624,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const remainingItems = sale.items.filter(item => !itemsToReturn.some(r => r.productId === item.productId));
         
-        let updatedSales = [...sales];
-        let updatedCustomers = [...customers];
-        let updatedTransactions = [...loyaltyTransactions];
+        let updatedSales = [...appData.sales];
+        let updatedCustomers = [...appData.customers];
+        let updatedTransactions = [...appData.loyaltyTransactions];
         
-        if (remainingItems.length === 0 && sale.tuningCharges === 0 && sale.laborCharges === 0 && (!sale.outsideServices || sale.outsideServices.length === 0)) {
+        if (remainingItems.length === 0) {
             // Full Reversal / Delete Sale
-            const customer = customers.find(c => c.id === sale.customerId);
+            const customer = appData.customers.find(c => c.id === sale.customerId);
             
             // Remove sale from sales
-            updatedSales = sales.filter(s => s.id !== saleId);
+            updatedSales = appData.sales.filter(s => s.id !== saleId);
 
             // Revert Loyalty Points
-            const saleTransactions = loyaltyTransactions.filter(t => t.relatedSaleId === saleId);
-            let pointsToRevert = 0;
+            const saleTransactions = appData.loyaltyTransactions.filter(t => t.relatedSaleId === saleId);
+            let pointsChange = 0;
             
             saleTransactions.forEach(t => {
-                if(t.type === 'earned') pointsToRevert -= t.points;
-                if(t.type === 'redeemed') pointsToRevert += t.points;
+                if(t.type === 'earned') pointsChange -= t.points;
+                if(t.type === 'redeemed') pointsChange += t.points;
             });
             
             // Remove transactions
-            updatedTransactions = loyaltyTransactions.filter(t => t.relatedSaleId !== saleId);
+            updatedTransactions = appData.loyaltyTransactions.filter(t => t.relatedSaleId !== saleId);
 
             if (customer) {
                 const updatedCustomer = {
                     ...customer,
                     saleIds: customer.saleIds.filter(id => id !== saleId),
-                    balance: Math.max(0, customer.balance - sale.balanceDue), // Assuming reversal wipes due balance from this sale
-                    loyaltyPoints: Math.max(0, customer.loyaltyPoints + pointsToRevert)
+                    balance: Math.max(0, customer.balance - sale.balanceDue),
+                    loyaltyPoints: Math.max(0, customer.loyaltyPoints + pointsChange)
                 };
-                updatedCustomers = customers.map(c => c.id === customer.id ? updatedCustomer : c);
+                updatedCustomers = appData.customers.map(c => c.id === customer.id ? updatedCustomer : c);
             }
-
-            toast.success("Sale reversed and deleted.");
-
+            toast.success("Sale deleted completely.");
         } else {
             // Partial Reversal
-            // This is complex - for now, we just update the sale items and total, 
-            // but correcting loyalty points proportionally is hard without re-running the whole logic.
-            // Simplified: Update items, total, and inventory. Leave points/balance manual adjustment for user if needed.
-            
             const newSubtotal = remainingItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-            // Re-calculate basic totals roughly
             const newTotal = Math.max(0, sale.total - itemsToReturn.reduce((acc, i) => acc + (i.price * i.quantity), 0));
 
             const updatedSale = {
@@ -670,46 +669,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 total: newTotal
             };
             
-            updatedSales = sales.map(s => s.id === saleId ? updatedSale : s);
-            toast.success("Items returned to inventory. Please adjust customer balance/points manually if needed.");
+            updatedSales = appData.sales.map(s => s.id === saleId ? updatedSale : s);
+            toast.success("Items returned. Please adjust balance/points manually.");
         }
 
-        setData({
-            ...data!,
+        updateData({
             inventory: updatedInventory,
             sales: updatedSales,
             customers: updatedCustomers,
             loyaltyTransactions: updatedTransactions
         });
     };
+    
+    // Evaluate Tier Helper
+    const evaluateTier = (customer: Customer, tiers: CustomerTier[], salesList: Sale[]): CustomerTier | null => {
+         const sortedTiers = [...tiers].sort((a,b) => b.rank - a.rank); // Check highest rank first
+         for (const tier of sortedTiers) {
+             if (tier.rank === 0) continue; // Always qualify for base tier if nothing else
+             
+             // Calculate metrics for period
+             const now = new Date();
+             const cutoff = new Date();
+             if(tier.periodUnit === 'days') cutoff.setDate(now.getDate() - tier.periodValue);
+             if(tier.periodUnit === 'months') cutoff.setMonth(now.getMonth() - tier.periodValue);
+             if(tier.periodUnit === 'years') cutoff.setFullYear(now.getFullYear() - tier.periodValue);
+             
+             const relevantSales = salesList.filter(s => s.customerId === customer.id && new Date(s.date) >= cutoff);
+             const visitCount = relevantSales.length + (customer.manualVisitAdjustment || 0);
+             const totalSpend = relevantSales.reduce((sum, s) => sum + s.amountPaid, 0);
+             
+             if (visitCount >= tier.minVisits && totalSpend >= tier.minSpend) {
+                 return tier;
+             }
+         }
+         return sortedTiers.find(t => t.rank === 0) || null;
+    }
 
-    const updateSale = (saleId: string, updates: Partial<Sale>) => {
-        const updatedSales = sales.map(s => s.id === saleId ? { ...s, ...updates } : s);
-        setData({ ...data!, sales: updatedSales });
-        toast.success("Sale updated.");
-    };
-
-    const updateCustomer = (customerId: string, updates: Partial<Customer>) => {
-        const updatedCustomers = customers.map(c => c.id === customerId ? { ...c, ...updates } : c);
-        setData({ ...data!, customers: updatedCustomers });
-        toast.success("Customer updated.");
+    // Customer Updates
+    const updateCustomer = (id: string, updates: Partial<Customer>) => {
+        updateData({ customers: appData.customers.map(c => c.id === id ? { ...c, ...updates } : c) });
         return true;
     };
 
     const adjustCustomerPoints = (customerId: string, points: number, reason: string) => {
-        const customer = customers.find(c => c.id === customerId);
+        const customer = appData.customers.find(c => c.id === customerId);
         if (!customer) return false;
 
         const newPoints = customer.loyaltyPoints + points;
         if (newPoints < 0) {
-            toast.error("Cannot deduct more points than available.");
+            toast.error("Customer doesn't have enough points.");
             return false;
         }
 
         const transaction: LoyaltyTransaction = {
             id: uuidv4(),
             customerId,
-            type: points > 0 ? 'manual_add' : 'manual_subtract',
+            type: points >= 0 ? 'manual_add' : 'manual_subtract',
             points: Math.abs(points),
             date: new Date().toISOString(),
             reason,
@@ -717,27 +732,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             pointsAfter: newPoints
         };
 
-        const updatedCustomer = { ...customer, loyaltyPoints: newPoints };
-        const updatedCustomers = customers.map(c => c.id === customerId ? updatedCustomer : c);
-
-        setData({
-            ...data!,
-            customers: updatedCustomers,
-            loyaltyTransactions: [...loyaltyTransactions, transaction]
+        updateData({
+            customers: appData.customers.map(c => c.id === customerId ? { ...c, loyaltyPoints: newPoints } : c),
+            loyaltyTransactions: [...appData.loyaltyTransactions, transaction]
         });
         toast.success("Points adjusted.");
         return true;
     };
 
     const recordCustomerPayment = (customerId: string, amount: number, notes?: string) => {
-        const customer = customers.find(c => c.id === customerId);
+        const customer = appData.customers.find(c => c.id === customerId);
         if (!customer) return false;
 
-        const newBalance = Math.max(0, customer.balance - amount);
-        const updatedCustomer = { ...customer, balance: newBalance };
-        const updatedCustomers = customers.map(c => c.id === customerId ? updatedCustomer : c);
-        
-        const newPayment: Payment = {
+        const payment: Payment = {
             id: uuidv4(),
             customerId,
             amount,
@@ -745,135 +752,119 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             notes
         };
 
-        setData({
-            ...data!,
-            customers: updatedCustomers,
-            payments: [...payments, newPayment]
+        const newBalance = Math.max(0, customer.balance - amount);
+
+        updateData({
+            customers: appData.customers.map(c => c.id === customerId ? { ...c, balance: newBalance } : c),
+            payments: [...appData.payments, payment]
         });
         toast.success("Payment recorded.");
         return true;
     };
 
-    const updateEarningRules = (rules: EarningRule[]) => {
-        setData({ ...data!, earningRules: rules });
-        toast.success("Earning rules updated.");
-    };
-
+    // Settings & Rules
+    const updateEarningRules = (rules: EarningRule[]) => updateData({ earningRules: rules });
     const updateRedemptionRule = (rule: RedemptionRule) => {
-        setData({ ...data!, redemptionRule: rule });
+        updateData({ redemptionRule: rule });
         toast.success("Redemption rule updated.");
     };
-
+    
     const addPromotion = (promo: Omit<Promotion, 'id'>) => {
-        const newPromo = { ...promo, id: uuidv4() };
-        setData({ ...data!, promotions: [...promotions, newPromo] });
+        updateData({ promotions: [...appData.promotions, { ...promo, id: uuidv4() }] });
         toast.success("Promotion added.");
     };
-
     const updatePromotion = (promo: Promotion) => {
-        const updatedPromos = promotions.map(p => p.id === promo.id ? promo : p);
-        setData({ ...data!, promotions: updatedPromos });
+        updateData({ promotions: appData.promotions.map(p => p.id === promo.id ? promo : p) });
         toast.success("Promotion updated.");
     };
-
-    const deletePromotion = (promoId: string) => {
-        const updatedPromos = promotions.filter(p => p.id !== promoId);
-        setData({ ...data!, promotions: updatedPromos });
-        toast.success("Promotion deleted.");
-    };
-
+    const deletePromotion = (id: string) => updateData({ promotions: appData.promotions.filter(p => p.id !== id) });
+    
     const updateLoyaltyExpirySettings = (settings: LoyaltyExpirySettings) => {
-        setData({ ...data!, loyaltyExpirySettings: settings });
-        toast.success("Expiry settings updated.");
+        updateData({ loyaltyExpirySettings: settings });
+        toast.success("Expiry settings saved.");
     };
-
     const updateCustomerTiers = (tiers: CustomerTier[]) => {
-        setData({ ...data!, customerTiers: tiers });
+        updateData({ customerTiers: tiers });
         toast.success("Tiers updated.");
     };
 
+    // Expenses
     const addExpense = (expense: Omit<Expense, 'id'>) => {
-        const newExpense = { ...expense, id: uuidv4() };
-        setData({ ...data!, expenses: [...expenses, newExpense] });
+        updateData({ expenses: [...appData.expenses, { ...expense, id: uuidv4() }] });
         toast.success("Expense added.");
     };
-
     const updateExpense = (expense: Expense) => {
-        const updatedExpenses = expenses.map(e => e.id === expense.id ? expense : e);
-        setData({ ...data!, expenses: updatedExpenses });
+        updateData({ expenses: appData.expenses.map(e => e.id === expense.id ? expense : e) });
         toast.success("Expense updated.");
     };
-
-    const deleteExpense = (expenseId: string) => {
-        setData({ ...data!, expenses: expenses.filter(e => e.id !== expenseId) });
+    const deleteExpense = (id: string) => {
+        updateData({ expenses: appData.expenses.filter(e => e.id !== id) });
         toast.success("Expense deleted.");
     };
 
+    // Demand Items
     const addDemandItem = (item: Omit<DemandItem, 'id'>) => {
-        const newItem = { ...item, id: uuidv4() };
-        setData({ ...data!, demandItems: [...demandItems, newItem] });
+        updateData({ demandItems: [...appData.demandItems, { ...item, id: uuidv4() }] });
         toast.success("Item added to demand list.");
     };
-
     const addMultipleDemandItems = (items: Omit<DemandItem, 'id'>[]) => {
-        const newItems = items.map(item => ({ ...item, id: uuidv4() }));
-        setData({ ...data!, demandItems: [...demandItems, ...newItems] });
-        toast.success(`${newItems.length} items added to demand list.`);
-    }
-
-    const updateDemandItem = (item: DemandItem) => {
-        const updatedItems = demandItems.map(i => i.id === item.id ? item : i);
-        setData({ ...data!, demandItems: updatedItems });
-        toast.success("Demand item updated.");
+        const newItems = items.map(i => ({ ...i, id: uuidv4() }));
+        updateData({ demandItems: [...appData.demandItems, ...newItems] });
+        toast.success(`${items.length} items imported to demand list.`);
     };
-
-    const deleteDemandItem = (itemId: string) => {
-        setData({ ...data!, demandItems: demandItems.filter(i => i.id !== itemId) });
+    const updateDemandItem = (item: DemandItem) => {
+        updateData({ demandItems: appData.demandItems.map(i => i.id === item.id ? item : i) });
+        toast.success("Item updated.");
+    };
+    const deleteDemandItem = (id: string) => {
+        updateData({ demandItems: appData.demandItems.filter(i => i.id !== id) });
         toast.success("Item removed from demand list.");
     };
 
-    const backupData = () => {
-        if (!data) return;
-        const json = JSON.stringify(data);
-        const blob = new Blob([json], { type: 'application/json' });
-        const href = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = href;
-        link.download = `shopsync_backup_${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        toast.success("Backup downloaded.");
-    };
-
-    const restoreData = (newData: AppData) => {
-        setData(newData);
-        toast.success("Data restored successfully! Refreshing...");
-        setTimeout(() => window.location.reload(), 1500);
-    };
-
-    const contextValue: AppContextType = {
-        shopInfo, saveShopInfo,
-        users, currentUser, signUp, login, logout, addUser, deleteUser, updateUser,
-        inventory, addProduct, updateProduct, deleteProduct, addStock, findProductByBarcode, addSampleData, importFromExcel,
-        categories, addCategory, updateCategory, deleteCategory,
-        sales, createSale, reverseSale, updateSale,
-        customers, updateCustomer, adjustCustomerPoints, recordCustomerPayment,
-        earningRules, updateEarningRules,
-        redemptionRule, updateRedemptionRule,
-        promotions, addPromotion, updatePromotion, deletePromotion,
-        loyaltyTransactions,
-        loyaltyExpirySettings, updateLoyaltyExpirySettings,
-        customerTiers, updateCustomerTiers,
-        expenses, addExpense, updateExpense, deleteExpense,
-        payments,
-        demandItems, addDemandItem, addMultipleDemandItems, updateDemandItem, deleteDemandItem,
-        backupData, restoreData,
-        loading
-    };
-
     return (
-        <AppContext.Provider value={contextValue}>
+        <AppContext.Provider value={{
+            ...appData,
+            loading,
+            currentUser,
+            login,
+            logout,
+            signUp,
+            addUser,
+            deleteUser,
+            updateUser,
+            saveShopInfo,
+            backupData,
+            restoreData,
+            addProduct,
+            updateProduct,
+            deleteProduct,
+            addStock,
+            findProductByBarcode,
+            addSampleData,
+            importFromExcel,
+            addCategory,
+            updateCategory,
+            deleteCategory,
+            createSale,
+            reverseSale,
+            updateCustomer,
+            adjustCustomerPoints,
+            recordCustomerPayment,
+            updateEarningRules,
+            updateRedemptionRule,
+            addPromotion,
+            updatePromotion,
+            deletePromotion,
+            updateLoyaltyExpirySettings,
+            updateCustomerTiers,
+            addExpense,
+            updateExpense,
+            deleteExpense,
+            addDemandItem,
+            addMultipleDemandItems,
+            updateDemandItem,
+            deleteDemandItem
+        }}>
             {children}
         </AppContext.Provider>
     );
@@ -881,8 +872,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 export const useAppContext = () => {
     const context = useContext(AppContext);
-    if (context === undefined) {
-        throw new Error('useAppContext must be used within an AppProvider');
+    if (!context) {
+        throw new Error("useAppContext must be used within an AppProvider");
     }
     return context;
 };
