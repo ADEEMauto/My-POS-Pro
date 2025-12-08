@@ -138,33 +138,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Ensure data is never null after loading
     const appData = data || INITIAL_DATA;
 
-    // Restore session
+    // Restore session logic
     useEffect(() => {
-        // We only want to run this check once when the DB has finished loading
-        // and we haven't determined auth state yet.
-        if (!dbLoading && !isAuthReady) {
-            const storedUserId = localStorage.getItem('shopsync_user_id');
-            if (storedUserId) {
-                // Try to find the user in the loaded data
-                const user = appData.users.find(u => u.id === storedUserId);
-                if (user) {
-                    setCurrentUser(user);
-                } else {
-                    // Optional: If user ID is in localStorage but not in DB, 
-                    // it implies data mismatch or deletion. 
-                    // We leave currentUser as null (logged out).
-                }
+        // Wait for DB to load
+        if (dbLoading) return;
+        
+        // Prevent running multiple times if auth is already determined
+        if (isAuthReady) return;
+
+        const storedUserId = localStorage.getItem('shopsync_user_id');
+        
+        if (storedUserId) {
+            // Find user in the loaded data
+            const user = appData.users.find(u => u.id === storedUserId);
+            if (user) {
+                console.log("Restoring session for user:", user.username);
+                setCurrentUser(user);
+            } else {
+                console.warn("Stored user ID not found in database:", storedUserId);
             }
-            setIsAuthReady(true);
         }
+        
+        setIsAuthReady(true);
     }, [dbLoading, isAuthReady, appData.users]);
 
     // Global loading state: True if DB is loading OR auth check hasn't finished
     const loading = dbLoading || !isAuthReady;
 
     // Helper to update full state
-    const updateData = (updates: Partial<AppData>) => {
-        setData({ ...appData, ...updates });
+    const updateData = async (updates: Partial<AppData>) => {
+        await setData({ ...appData, ...updates });
     };
 
     // Auth Logic
@@ -220,11 +223,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             role: 'master'
         };
         
-        updateData({ users: [newUser] });
-        setCurrentUser(newUser);
-        localStorage.setItem('shopsync_user_id', newUser.id);
-        toast.success("Master account created!");
-        return true;
+        try {
+            // Wait for DB write to confirm persistence before setting local auth state
+            await updateData({ users: [newUser] });
+            setCurrentUser(newUser);
+            localStorage.setItem('shopsync_user_id', newUser.id);
+            toast.success("Master account created!");
+            return true;
+        } catch (error) {
+            console.error("SignUp persistence failed:", error);
+            toast.error("Failed to create account. Please try again.");
+            return false;
+        }
     };
 
     const addUser = async (username: string, passwordHash: string): Promise<boolean> => {
@@ -250,9 +260,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             role: 'sub'
         };
         
-        updateData({ users: [...appData.users, newUser] });
-        toast.success("User added successfully.");
-        return true;
+        try {
+            await updateData({ users: [...appData.users, newUser] });
+            toast.success("User added successfully.");
+            return true;
+        } catch (error) {
+            toast.error("Failed to save user.");
+            return false;
+        }
     };
 
     const deleteUser = (id: string) => {
@@ -261,7 +276,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     const updateUser = async (id: string, updates: Partial<User>) => {
-        updateData({ users: appData.users.map(u => u.id === id ? { ...u, ...updates } : u) });
+        await updateData({ users: appData.users.map(u => u.id === id ? { ...u, ...updates } : u) });
         if(currentUser && currentUser.id === id) {
             setCurrentUser({ ...currentUser, ...updates });
         }

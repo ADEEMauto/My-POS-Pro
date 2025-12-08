@@ -11,10 +11,9 @@ interface IDBHook<T> {
     loading: boolean;
 }
 
-// Helper function to promisify IDB requests
+// Helper function to promisify IDB requests (used for get)
 function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
-        // FIX: The 'oncomplete' property does not exist on IDBRequest. 'onsuccess' is the correct event for successful completion of a request.
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
@@ -61,23 +60,36 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
             setStateData(initialValue);
             setLoading(false);
         };
-    }, []); // Empty dependency array ensures this runs only once on mount
+    }, []);
 
     const setData = useCallback(async (value: T) => {
-        // Update React state immediately for UI responsiveness
+        // Optimistically update state
         setStateData(value);
 
-        if (db) {
-            try {
-                const transaction = db.transaction(STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(STORE_NAME);
-                const putRequest = store.put(value, KEY);
-                await promisifyRequest(putRequest);
-            } catch (error) {
-                console.error('Failed to save data to IndexedDB:', error);
-                 // If save fails, we might want to revert the state, but for now, we'll log the error.
-            }
+        if (!db) {
+            console.warn("Database not initialized, cannot save data.");
+            return;
         }
+
+        return new Promise<void>((resolve, reject) => {
+            const transaction = db.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.put(value, KEY);
+
+            transaction.oncomplete = () => {
+                resolve();
+            };
+
+            transaction.onerror = (event) => {
+                console.error('IndexedDB transaction error:', event);
+                reject(transaction.error);
+            };
+
+            request.onerror = (event) => {
+                console.error('IndexedDB put request error:', event);
+                // transaction.onerror will also fire
+            };
+        });
     }, [db]);
 
     return { data, setData, loading };
