@@ -130,11 +130,28 @@ interface AppContextType extends AppData {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const { data, setData, loading } = useIndexedDB<AppData>(INITIAL_DATA);
+    const { data, setData, loading: dbLoading } = useIndexedDB<AppData>(INITIAL_DATA);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [isAuthReady, setIsAuthReady] = useState(false);
 
     // Ensure data is never null after loading
     const appData = data || INITIAL_DATA;
+
+    // Restore session
+    useEffect(() => {
+        if (!dbLoading) {
+            const storedUserId = localStorage.getItem('shopsync_user_id');
+            if (storedUserId && appData.users.length > 0) {
+                const user = appData.users.find(u => u.id === storedUserId);
+                if (user) {
+                    setCurrentUser(user);
+                }
+            }
+            setIsAuthReady(true);
+        }
+    }, [dbLoading, appData]);
+
+    const loading = dbLoading || !isAuthReady;
 
     // Helper to update full state
     const updateData = (updates: Partial<AppData>) => {
@@ -156,6 +173,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const user = appData.users.find(u => u.username === username && u.passwordHash === hash);
         if (user) {
             setCurrentUser(user);
+            localStorage.setItem('shopsync_user_id', user.id);
             toast.success(`Welcome back, ${user.username}!`);
             return true;
         } else {
@@ -166,6 +184,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const logout = () => {
         setCurrentUser(null);
+        localStorage.removeItem('shopsync_user_id');
         toast.success("Logged out successfully");
     };
 
@@ -194,6 +213,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         
         updateData({ users: [newUser] });
         setCurrentUser(newUser);
+        localStorage.setItem('shopsync_user_id', newUser.id);
         toast.success("Master account created!");
         return true;
     };
