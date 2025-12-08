@@ -369,6 +369,16 @@ const Dashboard: React.FC = () => {
 
     return (
         <div className="space-y-8">
+            {shopInfo?.logoUrl && (
+                <div className="w-full bg-white rounded-lg shadow-md p-6 flex justify-center items-center">
+                    <img 
+                        src={shopInfo.logoUrl} 
+                        alt="Shop Logo" 
+                        className="w-full max-h-80 object-contain"
+                    />
+                </div>
+            )}
+
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Welcome, {currentUser?.username}!</h1>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
