@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const DB_NAME = 'ShopSyncDB';
 const DB_VERSION = 1;
@@ -11,20 +12,16 @@ interface IDBHook<T> {
     loading: boolean;
 }
 
-// Helper function to promisify IDB requests (used for get)
-function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
-
 function useIndexedDB<T>(initialValue: T): IDBHook<T> {
     const [data, setStateData] = useState<T | null>(null);
     const [loading, setLoading] = useState(true);
-    const [db, setDb] = useState<IDBDatabase | null>(null);
+    const dbRef = useRef<IDBDatabase | null>(null);
+    const isMounted = useRef(true);
 
     useEffect(() => {
+        isMounted.current = true;
+        let db: IDBDatabase | null = null;
+
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
         request.onupgradeneeded = (event) => {
@@ -35,62 +32,90 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
         };
 
         request.onsuccess = (event) => {
-            const dbInstance = (event.target as IDBOpenDBRequest).result;
-            setDb(dbInstance);
+            db = (event.target as IDBOpenDBRequest).result;
+            dbRef.current = db;
 
-            const transaction = dbInstance.transaction(STORE_NAME, 'readonly');
+            // Database opened, now read data
+            const transaction = db.transaction(STORE_NAME, 'readonly');
             const store = transaction.objectStore(STORE_NAME);
             const getRequest = store.get(KEY);
 
-            promisifyRequest(getRequest)
-                .then((storedData) => {
-                    setStateData((storedData as T) || initialValue);
-                })
-                .catch((error) => {
-                    console.error('Failed to retrieve data from IndexedDB:', error);
-                    setStateData(initialValue);
-                })
-                .finally(() => {
+            getRequest.onsuccess = () => {
+                if (isMounted.current) {
+                    if (getRequest.result !== undefined) {
+                        setStateData(getRequest.result);
+                    } else {
+                        // Key doesn't exist yet, stick with initial value but don't write it yet
+                        // to avoid overwriting potential existing data in a race condition.
+                        setStateData(initialValue);
+                    }
                     setLoading(false);
-                });
+                }
+            };
+
+            getRequest.onerror = (e) => {
+                console.error('IndexedDB read error:', e);
+                if (isMounted.current) {
+                    setStateData(initialValue);
+                    setLoading(false);
+                }
+            };
         };
 
         request.onerror = (event) => {
-            console.error('IndexedDB error:', (event.target as IDBOpenDBRequest).error);
-            setStateData(initialValue);
-            setLoading(false);
+            console.error('IndexedDB open error:', (event.target as IDBOpenDBRequest).error);
+            if (isMounted.current) {
+                setLoading(false);
+            }
         };
-    }, []);
+
+        return () => {
+            isMounted.current = false;
+            if (db) {
+                db.close();
+            }
+        };
+    }, []); // Only run on mount
 
     const setData = useCallback(async (value: T) => {
-        // Optimistically update state
+        // Optimistic UI update
         setStateData(value);
 
-        if (!db) {
-            console.warn("Database not initialized, cannot save data.");
-            return;
-        }
-
         return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction(STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME);
-            const request = store.put(value, KEY);
+            const db = dbRef.current;
+            if (!db) {
+                // If DB isn't ready (extremely rare if loading is false), 
+                // we try to reopen it or fail.
+                const error = new Error("Database connection is not open.");
+                console.error(error.message);
+                reject(error);
+                return;
+            }
 
-            transaction.oncomplete = () => {
-                resolve();
-            };
+            try {
+                const transaction = db.transaction(STORE_NAME, 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.put(value, KEY);
 
-            transaction.onerror = (event) => {
-                console.error('IndexedDB transaction error:', event);
-                reject(transaction.error);
-            };
+                transaction.oncomplete = () => {
+                    resolve();
+                };
 
-            request.onerror = (event) => {
-                console.error('IndexedDB put request error:', event);
-                // transaction.onerror will also fire
-            };
+                transaction.onerror = (event) => {
+                    console.error('IndexedDB transaction error:', event);
+                    reject(transaction.error);
+                };
+
+                request.onerror = (event) => {
+                    console.error('IndexedDB put error:', event);
+                    reject((event.target as IDBRequest).error);
+                };
+            } catch (err) {
+                console.error("Error creating transaction:", err);
+                reject(err);
+            }
         });
-    }, [db]);
+    }, []);
 
     return { data, setData, loading };
 }

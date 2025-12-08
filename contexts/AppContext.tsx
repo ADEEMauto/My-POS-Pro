@@ -149,13 +149,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const storedUserId = localStorage.getItem('shopsync_user_id');
         
         if (storedUserId) {
-            // Find user in the loaded data
-            const user = appData.users.find(u => u.id === storedUserId);
-            if (user) {
-                console.log("Restoring session for user:", user.username);
-                setCurrentUser(user);
+            if (appData.users.length > 0) {
+                const user = appData.users.find(u => u.id === storedUserId);
+                if (user) {
+                    console.log("Restoring session for user:", user.username);
+                    setCurrentUser(user);
+                } else {
+                    console.warn("Stored user ID not found in database users list:", storedUserId);
+                }
             } else {
-                console.warn("Stored user ID not found in database:", storedUserId);
+                console.log("Database loaded but users list is empty. Waiting for setup.");
             }
         }
         
