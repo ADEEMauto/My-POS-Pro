@@ -140,18 +140,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Restore session
     useEffect(() => {
-        if (!dbLoading) {
+        // We only want to run this check once when the DB has finished loading
+        // and we haven't determined auth state yet.
+        if (!dbLoading && !isAuthReady) {
             const storedUserId = localStorage.getItem('shopsync_user_id');
-            if (storedUserId && appData.users.length > 0) {
+            if (storedUserId) {
+                // Try to find the user in the loaded data
                 const user = appData.users.find(u => u.id === storedUserId);
                 if (user) {
                     setCurrentUser(user);
+                } else {
+                    // Optional: If user ID is in localStorage but not in DB, 
+                    // it implies data mismatch or deletion. 
+                    // We leave currentUser as null (logged out).
                 }
             }
             setIsAuthReady(true);
         }
-    }, [dbLoading, appData]);
+    }, [dbLoading, isAuthReady, appData.users]);
 
+    // Global loading state: True if DB is loading OR auth check hasn't finished
     const loading = dbLoading || !isAuthReady;
 
     // Helper to update full state
