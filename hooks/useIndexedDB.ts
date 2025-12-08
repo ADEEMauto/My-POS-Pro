@@ -16,84 +16,85 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
     const [data, setStateData] = useState<T | null>(null);
     const [loading, setLoading] = useState(true);
     const dbRef = useRef<IDBDatabase | null>(null);
+    
+    // We use a ref to track if the hook is mounted to prevent state updates on unmounted components
+    // but we intentionally DO NOT close the DB connection on unmount to handle StrictMode correctly.
     const isMounted = useRef(true);
 
     useEffect(() => {
         isMounted.current = true;
-        let db: IDBDatabase | null = null;
-
         const request = indexedDB.open(DB_NAME, DB_VERSION);
 
         request.onupgradeneeded = (event) => {
-            const dbInstance = (event.target as IDBOpenDBRequest).result;
-            if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
-                dbInstance.createObjectStore(STORE_NAME);
+            const db = (event.target as IDBOpenDBRequest).result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME);
             }
         };
 
         request.onsuccess = (event) => {
-            db = (event.target as IDBOpenDBRequest).result;
+            const db = (event.target as IDBOpenDBRequest).result;
             dbRef.current = db;
 
-            // Database opened, now read data
+            // Generic error handler
+            db.onerror = (e: Event) => {
+                console.error("IndexedDB generic error:", (e.target as any).error);
+            };
+
             const transaction = db.transaction(STORE_NAME, 'readonly');
             const store = transaction.objectStore(STORE_NAME);
             const getRequest = store.get(KEY);
 
             getRequest.onsuccess = () => {
-                if (isMounted.current) {
-                    if (getRequest.result !== undefined) {
-                        setStateData(getRequest.result);
-                    } else {
-                        // Key doesn't exist yet, stick with initial value but don't write it yet
-                        // to avoid overwriting potential existing data in a race condition.
-                        setStateData(initialValue);
-                    }
-                    setLoading(false);
+                if (!isMounted.current) return;
+                
+                if (getRequest.result !== undefined) {
+                    console.log("IndexedDB: Data loaded successfully.");
+                    setStateData(getRequest.result);
+                } else {
+                    console.log("IndexedDB: No data found, using initial value.");
+                    setStateData(initialValue);
                 }
+                setLoading(false);
             };
 
             getRequest.onerror = (e) => {
-                console.error('IndexedDB read error:', e);
-                if (isMounted.current) {
-                    setStateData(initialValue);
-                    setLoading(false);
-                }
+                if (!isMounted.current) return;
+                console.error('IndexedDB: Error reading data:', e);
+                // Fallback to initial value on error, but don't save it yet
+                setStateData(initialValue);
+                setLoading(false);
             };
         };
 
         request.onerror = (event) => {
-            console.error('IndexedDB open error:', (event.target as IDBOpenDBRequest).error);
-            if (isMounted.current) {
-                setLoading(false);
-            }
+            if (!isMounted.current) return;
+            console.error('IndexedDB: Error opening database:', (event.target as IDBOpenDBRequest).error);
+            setLoading(false);
         };
 
         return () => {
             isMounted.current = false;
-            if (db) {
-                db.close();
-            }
+            // NOTE: We deliberately do NOT close the DB connection here.
+            // React Strict Mode mounts/unmounts components rapidly. Closing the DB here
+            // causes the subsequent mount to fail or encounter a "closing" connection.
+            // Browsers manage IDB connections efficiently; keeping it open is safe for this app.
         };
-    }, []); // Only run on mount
+    }, []); // Run once on mount
 
     const setData = useCallback(async (value: T) => {
-        // Optimistic UI update
+        // Optimistically update state
         setStateData(value);
 
         return new Promise<void>((resolve, reject) => {
-            const db = dbRef.current;
-            if (!db) {
-                // If DB isn't ready (extremely rare if loading is false), 
-                // we try to reopen it or fail.
-                const error = new Error("Database connection is not open.");
-                console.error(error.message);
-                reject(error);
+            if (!dbRef.current) {
+                console.error("IndexedDB: Database not ready, cannot save.");
+                reject(new Error("Database not ready"));
                 return;
             }
 
             try {
-                const transaction = db.transaction(STORE_NAME, 'readwrite');
+                const transaction = dbRef.current.transaction(STORE_NAME, 'readwrite');
                 const store = transaction.objectStore(STORE_NAME);
                 const request = store.put(value, KEY);
 
@@ -102,17 +103,17 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
                 };
 
                 transaction.onerror = (event) => {
-                    console.error('IndexedDB transaction error:', event);
+                    console.error('IndexedDB: Transaction error:', event);
                     reject(transaction.error);
                 };
 
                 request.onerror = (event) => {
-                    console.error('IndexedDB put error:', event);
+                    console.error('IndexedDB: Put request error:', event);
                     reject((event.target as IDBRequest).error);
                 };
-            } catch (err) {
-                console.error("Error creating transaction:", err);
-                reject(err);
+            } catch (error) {
+                console.error("IndexedDB: Failed to initiate transaction:", error);
+                reject(error);
             }
         });
     }, []);
