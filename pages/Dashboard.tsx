@@ -7,7 +7,7 @@ import { ShoppingCart, Archive, Layers, Users, BarChart2, DollarSign, Package, A
 import { formatCurrency } from '../utils/helpers';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-import { Product, DemandItem } from '../types';
+import { Product, DemandItem, Sale } from '../types';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -35,6 +35,33 @@ const QuickLink: React.FC<{ to: string; label: string; icon: React.ReactNode }> 
     </Link>
 );
 
+const calculateNetItemRevenue = (sale: Sale) => {
+    // 1. Calculate Item Subtotal (Sum of price * qty). Note: price is already discounted per item if item discount exists.
+    const netItemSubtotal = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    // 2. Calculate Charges Base
+    const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+    const revenueBaseForDiscount = netItemSubtotal + charges;
+
+    // 3. Calculate Overall Discount Value
+    const overallDiscountAmount = sale.overallDiscountType === 'fixed'
+        ? sale.overallDiscount
+        : (revenueBaseForDiscount * sale.overallDiscount) / 100;
+
+    const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
+
+    let itemRevenue = netItemSubtotal;
+
+    // 4. Distribute global discounts proportionally between items and services
+    if (revenueBaseForDiscount > 0) {
+        const itemRatio = netItemSubtotal / revenueBaseForDiscount;
+        itemRevenue -= (totalGlobalDiscounts * itemRatio);
+    } else {
+         itemRevenue -= totalGlobalDiscounts;
+    }
+    
+    return itemRevenue;
+};
 
 const Dashboard: React.FC = () => {
     const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems, customers } = useAppContext();
@@ -50,8 +77,8 @@ const Dashboard: React.FC = () => {
         
         sales.forEach(sale => {
             if (new Date(sale.date).toLocaleDateString('en-CA') === todayStr) {
-                // Use sale.total directly for accuracy. This represents the actual cash/receivable amount for the day.
-                salesTotal += sale.total; 
+                // Calculate net item revenue (excluding services and outside charges)
+                salesTotal += calculateNetItemRevenue(sale);
                 laborCharges += (sale.laborCharges || 0) + (sale.tuningCharges || 0);
             }
         });
@@ -326,7 +353,8 @@ const Dashboard: React.FC = () => {
         let salesTotal = 0;
         let laborChargesTotal = 0;
         sales.forEach(sale => {
-            salesTotal += sale.total;
+            // Calculate net item revenue (excluding services and outside charges)
+            salesTotal += calculateNetItemRevenue(sale);
             laborChargesTotal += (sale.laborCharges || 0) + (sale.tuningCharges || 0);
         });
         return { totalSales: salesTotal, totalLaborCharges: laborChargesTotal };
