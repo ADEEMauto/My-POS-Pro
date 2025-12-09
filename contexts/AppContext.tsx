@@ -552,22 +552,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         
         // Calculate Net Item Revenue for points
         // Strictly from items in inventory (excluding tuning, labor, outside services)
-        const subtotalAfterItemDiscounts = subtotal; // subtotal is items total after item discounts
-        const revenueBaseForAllocation = subtotalAfterItemDiscounts + totalCharges; // Items + Tuning + Labor
-
-        let netItemRevenue = subtotalAfterItemDiscounts;
+        // Subtract full global discount from items revenue
+        const subtotalAfterItemDiscounts = subtotal; // subtotal is items total after item-level discounts
         
-        if (revenueBaseForAllocation > 0) {
-            // Determine proportion of revenue coming from items vs services to allocate global discounts correctly
-            const itemRatio = subtotalAfterItemDiscounts / revenueBaseForAllocation;
-            const allocatedOverallDiscount = overallDiscountAmount * itemRatio;
-            const allocatedLoyaltyDiscount = loyaltyDiscount * itemRatio;
-            
-            // Deduct allocated discounts to get net revenue purely from items
-            netItemRevenue = subtotalAfterItemDiscounts - allocatedOverallDiscount - allocatedLoyaltyDiscount;
-        } else {
-             netItemRevenue = 0;
-        }
+        // Net Item Revenue = Item Subtotal - (Overall Discount + Loyalty Discount)
+        let netItemRevenue = subtotalAfterItemDiscounts - overallDiscountAmount - loyaltyDiscount;
         
         // Points are generated only from the net money earned from items
         const spendForPoints = Math.max(0, netItemRevenue);
@@ -768,13 +757,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
             const totalGlobalDiscounts = overallDiscountAmount + (updatedSale.loyaltyDiscount || 0);
 
-            let netItemRevenue = subtotalAfterItemDiscounts;
-             if (revenueBase > 0) {
-                const itemRatio = subtotalAfterItemDiscounts / revenueBase;
-                netItemRevenue -= (totalGlobalDiscounts * itemRatio);
-            } else {
-                 netItemRevenue = 0;
-            }
+            // New logic: subtract full discount from items
+            let netItemRevenue = subtotalAfterItemDiscounts - totalGlobalDiscounts;
             const spendForPoints = Math.max(0, netItemRevenue);
             
             // Re-eval earning rule
@@ -783,10 +767,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 pointsEarned = Math.floor((spendForPoints / 100) * applicableRule.pointsPerHundred);
             }
             
-            // Re-apply promotion if it was applied (keep same promotion or check current date? 
-            // Better to keep same promo multiplier if it exists on the sale object, or re-eval active promo?
-            // For simplicity, let's assume we re-evaluate active promotions based on CURRENT date or keep existing multiplier if stored.
-            // But updatedSale passed from UI might not have recalculated points. Let's rely on standard logic.
+            // Re-apply promotion if it was applied
             const now = new Date();
              const activePromo = appData.promotions.find(p => new Date(p.startDate) <= now && new Date(p.endDate) >= now);
             if (activePromo) {
@@ -820,7 +801,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     customerId: customer.id,
                     type: 'redeemed',
                     points: updatedSale.redeemedPoints!,
-                    date: new Date().toISOString(), // Use current time for edit log or keep original? Keeping original date might be confusing if points change. Using new txn.
+                    date: new Date().toISOString(), 
                     relatedSaleId: updatedSale.id,
                     pointsBefore: customer.loyaltyPoints + (updatedSale.redeemedPoints || 0) - pointsEarned, // Approximation
                     pointsAfter: customer.loyaltyPoints - pointsEarned // Approximation

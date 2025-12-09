@@ -80,11 +80,10 @@ const calculateNetItemRevenue = (sale: Sale) => {
 
     // 4. Calculate Net Revenue strictly from Items.
     // Logic: Item Subtotal - Full Global Discount.
-    // We exclude service charges (tuning/labor) from the revenue, 
-    // but subtract the global discount fully from this amount to get the net.
     const netItemRevenue = netItemSubtotal - totalGlobalDiscounts;
     
-    return Math.round(Math.max(0, netItemRevenue));
+    // Allow negative values for consistent aggregation
+    return Math.round(netItemRevenue);
 };
 
 const Reports: React.FC = () => {
