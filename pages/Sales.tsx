@@ -31,8 +31,8 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; onSave: (update
     const loyaltyDiscount = sale.loyaltyDiscount || 0; // Not editable currently
     const totalOutsideServices = sale.totalOutsideServices || 0; // Not editable currently for simplicity
     
-    const total = Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServices;
-    const balanceDue = Math.max(0, (total + (sale.previousBalanceBroughtForward || 0)) - amountPaid);
+    const total = Math.round(Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServices);
+    const balanceDue = Math.round(Math.max(0, (total + (sale.previousBalanceBroughtForward || 0)) - amountPaid));
 
     const handleItemChange = (index: number, field: keyof SaleItem, value: any) => {
         const newItems = [...items];

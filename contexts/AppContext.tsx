@@ -498,7 +498,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         
         const totalOutsideServicesCost = outsideServices.reduce((sum, s) => sum + s.amount, 0);
 
-        const total = Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServicesCost;
+        const rawTotal = Math.max(0, (subtotalWithCharges - overallDiscountAmount) - loyaltyDiscount) + totalOutsideServicesCost;
+        const total = Math.round(rawTotal);
         
         // Handle Customer Logic
         const normalizedBike = customerDetails.bikeNumber.replace(/\s+/g, '').toUpperCase();
@@ -542,7 +543,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         const finalAmountDue = total + previousBalance;
-        const balanceDue = Math.max(0, finalAmountDue - amountPaid);
+        const balanceDue = Math.round(Math.max(0, finalAmountDue - amountPaid));
         const paymentStatus = balanceDue <= 0 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid');
 
         // Loyalty Points Calculation
