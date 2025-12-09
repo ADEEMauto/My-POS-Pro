@@ -61,6 +61,35 @@ const VerticalCenterLabel = (props: any) => {
     );
 };
 
+// Helper to calculate revenue strictly from items (excluding services and allocating discounts)
+const calculateNetItemRevenue = (sale: Sale) => {
+    // 1. Calculate Item Subtotal (Sum of price * qty). Note: price is already discounted per item if item discount exists.
+    const netItemSubtotal = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    // 2. Calculate Charges Base
+    const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+    const revenueBaseForDiscount = netItemSubtotal + charges;
+
+    // 3. Calculate Overall Discount Value
+    const overallDiscountAmount = sale.overallDiscountType === 'fixed'
+        ? sale.overallDiscount
+        : (revenueBaseForDiscount * sale.overallDiscount) / 100;
+
+    const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
+
+    let itemRevenue = netItemSubtotal;
+
+    // 4. Distribute global discounts proportionally between items and services
+    if (revenueBaseForDiscount > 0) {
+        const itemRatio = netItemSubtotal / revenueBaseForDiscount;
+        itemRevenue -= (totalGlobalDiscounts * itemRatio);
+    } else {
+         itemRevenue -= totalGlobalDiscounts;
+    }
+    
+    return Math.max(0, itemRevenue);
+};
+
 const Reports: React.FC = () => {
     const { sales, inventory, currentUser, categories, shopInfo } = useAppContext();
     const [startDate, setStartDate] = useState('');
@@ -99,7 +128,8 @@ const Reports: React.FC = () => {
         const dailySales: { [key: string]: number } = {};
         filteredSales.forEach(sale => {
             const date = new Date(sale.date).toLocaleDateString('en-CA'); // YYYY-MM-DD for sorting
-            dailySales[date] = (dailySales[date] || 0) + sale.total;
+            // Use net item revenue instead of total sale amount
+            dailySales[date] = (dailySales[date] || 0) + calculateNetItemRevenue(sale);
         });
         return Object.keys(dailySales).map(date => ({ date, sales: dailySales[date] })).sort((a,b) => a.date.localeCompare(b.date));
     }, [filteredSales]);
@@ -145,28 +175,7 @@ const Reports: React.FC = () => {
     const itemSalesRevenue = useMemo(() => {
         let total = 0;
         filteredSales.forEach(sale => {
-            // Recalculate NET item subtotal directly from items
-            const netItemSubtotal = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-            const revenueBaseForDiscount = netItemSubtotal + charges;
-
-            const overallDiscountAmount = sale.overallDiscountType === 'fixed'
-                ? sale.overallDiscount
-                : (revenueBaseForDiscount * sale.overallDiscount) / 100;
-
-            const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
-
-            let itemRevenue = netItemSubtotal;
-            
-            // Distribute global discounts proportionally between items and services
-            if (revenueBaseForDiscount > 0) {
-                const itemRatio = netItemSubtotal / revenueBaseForDiscount;
-                itemRevenue -= (totalGlobalDiscounts * itemRatio);
-            } else {
-                 itemRevenue -= totalGlobalDiscounts;
-            }
-            
-            total += itemRevenue;
+            total += calculateNetItemRevenue(sale);
         });
         return total;
     }, [filteredSales]);
@@ -174,26 +183,8 @@ const Reports: React.FC = () => {
     const { todaysProfit, overallProfit } = useMemo(() => {
         const calculateProfit = (salesList: Sale[]) => {
             return salesList.reduce((acc, sale) => {
-                // 1. Calculate Item Revenue (Net) strictly for items
-                const netItemSubtotal = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-                const revenueBaseForDiscount = netItemSubtotal + charges;
-
-                const overallDiscountAmount = sale.overallDiscountType === 'fixed'
-                    ? sale.overallDiscount
-                    : (revenueBaseForDiscount * sale.overallDiscount) / 100;
-
-                const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
-
-                let itemRevenue = netItemSubtotal;
-
-                // Distribute global discounts proportionally between items and services to get accurate item revenue
-                if (revenueBaseForDiscount > 0) {
-                    const itemRatio = netItemSubtotal / revenueBaseForDiscount;
-                    itemRevenue -= (totalGlobalDiscounts * itemRatio);
-                } else {
-                    itemRevenue -= totalGlobalDiscounts;
-                }
+                // 1. Calculate Net Item Revenue
+                const itemRevenue = calculateNetItemRevenue(sale);
 
                 // 2. Calculate Cost of Goods Sold (COGS)
                 const cogs = sale.items.reduce((sum, item) => sum + ((item.purchasePrice || 0) * item.quantity), 0);
@@ -436,15 +427,15 @@ const Reports: React.FC = () => {
 
             {/* Total Sales Chart */}
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-                <h2 className="text-xl font-semibold mb-4">Total Sales Overview</h2>
+                <h2 className="text-xl font-semibold mb-4">Total Inventory Sales Overview</h2>
                  <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={salesDataForChart} margin={{ top: 50, right: 30, left: 20, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" />
                         <YAxis tickFormatter={(value) => `Rs.${value / 1000}k`} />
-                        <Tooltip formatter={(value: number) => [formatCurrency(value), 'Total Sales']} />
+                        <Tooltip formatter={(value: number) => [formatCurrency(value), 'Item Sales']} />
                         <Legend />
-                        <Bar dataKey="sales" name="Total Sales" fill="#ff4747" label={<VerticalTopLabel />} />
+                        <Bar dataKey="sales" name="Inventory Sales" fill="#ff4747" label={<VerticalTopLabel />} />
                     </BarChart>
                 </ResponsiveContainer>
             </div>
