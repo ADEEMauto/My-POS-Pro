@@ -161,17 +161,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Verify currentUser against DB when loaded
         if (currentUser) {
             const dbUser = appData.users.find(u => u.id === currentUser.id);
-            if (!dbUser) {
-                console.warn("User in local storage not found in DB. Logging out.");
-                setCurrentUser(null);
-                localStorage.removeItem('shopsync_current_user');
-                localStorage.removeItem('shopsync_user_id');
-            } else {
+            if (dbUser) {
                 // Update local user state with fresh DB data if needed (e.g. role change)
                 if (JSON.stringify(dbUser) !== JSON.stringify(currentUser)) {
                     setCurrentUser(dbUser);
                     localStorage.setItem('shopsync_current_user', JSON.stringify(dbUser));
                 }
+            } else {
+                // User is in LocalStorage but not found in DB data.
+                // This can happen if DB failed to load or data was reset.
+                // We TRUST LocalStorage to maintain the session and DO NOT log out.
+                console.warn("User in local storage not found in loaded DB. Preserving session.");
             }
         }
         

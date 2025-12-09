@@ -340,24 +340,6 @@ const Sales: React.FC = () => {
         return [...filteredSales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [filteredSales]);
 
-    // Calculate totals for the displayed sales
-    const totals = useMemo(() => {
-        let totalItems = 0;
-        let totalServices = 0;
-        let totalExternal = 0;
-        let totalGrand = 0;
-
-        filteredSales.forEach(sale => {
-            const { netItems, netInternalServices, externalServices, calculatedTotal } = getSaleBreakdown(sale);
-            totalItems += netItems;
-            totalServices += netInternalServices;
-            totalExternal += externalServices;
-            totalGrand += calculatedTotal;
-        });
-
-        return { totalItems, totalServices, totalExternal, totalGrand };
-    }, [filteredSales]);
-
     const handleReverseConfirm = (itemsToReturn: SaleItem[]) => {
         if (saleToReverse) {
             reverseSale(saleToReverse.id, itemsToReturn);
@@ -435,25 +417,6 @@ const Sales: React.FC = () => {
                             <th scope="col" className="px-6 py-3 text-right">External Services</th>
                             <th scope="col" className="px-6 py-3 text-right">Total</th>
                             <th scope="col" className="px-6 py-3 text-center">Actions</th>
-                        </tr>
-                        {/* Summary Row for Totals */}
-                        <tr className="bg-gray-100 font-bold text-gray-800 border-b-2 border-gray-200">
-                            <td colSpan={2} className="px-6 py-3 text-right uppercase tracking-wider text-xs">
-                                Period Totals:
-                            </td>
-                            <td className="px-6 py-3 text-right text-green-700">
-                                {formatCurrency(totals.totalItems)}
-                            </td>
-                            <td className="px-6 py-3 text-right text-blue-700">
-                                {formatCurrency(totals.totalServices)}
-                            </td>
-                            <td className="px-6 py-3 text-right text-cyan-700">
-                                {formatCurrency(totals.totalExternal)}
-                            </td>
-                            <td className="px-6 py-3 text-right text-gray-900 text-base">
-                                {formatCurrency(totals.totalGrand)}
-                            </td>
-                            <td></td>
                         </tr>
                     </thead>
                     <tbody>
