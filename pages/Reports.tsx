@@ -145,9 +145,10 @@ const Reports: React.FC = () => {
     const itemSalesRevenue = useMemo(() => {
         let total = 0;
         filteredSales.forEach(sale => {
-            const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
+            // Recalculate NET item subtotal directly from items
+            const netItemSubtotal = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-            const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
+            const revenueBaseForDiscount = netItemSubtotal + charges;
 
             const overallDiscountAmount = sale.overallDiscountType === 'fixed'
                 ? sale.overallDiscount
@@ -155,11 +156,11 @@ const Reports: React.FC = () => {
 
             const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
 
-            let itemRevenue = subtotalAfterItemDiscounts;
+            let itemRevenue = netItemSubtotal;
             
             // Distribute global discounts proportionally between items and services
             if (revenueBaseForDiscount > 0) {
-                const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
+                const itemRatio = netItemSubtotal / revenueBaseForDiscount;
                 itemRevenue -= (totalGlobalDiscounts * itemRatio);
             } else {
                  itemRevenue -= totalGlobalDiscounts;
@@ -174,9 +175,9 @@ const Reports: React.FC = () => {
         const calculateProfit = (salesList: Sale[]) => {
             return salesList.reduce((acc, sale) => {
                 // 1. Calculate Item Revenue (Net) strictly for items
-                const subtotalAfterItemDiscounts = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const netItemSubtotal = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                 const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-                const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
+                const revenueBaseForDiscount = netItemSubtotal + charges;
 
                 const overallDiscountAmount = sale.overallDiscountType === 'fixed'
                     ? sale.overallDiscount
@@ -184,11 +185,11 @@ const Reports: React.FC = () => {
 
                 const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
 
-                let itemRevenue = subtotalAfterItemDiscounts;
+                let itemRevenue = netItemSubtotal;
 
                 // Distribute global discounts proportionally between items and services to get accurate item revenue
                 if (revenueBaseForDiscount > 0) {
-                    const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
+                    const itemRatio = netItemSubtotal / revenueBaseForDiscount;
                     itemRevenue -= (totalGlobalDiscounts * itemRatio);
                 } else {
                     itemRevenue -= totalGlobalDiscounts;

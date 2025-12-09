@@ -44,32 +44,15 @@ const Dashboard: React.FC = () => {
     const [isOutOfStockModalOpen, setOutOfStockModalOpen] = useState(false);
 
     const { todaysSalesTotal, todaysLaborCharges } = useMemo(() => {
-        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format
+        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format based on local timezone
         let salesTotal = 0;
         let laborCharges = 0;
+        
         sales.forEach(sale => {
             if (new Date(sale.date).toLocaleDateString('en-CA') === todayStr) {
-                const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
-                const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-                const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
-
-                const overallDiscountAmount = sale.overallDiscountType === 'fixed'
-                    ? sale.overallDiscount
-                    : (revenueBaseForDiscount * sale.overallDiscount) / 100;
-
-                const totalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
-
-                let itemRevenue = subtotalAfterItemDiscounts;
-                if(revenueBaseForDiscount > 0) {
-                     const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
-                     itemRevenue -= (totalDiscounts * itemRatio);
-                } else {
-                     // If only items exist, all discount applies to them
-                     itemRevenue -= totalDiscounts;
-                }
-                
-                salesTotal += itemRevenue;
-                laborCharges += charges; // This shows gross labor/tuning charges
+                // Use sale.total directly for accuracy. This represents the actual cash/receivable amount for the day.
+                salesTotal += sale.total; 
+                laborCharges += (sale.laborCharges || 0) + (sale.tuningCharges || 0);
             }
         });
         return { todaysSalesTotal: salesTotal, todaysLaborCharges: laborCharges };
@@ -343,26 +326,8 @@ const Dashboard: React.FC = () => {
         let salesTotal = 0;
         let laborChargesTotal = 0;
         sales.forEach(sale => {
-            const subtotalAfterItemDiscounts = sale.subtotal - (sale.totalItemDiscounts || 0);
-            const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-            const revenueBaseForDiscount = subtotalAfterItemDiscounts + charges;
-
-            const overallDiscountAmount = sale.overallDiscountType === 'fixed'
-                ? sale.overallDiscount
-                : (revenueBaseForDiscount * sale.overallDiscount) / 100;
-            
-            const totalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
-
-            let itemRevenue = subtotalAfterItemDiscounts;
-            if(revenueBaseForDiscount > 0) {
-                 const itemRatio = subtotalAfterItemDiscounts / revenueBaseForDiscount;
-                 itemRevenue -= (totalDiscounts * itemRatio);
-            } else {
-                 itemRevenue -= totalDiscounts;
-            }
-
-            salesTotal += itemRevenue;
-            laborChargesTotal += charges;
+            salesTotal += sale.total;
+            laborChargesTotal += (sale.laborCharges || 0) + (sale.tuningCharges || 0);
         });
         return { totalSales: salesTotal, totalLaborCharges: laborChargesTotal };
     }, [sales]);
