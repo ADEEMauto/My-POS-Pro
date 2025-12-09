@@ -3,12 +3,44 @@ import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Sale, SaleItem } from '../types';
 import { formatCurrency, formatDate } from '../utils/helpers';
-import { Search, RotateCcw, FileText, Eye, AlertCircle, Edit, Trash2 } from 'lucide-react';
+import { Search, RotateCcw, FileText, Eye, AlertCircle, Edit, Trash2, Calendar, X } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import Receipt from '../components/Receipt';
 import toast from 'react-hot-toast';
+
+// Helper to calculate revenue split
+const getSaleBreakdown = (sale: Sale) => {
+    const itemsGross = sale.subtotal; 
+    const tuning = sale.tuningCharges || 0;
+    const labor = sale.laborCharges || 0;
+    const internalServicesGross = tuning + labor;
+    const basis = itemsGross + internalServicesGross;
+
+    // Calculate global discount amount applied
+    const overallDiscAmount = sale.overallDiscountType === 'fixed'
+        ? sale.overallDiscount
+        : (basis * sale.overallDiscount / 100);
+    
+    const totalGlobalDiscount = overallDiscAmount + (sale.loyaltyDiscount || 0);
+
+    // Subtract full discount from items, do not allocate to services.
+    const netItems = itemsGross - totalGlobalDiscount;
+    const netInternalServices = internalServicesGross; 
+
+    const externalServices = sale.totalOutsideServices || 0;
+    
+    // Sum of parts (Col 3 + 4 + 5)
+    const calculatedTotal = netItems + netInternalServices + externalServices;
+
+    return {
+        netItems,
+        netInternalServices,
+        externalServices,
+        calculatedTotal
+    };
+};
 
 // --- Edit Sale Modal ---
 const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; onSave: (updatedSale: Sale) => void }> = ({ sale, onClose, onSave }) => {
@@ -268,6 +300,9 @@ const ReverseSaleModal: React.FC<{ sale: Sale; onClose: () => void; onConfirm: (
 const Sales: React.FC = () => {
     const { sales, reverseSale, updateSale, currentUser } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    
     const [viewingSale, setViewingSale] = useState<Sale | null>(null);
     const [saleToReverse, setSaleToReverse] = useState<Sale | null>(null);
     const [saleToEdit, setSaleToEdit] = useState<Sale | null>(null);
@@ -275,17 +310,52 @@ const Sales: React.FC = () => {
     const isMaster = currentUser?.role === 'master';
 
     const filteredSales = useMemo(() => {
-        if (!searchTerm) return sales;
-        const lowercasedSearch = searchTerm.toLowerCase();
-        return sales.filter(sale => 
-            sale.id.toLowerCase().includes(lowercasedSearch) ||
-            sale.customerName.toLowerCase().includes(lowercasedSearch) ||
-            (sale.bikeNumber && sale.bikeNumber.toLowerCase().includes(lowercasedSearch))
-        );
-    }, [sales, searchTerm]);
+        let filtered = sales;
+
+        // Date Filtering
+        if (startDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            filtered = filtered.filter(s => new Date(s.date) >= start);
+        }
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            filtered = filtered.filter(s => new Date(s.date) <= end);
+        }
+
+        if (searchTerm) {
+            const lowercasedSearch = searchTerm.toLowerCase();
+            filtered = filtered.filter(sale => 
+                sale.id.toLowerCase().includes(lowercasedSearch) ||
+                sale.customerName.toLowerCase().includes(lowercasedSearch) ||
+                (sale.bikeNumber && sale.bikeNumber.toLowerCase().includes(lowercasedSearch))
+            );
+        }
+
+        return filtered;
+    }, [sales, searchTerm, startDate, endDate]);
 
     const sortedSales = useMemo(() => {
         return [...filteredSales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [filteredSales]);
+
+    // Calculate totals for the displayed sales
+    const totals = useMemo(() => {
+        let totalItems = 0;
+        let totalServices = 0;
+        let totalExternal = 0;
+        let totalGrand = 0;
+
+        filteredSales.forEach(sale => {
+            const { netItems, netInternalServices, externalServices, calculatedTotal } = getSaleBreakdown(sale);
+            totalItems += netItems;
+            totalServices += netInternalServices;
+            totalExternal += externalServices;
+            totalGrand += calculatedTotal;
+        });
+
+        return { totalItems, totalServices, totalExternal, totalGrand };
     }, [filteredSales]);
 
     const handleReverseConfirm = (itemsToReturn: SaleItem[]) => {
@@ -301,45 +371,18 @@ const Sales: React.FC = () => {
     const handleUpdateSale = (updatedSale: Sale) => {
         updateSale(updatedSale);
     }
-    
-    // Helper to calculate revenue split
-    const getSaleBreakdown = (sale: Sale) => {
-        const itemsGross = sale.subtotal; // Items total after item-level discounts
-        const tuning = sale.tuningCharges || 0;
-        const labor = sale.laborCharges || 0;
-        const internalServicesGross = tuning + labor;
-        const basis = itemsGross + internalServicesGross;
 
-        // Calculate global discount amount applied
-        const overallDiscAmount = sale.overallDiscountType === 'fixed'
-            ? sale.overallDiscount
-            : (basis * sale.overallDiscount / 100);
-        
-        const totalGlobalDiscount = overallDiscAmount + (sale.loyaltyDiscount || 0);
-
-        // NEW LOGIC: Subtract full discount from items, do not allocate to services.
-        const netItems = itemsGross - totalGlobalDiscount;
-        const netInternalServices = internalServicesGross; 
-
-        const externalServices = sale.totalOutsideServices || 0;
-        
-        // Sum of parts (Col 3 + 4 + 5)
-        const calculatedTotal = netItems + netInternalServices + externalServices;
-
-        return {
-            netItems,
-            netInternalServices,
-            externalServices,
-            calculatedTotal
-        };
-    };
+    const clearDates = () => {
+        setStartDate('');
+        setEndDate('');
+    }
 
     return (
         <div className="space-y-6">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales History</h1>
 
-            <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-md">
-                 <div className="w-full md:w-96">
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end bg-white p-4 rounded-lg shadow-md gap-4">
+                 <div className="w-full xl:w-96">
                     <Input
                         placeholder="Search by Sale ID, Name or Bike..."
                         value={searchTerm}
@@ -347,7 +390,36 @@ const Sales: React.FC = () => {
                         icon={<Search className="w-5 h-5 text-gray-400" />}
                     />
                 </div>
-                <div className="text-sm text-gray-500">
+                
+                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 w-full xl:w-auto">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="flex-grow">
+                            <label className="block text-xs text-gray-500 mb-1">From</label>
+                            <input 
+                                type="date" 
+                                value={startDate}
+                                onChange={e => setStartDate(e.target.value)}
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"
+                            />
+                        </div>
+                        <div className="flex-grow">
+                            <label className="block text-xs text-gray-500 mb-1">To</label>
+                            <input 
+                                type="date" 
+                                value={endDate}
+                                onChange={e => setEndDate(e.target.value)}
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"
+                            />
+                        </div>
+                         {(startDate || endDate) && (
+                            <Button variant="secondary" onClick={clearDates} className="mt-5" title="Clear Date Filter">
+                                <X size={16}/>
+                            </Button>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="text-sm text-gray-500 self-center xl:self-end">
                     Showing {sortedSales.length} records
                 </div>
             </div>
@@ -363,6 +435,25 @@ const Sales: React.FC = () => {
                             <th scope="col" className="px-6 py-3 text-right">External Services</th>
                             <th scope="col" className="px-6 py-3 text-right">Total</th>
                             <th scope="col" className="px-6 py-3 text-center">Actions</th>
+                        </tr>
+                        {/* Summary Row for Totals */}
+                        <tr className="bg-gray-100 font-bold text-gray-800 border-b-2 border-gray-200">
+                            <td colSpan={2} className="px-6 py-3 text-right uppercase tracking-wider text-xs">
+                                Period Totals:
+                            </td>
+                            <td className="px-6 py-3 text-right text-green-700">
+                                {formatCurrency(totals.totalItems)}
+                            </td>
+                            <td className="px-6 py-3 text-right text-blue-700">
+                                {formatCurrency(totals.totalServices)}
+                            </td>
+                            <td className="px-6 py-3 text-right text-cyan-700">
+                                {formatCurrency(totals.totalExternal)}
+                            </td>
+                            <td className="px-6 py-3 text-right text-gray-900 text-base">
+                                {formatCurrency(totals.totalGrand)}
+                            </td>
+                            <td></td>
                         </tr>
                     </thead>
                     <tbody>
