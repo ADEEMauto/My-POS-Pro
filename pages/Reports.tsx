@@ -63,31 +63,28 @@ const VerticalCenterLabel = (props: any) => {
 
 // Helper to calculate revenue strictly from items (excluding services and allocating discounts)
 const calculateNetItemRevenue = (sale: Sale) => {
-    // 1. Calculate Item Subtotal (Sum of price * qty). Note: price is already discounted per item if item discount exists.
+    // 1. Calculate Item Subtotal (Sum of price * qty). 
+    // Note: item.price already includes item-level discounts.
     const netItemSubtotal = sale.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     
-    // 2. Calculate Charges Base
+    // 2. Calculate Charges (needed to calculate percentage-based overall discount amount)
     const charges = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
-    const revenueBaseForDiscount = netItemSubtotal + charges;
+    const subtotalWithCharges = netItemSubtotal + charges;
 
     // 3. Calculate Overall Discount Value
     const overallDiscountAmount = sale.overallDiscountType === 'fixed'
         ? sale.overallDiscount
-        : (revenueBaseForDiscount * sale.overallDiscount) / 100;
+        : (subtotalWithCharges * sale.overallDiscount) / 100;
 
     const totalGlobalDiscounts = overallDiscountAmount + (sale.loyaltyDiscount || 0);
 
-    let itemRevenue = netItemSubtotal;
-
-    // 4. Distribute global discounts proportionally between items and services
-    if (revenueBaseForDiscount > 0) {
-        const itemRatio = netItemSubtotal / revenueBaseForDiscount;
-        itemRevenue -= (totalGlobalDiscounts * itemRatio);
-    } else {
-         itemRevenue -= totalGlobalDiscounts;
-    }
+    // 4. Calculate Net Revenue strictly from Items.
+    // Logic: Item Subtotal - Full Global Discount.
+    // We exclude service charges (tuning/labor) from the revenue, 
+    // but subtract the global discount fully from this amount to get the net.
+    const netItemRevenue = netItemSubtotal - totalGlobalDiscounts;
     
-    return Math.max(0, itemRevenue);
+    return Math.round(Math.max(0, netItemRevenue));
 };
 
 const Reports: React.FC = () => {
