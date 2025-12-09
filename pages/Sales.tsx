@@ -301,6 +301,41 @@ const Sales: React.FC = () => {
     const handleUpdateSale = (updatedSale: Sale) => {
         updateSale(updatedSale);
     }
+    
+    // Helper to calculate revenue split
+    const getSaleBreakdown = (sale: Sale) => {
+        const itemsGross = sale.subtotal; // Items total after item-level discounts
+        const tuning = sale.tuningCharges || 0;
+        const labor = sale.laborCharges || 0;
+        const internalServicesGross = tuning + labor;
+        const basis = itemsGross + internalServicesGross;
+
+        // Calculate global discount amount applied
+        const overallDiscAmount = sale.overallDiscountType === 'fixed'
+            ? sale.overallDiscount
+            : (basis * sale.overallDiscount / 100);
+        
+        const totalGlobalDiscount = overallDiscAmount + (sale.loyaltyDiscount || 0);
+
+        let netItems = itemsGross;
+        let netInternalServices = internalServicesGross;
+
+        // Distribute global discount proportionally
+        if (basis > 0 && totalGlobalDiscount > 0) {
+            const itemRatio = itemsGross / basis;
+            // Subtract allocated discount from gross
+            netItems = itemsGross - (totalGlobalDiscount * itemRatio);
+            netInternalServices = internalServicesGross - (totalGlobalDiscount * (1 - itemRatio));
+        }
+
+        const externalServices = sale.totalOutsideServices || 0;
+        
+        return {
+            netItems: Math.max(0, netItems),
+            netInternalServices: Math.max(0, netInternalServices),
+            externalServices
+        };
+    };
 
     return (
         <div className="space-y-6">
@@ -326,14 +361,18 @@ const Sales: React.FC = () => {
                         <tr>
                             <th scope="col" className="px-6 py-3">Sale ID / Date</th>
                             <th scope="col" className="px-6 py-3">Customer</th>
-                            <th scope="col" className="px-6 py-3 text-right">Total</th>
-                            <th scope="col" className="px-6 py-3 text-center">Status</th>
+                            <th scope="col" className="px-6 py-3 text-right">Items (Net)</th>
+                            <th scope="col" className="px-6 py-3 text-right">Services (Net)</th>
+                            <th scope="col" className="px-6 py-3 text-right">Ext. Services</th>
+                            <th scope="col" className="px-6 py-3 text-right">Total Bill</th>
                             <th scope="col" className="px-6 py-3 text-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {sortedSales.length > 0 ? (
-                            sortedSales.map(sale => (
+                            sortedSales.map(sale => {
+                                const { netItems, netInternalServices, externalServices } = getSaleBreakdown(sale);
+                                return (
                                 <tr key={sale.id} className="bg-white border-b hover:bg-gray-50">
                                     <td className="px-6 py-4">
                                         <div className="font-mono font-medium text-gray-900">{sale.id.slice(0, 8)}...</div>
@@ -343,17 +382,17 @@ const Sales: React.FC = () => {
                                         <div className="font-semibold text-gray-800">{sale.customerName}</div>
                                         <div className="text-xs text-gray-500 font-mono">{sale.bikeNumber || 'No Bike Info'}</div>
                                     </td>
+                                    <td className="px-6 py-4 text-right text-gray-700">
+                                        {formatCurrency(netItems)}
+                                    </td>
+                                    <td className="px-6 py-4 text-right text-gray-700">
+                                        {formatCurrency(netInternalServices)}
+                                    </td>
+                                    <td className="px-6 py-4 text-right text-gray-700">
+                                        {externalServices > 0 ? formatCurrency(externalServices) : '-'}
+                                    </td>
                                     <td className="px-6 py-4 text-right font-bold text-gray-900">
                                         {formatCurrency(sale.total)}
-                                    </td>
-                                    <td className="px-6 py-4 text-center">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                            sale.paymentStatus === 'Paid' ? 'bg-green-100 text-green-800' :
-                                            sale.paymentStatus === 'Partial' ? 'bg-yellow-100 text-yellow-800' :
-                                            'bg-red-100 text-red-800'
-                                        }`}>
-                                            {sale.paymentStatus}
-                                        </span>
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         <div className="flex justify-center gap-2">
@@ -371,10 +410,10 @@ const Sales: React.FC = () => {
                                         </div>
                                     </td>
                                 </tr>
-                            ))
+                            )})
                         ) : (
                             <tr>
-                                <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                                <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                                     No sales found matching your criteria.
                                 </td>
                             </tr>
