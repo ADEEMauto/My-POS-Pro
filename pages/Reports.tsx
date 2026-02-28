@@ -346,6 +346,46 @@ const Reports: React.FC = () => {
     };
 
 
+    const [itemSearchTerm, setItemSearchTerm] = useState('');
+
+    const soldItemsLog = useMemo(() => {
+        const logs: { 
+            saleId: string, 
+            date: string, 
+            customerName: string, 
+            itemName: string, 
+            quantity: number, 
+            price: number,
+            total: number
+        }[] = [];
+
+        filteredSales.forEach(sale => {
+            sale.items.forEach(item => {
+                logs.push({
+                    saleId: sale.id,
+                    date: sale.date,
+                    customerName: sale.customerName,
+                    itemName: item.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    total: item.price * item.quantity
+                });
+            });
+        });
+
+        return logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [filteredSales]);
+
+    const filteredSoldItemsLog = useMemo(() => {
+        if (!itemSearchTerm) return soldItemsLog;
+        const lower = itemSearchTerm.toLowerCase();
+        return soldItemsLog.filter(log => 
+            log.itemName.toLowerCase().includes(lower) || 
+            log.customerName.toLowerCase().includes(lower) ||
+            log.saleId.toLowerCase().includes(lower)
+        );
+    }, [soldItemsLog, itemSearchTerm]);
+
     if (!isMaster) {
         return (
             <div className="text-center p-8 bg-white rounded-lg shadow-md">
@@ -538,6 +578,55 @@ const Reports: React.FC = () => {
                                         </tr>
                                     );
                             })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md col-span-1 lg:col-span-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                    <h2 className="text-xl font-semibold">Sold Items Detailed Log</h2>
+                    <div className="w-full sm:w-64">
+                        <input 
+                            type="text" 
+                            placeholder="Search items, customers..." 
+                            value={itemSearchTerm}
+                            onChange={e => setItemSearchTerm(e.target.value)}
+                            className="w-full p-2 border rounded-md text-sm"
+                        />
+                    </div>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm text-left text-gray-500">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                            <tr>
+                                <th scope="col" className="px-4 py-3">Date</th>
+                                <th scope="col" className="px-4 py-3">Item Name</th>
+                                <th scope="col" className="px-4 py-3">Customer</th>
+                                <th scope="col" className="px-4 py-3 text-right">Qty</th>
+                                <th scope="col" className="px-4 py-3 text-right">Price</th>
+                                <th scope="col" className="px-4 py-3 text-right">Total</th>
+                                <th scope="col" className="px-4 py-3">Sale ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredSoldItemsLog.length > 0 ? (
+                                filteredSoldItemsLog.map((log, idx) => (
+                                    <tr key={`${log.saleId}-${idx}`} className="bg-white border-b hover:bg-gray-50">
+                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-2 font-medium text-gray-900">{log.itemName}</td>
+                                        <td className="px-4 py-2">{log.customerName}</td>
+                                        <td className="px-4 py-2 text-right">{log.quantity}</td>
+                                        <td className="px-4 py-2 text-right">{formatCurrency(log.price)}</td>
+                                        <td className="px-4 py-2 text-right font-semibold">{formatCurrency(log.total)}</td>
+                                        <td className="px-4 py-2 font-mono text-xs">{log.saleId.slice(0, 8)}...</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No sold items found.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

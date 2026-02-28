@@ -329,7 +329,8 @@ const Sales: React.FC = () => {
             filtered = filtered.filter(sale => 
                 sale.id.toLowerCase().includes(lowercasedSearch) ||
                 sale.customerName.toLowerCase().includes(lowercasedSearch) ||
-                (sale.bikeNumber && sale.bikeNumber.toLowerCase().includes(lowercasedSearch))
+                (sale.bikeNumber && sale.bikeNumber.toLowerCase().includes(lowercasedSearch)) ||
+                sale.items.some(item => item.name.toLowerCase().includes(lowercasedSearch))
             );
         }
 

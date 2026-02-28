@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { Product } from '../types';
 import { formatCurrency, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye, PackagePlus, Copy } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye, PackagePlus, Copy, TrendingUp } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -334,6 +334,89 @@ const AddStockModal: React.FC<{
 };
 
 
+const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = ({ product, onClose }) => {
+    const { sales } = useAppContext();
+    
+    const productSales = useMemo(() => {
+        const logs: { 
+            saleId: string, 
+            date: string, 
+            customerName: string, 
+            quantity: number, 
+            price: number,
+            total: number
+        }[] = [];
+
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                if (item.productId === product.id) {
+                    logs.push({
+                        saleId: sale.id,
+                        date: sale.date,
+                        customerName: sale.customerName,
+                        quantity: item.quantity,
+                        price: item.price,
+                        total: item.price * item.quantity
+                    });
+                }
+            });
+        });
+
+        return logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [sales, product.id]);
+
+    return (
+        <Modal isOpen={true} onClose={onClose} title={`Sales History: ${product.name}`} size="xl">
+            <div className="space-y-4">
+                <div className="bg-gray-50 p-3 rounded-md flex justify-between items-center">
+                    <div>
+                        <p className="text-sm text-gray-500">Total Quantity Sold</p>
+                        <p className="text-xl font-bold">{productSales.reduce((sum, log) => sum + log.quantity, 0)}</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-sm text-gray-500">Total Revenue</p>
+                        <p className="text-xl font-bold text-green-600">{formatCurrency(productSales.reduce((sum, log) => sum + log.total, 0))}</p>
+                    </div>
+                </div>
+
+                <div className="max-h-96 overflow-y-auto border rounded-md">
+                    <table className="w-full text-sm text-left text-gray-500">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                            <tr>
+                                <th className="px-4 py-3">Date</th>
+                                <th className="px-4 py-3">Customer</th>
+                                <th className="px-4 py-3 text-right">Qty</th>
+                                <th className="px-4 py-3 text-right">Price</th>
+                                <th className="px-4 py-3 text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {productSales.length > 0 ? (
+                                productSales.map((log, idx) => (
+                                    <tr key={`${log.saleId}-${idx}`} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-2">{log.customerName}</td>
+                                        <td className="px-4 py-2 text-right">{log.quantity}</td>
+                                        <td className="px-4 py-2 text-right">{formatCurrency(log.price)}</td>
+                                        <td className="px-4 py-2 text-right font-semibold">{formatCurrency(log.total)}</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No sales recorded for this item.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                <div className="flex justify-end pt-2">
+                    <Button variant="secondary" onClick={onClose}>Close</Button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 const Inventory: React.FC = () => {
     const { inventory, categories, sales, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel, shopInfo } = useAppContext();
     const [isModalOpen, setModalOpen] = useState(false);
@@ -345,6 +428,8 @@ const Inventory: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isSampleViewOpen, setSampleViewOpen] = useState(false);
     const [isAddStockModalOpen, setAddStockModalOpen] = useState(false);
+
+    const [viewingProductSales, setViewingProductSales] = useState<Product | null>(null);
 
     const isMaster = currentUser?.role === 'master';
 
@@ -755,6 +840,7 @@ const Inventory: React.FC = () => {
                                 <td className="px-6 py-4">{formatCurrency(product.salePrice)}</td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
+                                        <button onClick={() => setViewingProductSales(product)} className="text-purple-600 hover:text-purple-800" title="Sales History"><TrendingUp size={18}/></button>
                                         <button onClick={() => handleEdit(product)} className="text-blue-600 hover:text-blue-800" title="Edit"><Edit size={18}/></button>
                                         <button onClick={() => handleCopy(product)} className="text-green-600 hover:text-green-800" title="Copy"><Copy size={18}/></button>
                                         <button onClick={() => handleDelete(product)} className="text-red-600 hover:text-red-800" title="Delete"><Trash2 size={18}/></button>
@@ -795,6 +881,7 @@ const Inventory: React.FC = () => {
                             </div>
                         </div>
                         <div className="flex justify-end space-x-2 border-t mt-3 pt-3">
+                             <Button onClick={() => setViewingProductSales(product)} variant="ghost" size="sm" className="text-purple-600 hover:text-purple-700 flex items-center gap-1"><TrendingUp size={16}/> Sales</Button>
                              <Button onClick={() => handleEdit(product)} variant="ghost" size="sm" className="flex items-center gap-1"><Edit size={16}/> Edit</Button>
                              <Button onClick={() => handleCopy(product)} variant="ghost" size="sm" className="text-green-600 hover:text-green-700 flex items-center gap-1"><Copy size={16}/> Copy</Button>
                              <Button onClick={() => handleDelete(product)} variant="ghost" size="sm" className="text-red-600 hover:text-red-700 flex items-center gap-1"><Trash2 size={16}/> Delete</Button>
@@ -890,6 +977,10 @@ const Inventory: React.FC = () => {
                 </div>
             </Modal>
             <AddStockModal isOpen={isAddStockModalOpen} onClose={() => setAddStockModalOpen(false)} />
+
+            {viewingProductSales && (
+                <ProductSalesModal product={viewingProductSales} onClose={() => setViewingProductSales(null)} />
+            )}
         </div>
     );
 };
