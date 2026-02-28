@@ -43,8 +43,15 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
                 if (getRequest.result !== undefined) {
                     setStateData(getRequest.result);
                 } else {
-                    console.log("IndexedDB: Empty, using initial value.");
+                    console.log("IndexedDB: Empty, initializing with default data.");
                     setStateData(initialValue);
+                    // Persist initial value so subsequent reads/updates are stable
+                    try {
+                        const transaction = db.transaction(STORE_NAME, 'readwrite');
+                        transaction.objectStore(STORE_NAME).put(initialValue, KEY);
+                    } catch (e) {
+                        console.warn("IndexedDB: Failed to persist initial value", e);
+                    }
                 }
                 setLoading(false);
             };
@@ -78,8 +85,12 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
             }
 
             setStateData(prev => {
+                // If prev is null, we are likely in a race condition where the initial load 
+                // hasn't finished or returned null. We must use initialValue to avoid wiping data.
+                const currentData = prev !== null ? prev : initialValue;
+
                 const newValue = typeof valueOrUpdater === 'function' 
-                    ? (valueOrUpdater as (prev: T | null) => T)(prev) 
+                    ? (valueOrUpdater as (prev: T) => T)(currentData) 
                     : valueOrUpdater;
 
                 try {
@@ -104,7 +115,7 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
                 return newValue;
             });
         });
-    }, []);
+    }, [initialValue]);
 
     return { data, setData, loading };
 }

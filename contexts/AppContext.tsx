@@ -198,7 +198,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, [dbLoading, appData.users, currentUser]);
 
     // Global loading state: True if DB is loading OR auth check hasn't finished
-    const loading = dbLoading || !isAuthReady;
+    // We also check if data is null to be extra safe during the transition
+    const loading = dbLoading || !isAuthReady || data === null;
 
     // Auth Logic
     const login = async (username: string, passwordHash: string): Promise<boolean> => {
