@@ -28,10 +28,10 @@ const Setup: React.FC = () => {
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (name.trim() && address.trim()) {
-            saveShopInfo({ name, address, logoUrl: logo });
+            await saveShopInfo({ name, address, logoUrl: logo });
         }
     };
     

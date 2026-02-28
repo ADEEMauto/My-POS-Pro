@@ -151,31 +151,50 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Helper to update full state
     const updateData = useCallback(async (updates: Partial<AppData>) => {
-        await setData({ ...appData, ...updates });
-    }, [appData, setData]);
+        await setData(prev => ({ ...prev, ...updates }));
+    }, [setData]);
 
     // Session Management Effect
     useEffect(() => {
         if (dbLoading) return;
 
-        // Verify currentUser against DB when loaded
-        if (currentUser) {
-            const dbUser = appData.users.find(u => u.id === currentUser.id);
-            if (dbUser) {
-                // Update local user state with fresh DB data if needed (e.g. role change)
-                if (JSON.stringify(dbUser) !== JSON.stringify(currentUser)) {
-                    setCurrentUser(dbUser);
-                    localStorage.setItem('shopsync_current_user', JSON.stringify(dbUser));
+        const restoreSession = async () => {
+            let userToRestore = currentUser;
+
+            // Fallback: If currentUser is null, try to restore from shopsync_user_id
+            if (!userToRestore) {
+                const storedUserId = localStorage.getItem('shopsync_user_id');
+                if (storedUserId) {
+                    const dbUser = appData.users.find(u => u.id === storedUserId);
+                    if (dbUser) {
+                        userToRestore = dbUser;
+                        setCurrentUser(dbUser);
+                        localStorage.setItem('shopsync_current_user', JSON.stringify(dbUser));
+                    }
                 }
-            } else {
-                // User is in LocalStorage but not found in DB data.
-                // This can happen if DB failed to load or data was reset.
-                // We TRUST LocalStorage to maintain the session and DO NOT log out.
-                console.warn("User in local storage not found in loaded DB. Preserving session.");
             }
-        }
-        
-        setIsAuthReady(true);
+
+            // Verify currentUser against DB when loaded
+            if (userToRestore) {
+                const dbUser = appData.users.find(u => u.id === userToRestore!.id);
+                if (dbUser) {
+                    // Update local user state with fresh DB data if needed (e.g. role change)
+                    if (JSON.stringify(dbUser) !== JSON.stringify(userToRestore)) {
+                        setCurrentUser(dbUser);
+                        localStorage.setItem('shopsync_current_user', JSON.stringify(dbUser));
+                    }
+                } else {
+                    // User is in LocalStorage but not found in DB data.
+                    // This can happen if DB failed to load or data was reset.
+                    // We TRUST LocalStorage to maintain the session and DO NOT log out.
+                    console.warn("User in local storage not found in loaded DB. Preserving session.");
+                }
+            }
+            
+            setIsAuthReady(true);
+        };
+
+        restoreSession();
     }, [dbLoading, appData.users, currentUser]);
 
     // Global loading state: True if DB is loading OR auth check hasn't finished
@@ -283,8 +302,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     };
 
-    const deleteUser = (id: string) => {
-        updateData({ users: appData.users.filter(u => u.id !== id) });
+    const deleteUser = async (id: string) => {
+        await updateData({ users: appData.users.filter(u => u.id !== id) });
         toast.success("User deleted.");
     };
 
@@ -302,8 +321,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     // Shop Info
-    const saveShopInfo = (info: ShopInfo) => {
-        updateData({ shopInfo: info });
+    const saveShopInfo = async (info: ShopInfo) => {
+        await updateData({ shopInfo: info });
     };
 
     const backupData = () => {

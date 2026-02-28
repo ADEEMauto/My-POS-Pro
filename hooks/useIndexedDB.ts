@@ -8,7 +8,7 @@ const KEY = 'appData';
 
 interface IDBHook<T> {
     data: T | null;
-    setData: (value: T) => Promise<void>;
+    setData: (valueOrUpdater: T | ((prev: T) => T)) => Promise<void>;
     loading: boolean;
 }
 
@@ -68,37 +68,41 @@ function useIndexedDB<T>(initialValue: T): IDBHook<T> {
         };
     }, []);
 
-    const setData = useCallback(async (value: T) => {
-        setStateData(value); // Optimistic UI update
-
+    const setData = useCallback(async (valueOrUpdater: T | ((prev: T) => T)) => {
         return new Promise<void>((resolve, reject) => {
             if (!dbRef.current) {
-                // Try to wait a bit or reject? For now reject to be safe.
-                // In a real app we might queue this.
                 const err = new Error("Database connection not ready.");
                 console.error(err);
                 reject(err);
                 return;
             }
 
-            try {
-                const transaction = dbRef.current.transaction(STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(STORE_NAME);
-                const request = store.put(value, KEY);
+            setStateData(prev => {
+                const newValue = typeof valueOrUpdater === 'function' 
+                    ? (valueOrUpdater as (prev: T | null) => T)(prev) 
+                    : valueOrUpdater;
 
-                transaction.oncomplete = () => resolve();
-                transaction.onerror = (event) => {
-                    console.error('IndexedDB: Write error:', event);
-                    reject(transaction.error);
-                };
-                request.onerror = (event) => {
-                    console.error('IndexedDB: Put request error:', event);
-                    reject((event.target as IDBRequest).error);
-                };
-            } catch (error) {
-                console.error("IndexedDB: Transaction creation failed:", error);
-                reject(error);
-            }
+                try {
+                    const transaction = dbRef.current!.transaction(STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.put(newValue, KEY);
+
+                    transaction.oncomplete = () => resolve();
+                    transaction.onerror = (event) => {
+                        console.error('IndexedDB: Write error:', event);
+                        reject(transaction.error);
+                    };
+                    request.onerror = (event) => {
+                        console.error('IndexedDB: Put request error:', event);
+                        reject((event.target as IDBRequest).error);
+                    };
+                } catch (error) {
+                    console.error("IndexedDB: Transaction creation failed:", error);
+                    reject(error);
+                }
+
+                return newValue;
+            });
         });
     }, []);
 
