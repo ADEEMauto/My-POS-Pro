@@ -6,7 +6,8 @@ import { formatCurrency } from '../utils/helpers';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Product, Sale } from '../types';
 import Button from '../components/ui/Button';
-import { FileText, Wrench, Hammer, DollarSign, ShoppingBag, TrendingUp, Bike } from 'lucide-react';
+import Modal from '../components/ui/Modal';
+import { FileText, Wrench, Hammer, DollarSign, ShoppingBag, TrendingUp, Bike, Search, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -84,6 +85,87 @@ const calculateNetItemRevenue = (sale: Sale) => {
     
     // Allow negative values for consistent aggregation
     return Math.round(netItemRevenue);
+};
+
+const ProductSalesDetailModal: React.FC<{ product: Product; sales: Sale[]; onClose: () => void }> = ({ product, sales, onClose }) => {
+    const productSales = useMemo(() => {
+        const logs: { 
+            saleId: string, 
+            date: string, 
+            customerName: string, 
+            quantity: number, 
+            price: number,
+            total: number
+        }[] = [];
+
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                if (item.productId === product.id) {
+                    logs.push({
+                        saleId: sale.id,
+                        date: sale.date,
+                        customerName: sale.customerName,
+                        quantity: item.quantity,
+                        price: item.price,
+                        total: item.price * item.quantity
+                    });
+                }
+            });
+        });
+
+        return logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [sales, product.id]);
+
+    return (
+        <Modal isOpen={true} onClose={onClose} title={`Sales History: ${product.name}`} size="xl">
+            <div className="space-y-4">
+                <div className="bg-gray-50 p-3 rounded-md flex justify-between items-center">
+                    <div>
+                        <p className="text-sm text-gray-500">Total Quantity Sold</p>
+                        <p className="text-xl font-bold">{productSales.reduce((sum, log) => sum + log.quantity, 0)}</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-sm text-gray-500">Total Revenue</p>
+                        <p className="text-xl font-bold text-green-600">{formatCurrency(productSales.reduce((sum, log) => sum + log.total, 0))}</p>
+                    </div>
+                </div>
+
+                <div className="max-h-96 overflow-y-auto border rounded-md">
+                    <table className="w-full text-sm text-left text-gray-500">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                            <tr>
+                                <th className="px-4 py-3">Date</th>
+                                <th className="px-4 py-3">Customer</th>
+                                <th className="px-4 py-3 text-right">Qty</th>
+                                <th className="px-4 py-3 text-right">Price</th>
+                                <th className="px-4 py-3 text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {productSales.length > 0 ? (
+                                productSales.map((log, idx) => (
+                                    <tr key={`${log.saleId}-${idx}`} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-2">{log.customerName}</td>
+                                        <td className="px-4 py-2 text-right">{log.quantity}</td>
+                                        <td className="px-4 py-2 text-right">{formatCurrency(log.price)}</td>
+                                        <td className="px-4 py-2 text-right font-semibold">{formatCurrency(log.total)}</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No sales recorded for this item.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                <div className="flex justify-end pt-2">
+                    <Button variant="secondary" onClick={onClose}>Close</Button>
+                </div>
+            </div>
+        </Modal>
+    );
 };
 
 const Reports: React.FC = () => {
@@ -347,6 +429,8 @@ const Reports: React.FC = () => {
 
 
     const [itemSearchTerm, setItemSearchTerm] = useState('');
+    const [summarySearchTerm, setSummarySearchTerm] = useState('');
+    const [selectedProductForLog, setSelectedProductForLog] = useState<Product | null>(null);
 
     const soldItemsLog = useMemo(() => {
         const logs: { 
@@ -385,6 +469,13 @@ const Reports: React.FC = () => {
             log.saleId.toLowerCase().includes(lower)
         );
     }, [soldItemsLog, itemSearchTerm]);
+
+    const filteredItemSummary = useMemo(() => {
+        const summary = itemSalesData.filter(item => item.quantity > 0);
+        if (!summarySearchTerm) return summary.sort((a, b) => b.quantity - a.quantity);
+        const lower = summarySearchTerm.toLowerCase();
+        return summary.filter(item => item.product.name.toLowerCase().includes(lower)).sort((a, b) => b.quantity - a.quantity);
+    }, [itemSalesData, summarySearchTerm]);
 
     if (!isMaster) {
         return (
@@ -585,6 +676,51 @@ const Reports: React.FC = () => {
 
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md col-span-1 lg:col-span-3">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                    <h2 className="text-xl font-semibold">Item Sales Summary (Click for Details)</h2>
+                    <div className="w-full sm:w-64">
+                        <input 
+                            type="text" 
+                            placeholder="Search items..." 
+                            value={summarySearchTerm}
+                            onChange={e => setSummarySearchTerm(e.target.value)}
+                            className="w-full p-2 border rounded-md text-sm"
+                        />
+                    </div>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                    <table className="w-full text-sm text-left text-gray-500">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                            <tr>
+                                <th scope="col" className="px-4 py-3">Item Name</th>
+                                <th scope="col" className="px-4 py-3 text-right">Total Quantity Sold</th>
+                                <th scope="col" className="px-4 py-3 text-right">Total Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredItemSummary.length > 0 ? (
+                                filteredItemSummary.map((item) => (
+                                    <tr 
+                                        key={item.product.id} 
+                                        className="bg-white border-b hover:bg-blue-50 cursor-pointer transition-colors"
+                                        onClick={() => setSelectedProductForLog(item.product)}
+                                    >
+                                        <td className="px-4 py-3 font-medium text-gray-900">{item.product.name}</td>
+                                        <td className="px-4 py-3 text-right font-semibold text-blue-600">{item.quantity}</td>
+                                        <td className="px-4 py-3 text-right">{formatCurrency(item.revenue)}</td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={3} className="px-4 py-8 text-center text-gray-500">No items found.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md col-span-1 lg:col-span-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                     <h2 className="text-xl font-semibold">Sold Items Detailed Log</h2>
                     <div className="w-full sm:w-64">
                         <input 
@@ -667,6 +803,14 @@ const Reports: React.FC = () => {
                     </ul>
                 </div>
             </div>
+
+            {selectedProductForLog && (
+                <ProductSalesDetailModal 
+                    product={selectedProductForLog} 
+                    sales={sales} 
+                    onClose={() => setSelectedProductForLog(null)} 
+                />
+            )}
         </div>
     );
 };
