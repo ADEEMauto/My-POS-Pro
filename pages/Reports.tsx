@@ -4,7 +4,7 @@ import { useAppContext } from '../contexts/AppContext';
 import { formatCurrency } from '../utils/helpers';
 // @ts-ignore
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Product, Sale } from '../types';
+import { Product, Sale, Expense } from '../types';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import { FileText, Wrench, Hammer, DollarSign, ShoppingBag, TrendingUp, Bike, Search, X } from 'lucide-react';
@@ -169,7 +169,7 @@ const ProductSalesDetailModal: React.FC<{ product: Product; sales: Sale[]; onClo
 };
 
 const Reports: React.FC = () => {
-    const { sales, inventory, currentUser, categories, shopInfo } = useAppContext();
+    const { sales, inventory, currentUser, categories, shopInfo, expenses } = useAppContext();
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
@@ -205,12 +205,28 @@ const Reports: React.FC = () => {
     const salesDataForChart = useMemo(() => {
         const dailySales: { [key: string]: number } = {};
         filteredSales.forEach(sale => {
-            const date = new Date(sale.date).toLocaleDateString('en-CA'); // YYYY-MM-DD for sorting
-            // Use net item revenue instead of total sale amount
-            dailySales[date] = (dailySales[date] || 0) + calculateNetItemRevenue(sale);
+            const date = new Date(sale.date).toLocaleDateString('en-CA');
+            const itemRev = calculateNetItemRevenue(sale);
+            const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+            const totalRev = itemRev + servRev;
+            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+            
+            dailySales[date] = (dailySales[date] || 0) + (itemRev * realizedRatio);
         });
-        return Object.keys(dailySales).map(date => ({ date, sales: dailySales[date] })).sort((a,b) => a.date.localeCompare(b.date));
-    }, [filteredSales]);
+
+        // Subtract expenses from daily totals
+        expenses.forEach(e => {
+            const date = new Date(e.date).toLocaleDateString('en-CA');
+            if (dailySales[date] !== undefined) {
+                dailySales[date] -= e.amount;
+            } else {
+                // If there were no sales that day, the daily total becomes negative
+                dailySales[date] = -e.amount;
+            }
+        });
+
+        return Object.keys(dailySales).map(date => ({ date, sales: Math.round(dailySales[date]) })).sort((a,b) => a.date.localeCompare(b.date));
+    }, [filteredSales, expenses]);
 
     const bikesVisitedData = useMemo(() => {
         const dailyVisits: { [key: string]: number } = {};
@@ -229,22 +245,31 @@ const Reports: React.FC = () => {
         filteredSales.forEach(sale => {
             const t = sale.tuningCharges || 0;
             const l = sale.laborCharges || 0;
-            totalTuning += t;
-            totalLabor += l;
+            
+            const itemRev = calculateNetItemRevenue(sale);
+            const servRev = t + l;
+            const totalRev = itemRev + servRev;
+            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
 
-            if (t > 0 || l > 0) {
+            const realizedTuning = t * realizedRatio;
+            const realizedLabor = l * realizedRatio;
+
+            totalTuning += realizedTuning;
+            totalLabor += realizedLabor;
+
+            if (realizedTuning > 0 || realizedLabor > 0) {
                 const date = new Date(sale.date).toLocaleDateString('en-CA');
                 if (!dailyServices[date]) dailyServices[date] = { tuning: 0, labor: 0 };
-                dailyServices[date].tuning += t;
-                dailyServices[date].labor += l;
+                dailyServices[date].tuning += realizedTuning;
+                dailyServices[date].labor += realizedLabor;
             }
         });
 
         const chartData = Object.keys(dailyServices).map(date => ({
             date,
-            tuning: dailyServices[date].tuning,
-            labor: dailyServices[date].labor,
-            total: dailyServices[date].tuning + dailyServices[date].labor
+            tuning: Math.round(dailyServices[date].tuning),
+            labor: Math.round(dailyServices[date].labor),
+            total: Math.round(dailyServices[date].tuning + dailyServices[date].labor)
         })).sort((a, b) => a.date.localeCompare(b.date));
 
         return { totalTuning, totalLabor, chartData };
@@ -253,33 +278,56 @@ const Reports: React.FC = () => {
     const itemSalesRevenue = useMemo(() => {
         let total = 0;
         filteredSales.forEach(sale => {
-            total += calculateNetItemRevenue(sale);
+            const itemRev = calculateNetItemRevenue(sale);
+            const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+            const totalRev = itemRev + servRev;
+            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+            
+            total += itemRev * realizedRatio;
         });
-        return total;
-    }, [filteredSales]);
+
+        // Subtract relevant expenses (those within the filtered date range)
+        const filteredExpensesTotal = expenses.filter(e => {
+            const expenseDate = new Date(e.date);
+            const start = startDate ? new Date(startDate) : null;
+            const end = endDate ? new Date(endDate) : null;
+            if (start) start.setHours(0, 0, 0, 0);
+            if (end) end.setHours(23, 59, 59, 999);
+            if (start && expenseDate < start) return false;
+            if (end && expenseDate > end) return false;
+            return true;
+        }).reduce((sum, e) => sum + e.amount, 0);
+
+        return Math.round(total - filteredExpensesTotal);
+    }, [filteredSales, expenses, startDate, endDate]);
 
     const { todaysProfit, overallProfit } = useMemo(() => {
-        const calculateProfit = (salesList: Sale[]) => {
-            return salesList.reduce((acc, sale) => {
-                // 1. Calculate Net Item Revenue
-                const itemRevenue = calculateNetItemRevenue(sale);
+        const calculateProfit = (salesList: Sale[], expenseList: Expense[]) => {
+            const salesProfit = salesList.reduce((acc, sale) => {
+                const itemRev = calculateNetItemRevenue(sale);
+                const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+                const totalRev = itemRev + servRev;
+                const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
 
-                // 2. Calculate Cost of Goods Sold (COGS)
+                const realizedItemRevenue = itemRev * realizedRatio;
                 const cogs = sale.items.reduce((sum, item) => sum + ((item.purchasePrice || 0) * item.quantity), 0);
                 
-                // 3. Profit = Net Item Revenue - COGS
-                return acc + (itemRevenue - cogs);
+                return acc + (realizedItemRevenue - cogs);
             }, 0);
+
+            const totalExpenses = expenseList.reduce((sum, e) => sum + e.amount, 0);
+            return salesProfit - totalExpenses;
         };
 
         const todayStr = new Date().toLocaleDateString('en-CA');
         const todaySales = sales.filter(s => new Date(s.date).toLocaleDateString('en-CA') === todayStr);
+        const todayExpenses = expenses.filter(e => new Date(e.date).toLocaleDateString('en-CA') === todayStr);
         
         return {
-            todaysProfit: calculateProfit(todaySales),
-            overallProfit: calculateProfit(sales)
+            todaysProfit: Math.round(calculateProfit(todaySales, todayExpenses)),
+            overallProfit: Math.round(calculateProfit(sales, expenses))
         };
-    }, [sales]);
+    }, [sales, expenses]);
 
     const itemSalesData = useMemo(() => {
         const itemSales: { [key: string]: { product: Product, quantity: number, revenue: number, profit: number, profitPercentage: number } } = {};

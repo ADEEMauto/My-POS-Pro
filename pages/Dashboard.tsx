@@ -60,26 +60,39 @@ const calculateNetItemRevenue = (sale: Sale) => {
 };
 
 const Dashboard: React.FC = () => {
-    const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems, customers } = useAppContext();
+    const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems, customers, expenses } = useAppContext();
     const isMaster = currentUser?.role === 'master';
 
     const [isLowStockModalOpen, setLowStockModalOpen] = useState(false);
     const [isOutOfStockModalOpen, setOutOfStockModalOpen] = useState(false);
 
     const { todaysSalesTotal, todaysLaborCharges } = useMemo(() => {
-        const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD format based on local timezone
+        const todayStr = new Date().toLocaleDateString('en-CA'); 
         let salesTotal = 0;
         let laborCharges = 0;
         
         sales.forEach(sale => {
             if (new Date(sale.date).toLocaleDateString('en-CA') === todayStr) {
-                // Calculate net item revenue (excluding services and outside charges)
-                salesTotal += calculateNetItemRevenue(sale);
-                laborCharges += (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+                const itemRev = calculateNetItemRevenue(sale);
+                const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+                const totalRev = itemRev + servRev;
+                const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+                
+                salesTotal += itemRev * realizedRatio;
+                laborCharges += servRev * realizedRatio;
             }
         });
-        return { todaysSalesTotal: salesTotal, todaysLaborCharges: laborCharges };
-    }, [sales]);
+
+        // Subtract today's expenses from today's item sales
+        const todaysExpensesTotal = expenses
+            .filter(e => new Date(e.date).toLocaleDateString('en-CA') === todayStr)
+            .reduce((sum, e) => sum + e.amount, 0);
+
+        return { 
+            todaysSalesTotal: Math.round(salesTotal - todaysExpensesTotal), 
+            todaysLaborCharges: Math.round(laborCharges) 
+        };
+    }, [sales, expenses]);
 
     const soldProductIds = useMemo(() => {
         const ids = new Set<string>();
@@ -349,12 +362,23 @@ const Dashboard: React.FC = () => {
         let salesTotal = 0;
         let laborChargesTotal = 0;
         sales.forEach(sale => {
-            // Calculate net item revenue (excluding services and outside charges)
-            salesTotal += calculateNetItemRevenue(sale);
-            laborChargesTotal += (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+            const itemRev = calculateNetItemRevenue(sale);
+            const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
+            const totalRev = itemRev + servRev;
+            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+            
+            salesTotal += itemRev * realizedRatio;
+            laborChargesTotal += servRev * realizedRatio;
         });
-        return { totalSales: salesTotal, totalLaborCharges: laborChargesTotal };
-    }, [sales]);
+
+        // Subtract all expenses from total item sales
+        const allExpensesTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+        return { 
+            totalSales: Math.round(salesTotal - allExpensesTotal), 
+            totalLaborCharges: Math.round(laborChargesTotal) 
+        };
+    }, [sales, expenses]);
 
     return (
         <div className="space-y-8">
