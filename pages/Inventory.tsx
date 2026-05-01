@@ -839,7 +839,7 @@ const Inventory: React.FC = () => {
                                 }`}>{product.quantity}</td>
                                 <td className="px-6 py-4">{formatCurrency(product.salePrice)}</td>
                                 <td className="px-6 py-4">
-                                    <div className="flex space-x-2">
+                                    <div className="flex space-x-4">
                                         <button onClick={() => setViewingProductSales(product)} className="text-purple-600 hover:text-purple-800" title="Sales History"><TrendingUp size={18}/></button>
                                         <button onClick={() => handleEdit(product)} className="text-blue-600 hover:text-blue-800" title="Edit"><Edit size={18}/></button>
                                         <button onClick={() => handleCopy(product)} className="text-green-600 hover:text-green-800" title="Copy"><Copy size={18}/></button>
@@ -880,7 +880,7 @@ const Inventory: React.FC = () => {
                                 <span><strong className="text-gray-600">Price: </strong><span className="font-semibold">{formatCurrency(product.salePrice)}</span></span>
                             </div>
                         </div>
-                        <div className="flex justify-end space-x-2 border-t mt-3 pt-3">
+                        <div className="flex justify-end space-x-4 border-t mt-3 pt-3">
                              <Button onClick={() => setViewingProductSales(product)} variant="ghost" size="sm" className="text-purple-600 hover:text-purple-700 flex items-center gap-1"><TrendingUp size={16}/> Sales</Button>
                              <Button onClick={() => handleEdit(product)} variant="ghost" size="sm" className="flex items-center gap-1"><Edit size={16}/> Edit</Button>
                              <Button onClick={() => handleCopy(product)} variant="ghost" size="sm" className="text-green-600 hover:text-green-700 flex items-center gap-1"><Copy size={16}/> Copy</Button>

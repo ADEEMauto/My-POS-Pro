@@ -74,6 +74,10 @@ const DuePayments: React.FC = () => {
     
     const isMaster = currentUser?.role === 'master';
 
+    const totalDues = useMemo(() => {
+        return customers.reduce((sum, customer) => sum + customer.balance, 0);
+    }, [customers]);
+
     const customersWithDues = useMemo(() => {
         const filtered = customers.filter(c => c.balance > 0);
         
@@ -104,6 +108,16 @@ const DuePayments: React.FC = () => {
     return (
         <div className="space-y-8">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Due Payments</h1>
+
+            <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md flex items-center space-x-4 border-l-4 border-red-500">
+                <div className="p-3 rounded-full bg-red-100">
+                    <DollarSign className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                    <p className="text-sm text-gray-500">Total Outstanding Balance</p>
+                    <p className="text-3xl font-bold text-red-600">{formatCurrency(totalDues)}</p>
+                </div>
+            </div>
 
             {/* Customers with Dues Section */}
             <div className="bg-white p-4 sm:p-6 rounded-lg shadow-md">

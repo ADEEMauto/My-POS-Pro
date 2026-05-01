@@ -379,6 +379,12 @@ const POS: React.FC = () => {
     };
 
     // --- Calculations ---
+    const cartStats = useMemo(() => {
+        const uniqueItems = currentSession.cart.length;
+        const totalQty = currentSession.cart.reduce((sum, item) => sum + item.cartQuantity, 0);
+        return { uniqueItems, totalQty };
+    }, [currentSession.cart]);
+
     const subtotal = useMemo(() => currentSession.cart.reduce((acc, item) => acc + (item.salePrice * item.cartQuantity), 0), [currentSession.cart]);
     
     const totalItemDiscount = useMemo(() => {
@@ -715,7 +721,14 @@ const POS: React.FC = () => {
 
                 <div className="p-4 flex-grow flex flex-col overflow-hidden">
                     <h2 className="text-xl font-bold mb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2"><ShoppingCart /> Current Sale</div>
+                        <div className="flex items-center gap-2">
+                            <ShoppingCart /> Current Sale
+                            {cartStats.uniqueItems > 0 && (
+                                <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full ml-2 font-normal">
+                                    Items: {cartStats.uniqueItems}, Quantity: {cartStats.totalQty}
+                                </span>
+                            )}
+                        </div>
                         {currentSession.cart.length > 0 && (
                             <Button variant="danger" size="sm" onClick={() => updateCurrentSession({ cart: [] })}><Trash2 size={16} /></Button>
                         )}
