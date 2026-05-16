@@ -73,10 +73,12 @@ const DemandForm: React.FC<{
 
 
 const Demand: React.FC = () => {
-    const { demandItems, addDemandItem, updateDemandItem, deleteDemandItem, currentUser, shopInfo } = useAppContext();
+    const { demandItems, addDemandItem, updateDemandItem, deleteDemandItem, deleteMultipleDemandItems, currentUser, shopInfo } = useAppContext();
     const [isModalOpen, setModalOpen] = React.useState(false);
     const [editingItem, setEditingItem] = React.useState<DemandItem | undefined>(undefined);
     const [itemToDelete, setItemToDelete] = React.useState<DemandItem | null>(null);
+    const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+    const [isDeleteSelectedModalOpen, setDeleteSelectedModalOpen] = React.useState(false);
 
     const isMaster = currentUser?.role === 'master';
 
@@ -103,7 +105,28 @@ const Demand: React.FC = () => {
         if (itemToDelete) {
             deleteDemandItem(itemToDelete.id);
             setItemToDelete(null);
+            setSelectedIds(prev => prev.filter(id => id !== itemToDelete.id));
         }
+    };
+
+    const handleToggleSelect = (id: string) => {
+        setSelectedIds(prev => 
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            setSelectedIds(demandItems.map(item => item.id));
+        } else {
+            setSelectedIds([]);
+        }
+    };
+
+    const handleConfirmDeleteSelected = () => {
+        deleteMultipleDemandItems(selectedIds);
+        setSelectedIds([]);
+        setDeleteSelectedModalOpen(false);
     };
 
     const handleDownloadPdf = async () => {
@@ -199,6 +222,15 @@ const Demand: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Demand List</h1>
                 <div className="flex items-center gap-2">
+                    {selectedIds.length > 0 && (
+                        <Button 
+                            variant="danger" 
+                            onClick={() => setDeleteSelectedModalOpen(true)}
+                            className="gap-2"
+                        >
+                            <Trash2 size={18}/> Delete Selected ({selectedIds.length})
+                        </Button>
+                    )}
                     <Button onClick={handleDownloadPdf} variant="secondary" className='gap-2'><FileText size={18}/> Download PDF</Button>
                     <Button onClick={() => { setEditingItem(undefined); setModalOpen(true); }} className='gap-2'><Plus size={18}/> Add Item</Button>
                 </div>
@@ -217,6 +249,14 @@ const Demand: React.FC = () => {
                     <table className="w-full text-sm text-left text-gray-500">
                         <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                             <tr>
+                                <th scope="col" className="px-6 py-3 w-10">
+                                    <input 
+                                        type="checkbox" 
+                                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-600"
+                                        checked={demandItems.length > 0 && selectedIds.length === demandItems.length}
+                                        onChange={handleSelectAll}
+                                    />
+                                </th>
                                 <th scope="col" className="px-6 py-3 w-24 text-center">Quantity</th>
                                 <th scope="col" className="px-6 py-3 w-32">Unit</th>
                                 <th scope="col" className="px-6 py-3">Name of Item</th>
@@ -227,7 +267,15 @@ const Demand: React.FC = () => {
                         </thead>
                         <tbody>
                             {demandItems.map(item => (
-                                <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
+                                <tr key={item.id} className={`border-b hover:bg-gray-50 ${selectedIds.includes(item.id) ? 'bg-primary-50' : 'bg-white'}`}>
+                                    <td className="px-6 py-4 text-center">
+                                        <input 
+                                            type="checkbox" 
+                                            className="rounded border-gray-300 text-primary-600 focus:ring-primary-600 cursor-pointer"
+                                            checked={selectedIds.includes(item.id)}
+                                            onChange={() => handleToggleSelect(item.id)}
+                                        />
+                                    </td>
                                     <td className="px-6 py-4 font-bold text-center">{item.quantity}</td>
                                     <td className="px-6 py-4">{item.unit || '-'}</td>
                                     <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
@@ -246,30 +294,57 @@ const Demand: React.FC = () => {
                 </div>
                 
                 {/* Cards for small screens */}
-                <div className="md:hidden grid grid-cols-1 gap-4">
-                    {demandItems.map(item => (
-                         <div key={item.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h3 className="font-bold text-gray-800">{item.name}</h3>
-                                    <p className="text-sm text-gray-500">{item.manufacturer}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-xs text-gray-500">Quantity</p>
-                                    <p className="font-bold text-xl text-primary-600">
-                                        {item.quantity} <span className="text-sm font-medium text-gray-500">{item.unit}</span>
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex justify-between items-center pt-2 border-t">
-                                <span className="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-medium">{item.category}</span>
-                                <div className="flex items-center space-x-3">
-                                    <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-800" title="Edit"><Edit size={18}/></button>
-                                    <button onClick={() => handleDelete(item)} className="text-red-600 hover:text-red-800" title="Delete"><Trash2 size={18}/></button>
-                                </div>
-                            </div>
+                <div className="md:hidden space-y-4">
+                    <div className="flex items-center justify-between px-2">
+                         <div className="flex items-center gap-2">
+                            <input 
+                                type="checkbox" 
+                                id="selectAllMobile"
+                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-600"
+                                checked={demandItems.length > 0 && selectedIds.length === demandItems.length}
+                                onChange={handleSelectAll}
+                            />
+                            <label htmlFor="selectAllMobile" className="text-sm font-medium text-gray-600">Select All</label>
                         </div>
-                    ))}
+                        {selectedIds.length > 0 && (
+                            <span className="text-xs text-gray-500">{selectedIds.length} items selected</span>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 gap-4">
+                        {demandItems.map(item => (
+                            <div key={item.id} className={`rounded-lg shadow-md p-4 space-y-3 border-2 ${selectedIds.includes(item.id) ? 'border-primary-500 bg-primary-50' : 'bg-white border-transparent'}`}>
+                                <div className="flex justify-between items-start">
+                                    <div className="flex gap-3">
+                                        <div className="pt-1">
+                                            <input 
+                                                type="checkbox" 
+                                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-600 h-5 w-5"
+                                                checked={selectedIds.includes(item.id)}
+                                                onChange={() => handleToggleSelect(item.id)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-gray-800">{item.name}</h3>
+                                            <p className="text-sm text-gray-500">{item.manufacturer}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs text-gray-500">Quantity</p>
+                                        <p className="font-bold text-xl text-primary-600">
+                                            {item.quantity} <span className="text-sm font-medium text-gray-500">{item.unit}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t">
+                                    <span className="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-medium">{item.category}</span>
+                                    <div className="flex items-center space-x-3">
+                                        <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-800" title="Edit"><Edit size={18}/></button>
+                                        <button onClick={() => handleDelete(item)} className="text-red-600 hover:text-red-800" title="Delete"><Trash2 size={18}/></button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
                 </>
             )}
@@ -290,6 +365,17 @@ const Demand: React.FC = () => {
                 <div className="flex justify-center gap-4 mt-6">
                     <Button variant="secondary" onClick={() => setItemToDelete(null)}>Cancel</Button>
                     <Button variant="danger" onClick={handleConfirmDelete}>Yes, Delete</Button>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isDeleteSelectedModalOpen} onClose={() => setDeleteSelectedModalOpen(false)} title="Confirm Bulk Deletion" size="md">
+                <div className="text-center">
+                    <XCircle className="mx-auto h-12 w-12 text-red-500" />
+                    <p className="mt-4 text-gray-700">Are you sure you want to remove <strong className="text-gray-900">{selectedIds.length} selected items</strong> from the demand list?</p>
+                </div>
+                <div className="flex justify-center gap-4 mt-6">
+                    <Button variant="secondary" onClick={() => setDeleteSelectedModalOpen(false)}>Cancel</Button>
+                    <Button variant="danger" onClick={handleConfirmDeleteSelected}>Yes, Delete All Selected</Button>
                 </div>
             </Modal>
         </div>

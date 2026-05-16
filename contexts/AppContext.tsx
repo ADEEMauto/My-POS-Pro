@@ -129,6 +129,7 @@ interface AppContextType extends AppData {
     addMultipleDemandItems: (items: Omit<DemandItem, 'id'>[]) => void;
     updateDemandItem: (item: DemandItem) => void;
     deleteDemandItem: (id: string) => void;
+    deleteMultipleDemandItems: (ids: string[]) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1217,6 +1218,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toast.success("Item removed from demand list.");
     };
 
+    const deleteMultipleDemandItems = (ids: string[]) => {
+        updateData({ demandItems: appData.demandItems.filter(i => !ids.includes(i.id)) });
+        toast.success(`${ids.length} items removed from demand list.`);
+    };
+
     return (
         <AppContext.Provider value={{
             ...appData,
@@ -1262,7 +1268,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             addDemandItem,
             addMultipleDemandItems,
             updateDemandItem,
-            deleteDemandItem
+            deleteDemandItem,
+            deleteMultipleDemandItems
         }}>
             {children}
         </AppContext.Provider>
