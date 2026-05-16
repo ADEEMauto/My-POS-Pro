@@ -36,7 +36,7 @@ const DemandForm: React.FC<{
             toast.error("All fields except quantity are required.");
             return;
         }
-        const quantity = parseInt(String(formData.quantity), 10);
+        const quantity = parseFloat(String(formData.quantity));
         if (isNaN(quantity) || quantity <= 0) {
             toast.error("Please enter a valid, positive quantity.");
             return;
@@ -57,7 +57,7 @@ const DemandForm: React.FC<{
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-                <Input label="Quantity" name="quantity" type="number" value={formData.quantity} onChange={handleChange} required min="1" />
+                <Input label="Quantity" name="quantity" type="number" value={formData.quantity} onChange={handleChange} required min="0.1" step="any" />
                 <Input label="Unit (Optional)" name="unit" value={formData.unit} onChange={handleChange} placeholder="e.g., packets, box" />
             </div>
             <Input label="Name of Item" name="name" value={formData.name} onChange={handleChange} required placeholder="e.g., Engine Oil 20W-50" />

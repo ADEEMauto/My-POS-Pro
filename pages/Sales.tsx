@@ -148,6 +148,7 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; onSave: (update
                                             onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
                                             className="w-full border rounded p-1"
                                             min="0"
+                                            step="any"
                                         />
                                     </td>
                                     <td className="p-2">

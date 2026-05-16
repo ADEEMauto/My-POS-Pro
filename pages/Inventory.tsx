@@ -226,6 +226,7 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                         onChange={handleChange} 
                         required 
                         min="0"
+                        step="any"
                         disabled={isEditing}
                         helperText={isEditing ? "Directly editing quantity is disabled. Use the Stock Adjustment section below." : ""}
                     />
@@ -247,6 +248,7 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                                     type="number" 
                                     value={adjustmentData.change} 
                                     onChange={handleAdjustmentChange}
+                                    step="any"
                                 />
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Adjustment Type</label>
@@ -392,7 +394,7 @@ const AddStockModal: React.FC<{
 
     const handleSaveChanges = () => {
         if (!selectedProduct) return;
-        const qty = parseInt(quantityToAdd, 10);
+        const qty = parseFloat(quantityToAdd);
         if (isNaN(qty) || qty <= 0) {
             toast.error("Please enter a valid quantity to add.");
             return;
@@ -471,7 +473,8 @@ const AddStockModal: React.FC<{
                         value={quantityToAdd}
                         onChange={e => setQuantityToAdd(e.target.value)}
                         required
-                        min="1"
+                        min="0.01"
+                        step="any"
                         placeholder="e.g., 12"
                     />
                      <Input 

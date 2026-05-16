@@ -298,7 +298,7 @@ const POS: React.FC = () => {
 
         const quantityInput = prompt("Enter Quantity:", "1");
         if (quantityInput === null) return;
-        const quantity = parseInt(quantityInput || '1', 10);
+        const quantity = parseFloat(quantityInput || '1');
 
         if (isNaN(quantity) || quantity <= 0) {
             toast.error("Invalid Quantity entered.");
@@ -778,9 +778,10 @@ const POS: React.FC = () => {
                                                         <input 
                                                             type="number" 
                                                             value={item.cartQuantity} 
-                                                            onChange={e => updateQuantity(item.id, parseInt(e.target.value, 10))} 
+                                                            onChange={e => updateQuantity(item.id, parseFloat(e.target.value))} 
                                                             className="w-16 h-8 text-xs p-1 border border-gray-300 rounded-md text-center focus:ring-primary-500 focus:border-primary-500"
-                                                            min="1"
+                                                            min="0.01"
+                                                            step="any"
                                                         />
                                                     </div>
                                                 </div>
