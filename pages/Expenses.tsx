@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Expense } from '../types';
 import { formatCurrency } from '../utils/helpers';
-import { Plus, Edit, Trash2, FileText, CreditCard, XCircle, Camera, Image as ImageIcon, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, FileText, CreditCard, XCircle } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -37,19 +37,7 @@ const ExpenseForm: React.FC<{
         category: expense?.category || '',
         amount: expense?.amount || '',
         date: expense?.date ? new Date(expense.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        billImageUrl: expense?.billImageUrl || '',
     });
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setFormData(prev => ({ ...prev, billImageUrl: reader.result as string }));
-            };
-            reader.readAsDataURL(file);
-        }
-    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -97,52 +85,6 @@ const ExpenseForm: React.FC<{
             </div>
             <Input label="Amount (Rs.)" name="amount" type="number" value={formData.amount} onChange={handleChange} required min="0.01" step="0.01" />
             <Input label="Date" name="date" type="date" value={formData.date} onChange={handleChange} required />
-            
-            <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Bill Photo</label>
-                <div className="flex items-center gap-4">
-                    <div 
-                        className="w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50 cursor-pointer hover:border-primary-500 transition-colors"
-                        onClick={() => document.getElementById('bill-photo-input')?.click()}
-                    >
-                        {formData.billImageUrl ? (
-                            <img src={formData.billImageUrl} alt="Bill preview" className="w-full h-full object-cover" />
-                        ) : (
-                            <Camera className="text-gray-400" />
-                        )}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <Button 
-                            type="button" 
-                            variant="secondary" 
-                            size="sm" 
-                            className="flex items-center gap-2"
-                            onClick={() => document.getElementById('bill-photo-input')?.click()}
-                        >
-                            <ImageIcon size={16} /> {formData.billImageUrl ? 'Change Photo' : 'Upload Photo'}
-                        </Button>
-                        {formData.billImageUrl && (
-                            <Button 
-                                type="button" 
-                                variant="danger" 
-                                size="sm" 
-                                className="flex items-center gap-2"
-                                onClick={() => setFormData(prev => ({ ...prev, billImageUrl: '' }))}
-                            >
-                                <XCircle size={16} /> Remove
-                            </Button>
-                        )}
-                    </div>
-                    <input 
-                        id="bill-photo-input"
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
-                        onChange={handleFileChange} 
-                    />
-                </div>
-            </div>
-
             <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
                 <Button type="submit">Save Expense</Button>
@@ -357,7 +299,6 @@ const Expenses: React.FC = () => {
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                         <tr>
                             <th scope="col" className="px-6 py-3">Date</th>
-                            <th scope="col" className="px-6 py-3">Bill</th>
                             <th scope="col" className="px-6 py-3">Category</th>
                             <th scope="col" className="px-6 py-3">Description</th>
                             <th scope="col" className="px-6 py-3 text-right">Amount</th>
@@ -368,21 +309,6 @@ const Expenses: React.FC = () => {
                         {filteredExpenses.map(expense => (
                             <tr key={expense.id} className="bg-white border-b hover:bg-gray-50">
                                 <td className="px-6 py-4">{new Date(expense.date).toLocaleDateString()}</td>
-                                <td className="px-6 py-4">
-                                    {expense.billImageUrl ? (
-                                        <div 
-                                            className="w-10 h-10 rounded border border-gray-200 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
-                                            onClick={() => {
-                                                const win = window.open();
-                                                win?.document.write(`<img src="${expense.billImageUrl}" style="max-width: 100%; height: auto;" />`);
-                                            }}
-                                        >
-                                            <img src={expense.billImageUrl} alt="Bill" className="w-full h-full object-cover" />
-                                        </div>
-                                    ) : (
-                                        <span className="text-gray-300 text-xs italic">No photo</span>
-                                    )}
-                                </td>
                                 <td className="px-6 py-4"><span className="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-medium">{expense.category}</span></td>
                                 <td className="px-6 py-4 font-medium text-gray-900">{expense.description}</td>
                                 <td className="px-6 py-4 text-right font-semibold">{formatCurrency(expense.amount)}</td>
@@ -403,22 +329,9 @@ const Expenses: React.FC = () => {
                 {filteredExpenses.map(expense => (
                      <div key={expense.id} className="bg-white rounded-lg shadow-md p-4 space-y-3">
                         <div className="flex justify-between items-start">
-                            <div className="flex gap-3">
-                                {expense.billImageUrl && (
-                                    <div 
-                                        className="w-12 h-12 rounded border border-gray-200 overflow-hidden flex-shrink-0"
-                                        onClick={() => {
-                                            const win = window.open();
-                                            win?.document.write(`<img src="${expense.billImageUrl}" style="max-width: 100%; height: auto;" />`);
-                                        }}
-                                    >
-                                        <img src={expense.billImageUrl} alt="Bill" className="w-full h-full object-cover" />
-                                    </div>
-                                )}
-                                <div>
-                                    <h3 className="font-bold text-gray-800">{expense.description}</h3>
-                                    <p className="text-sm text-gray-500">{new Date(expense.date).toLocaleDateString()}</p>
-                                </div>
+                            <div>
+                                <h3 className="font-bold text-gray-800">{expense.description}</h3>
+                                <p className="text-sm text-gray-500">{new Date(expense.date).toLocaleDateString()}</p>
                             </div>
                             <span className="font-bold text-lg text-primary-600">{formatCurrency(expense.amount)}</span>
                         </div>

@@ -65,7 +65,6 @@ const Dashboard: React.FC = () => {
 
     const [isLowStockModalOpen, setLowStockModalOpen] = useState(false);
     const [isOutOfStockModalOpen, setOutOfStockModalOpen] = useState(false);
-    const [selectedOutOfStockIds, setSelectedOutOfStockIds] = useState<string[]>([]);
 
     const { todaysSalesTotal, todaysLaborCharges } = useMemo(() => {
         const todayStr = new Date().toLocaleDateString('en-CA'); 
@@ -335,44 +334,27 @@ const Dashboard: React.FC = () => {
     };
 
     const handleImportToDemand = () => {
-        if (selectedOutOfStockIds.length === 0) {
-            toast.error("Please select items to import.");
+        if (outOfStockProducts.length === 0) {
+            toast.error("No out-of-stock items to import.");
             return;
         }
 
-        const itemsToDemand: Omit<DemandItem, 'id'>[] = outOfStockProducts
-            .filter(p => selectedOutOfStockIds.includes(p.id))
-            .map(product => {
-                const categoryName = categoryMap.get(product.categoryId) || 'N/A';
-                const subCategoryName = product.subCategoryId ? categoryMap.get(product.subCategoryId) : null;
-                const fullCategory = subCategoryName ? `${categoryName} > ${subCategoryName}` : categoryName;
+        const itemsToDemand: Omit<DemandItem, 'id'>[] = outOfStockProducts.map(product => {
+            const categoryName = categoryMap.get(product.categoryId) || 'N/A';
+            const subCategoryName = product.subCategoryId ? categoryMap.get(product.subCategoryId) : null;
+            const fullCategory = subCategoryName ? `${categoryName} > ${subCategoryName}` : categoryName;
 
-                return {
-                    name: product.name,
-                    manufacturer: product.manufacturer,
-                    category: fullCategory,
-                    quantity: 1, // Default quantity
-                    unit: '',    // User can add manually later
-                };
-            });
+            return {
+                name: product.name,
+                manufacturer: product.manufacturer,
+                category: fullCategory,
+                quantity: 1, // Default quantity
+                unit: '',    // User can add manually later
+            };
+        });
 
         addMultipleDemandItems(itemsToDemand);
         setOutOfStockModalOpen(false); // Close modal on success
-        setSelectedOutOfStockIds([]); // Clear selection
-    };
-
-    const toggleSelectOutOfStock = (id: string) => {
-        setSelectedOutOfStockIds(prev => 
-            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-        );
-    };
-
-    const toggleSelectAllOutOfStock = () => {
-        if (selectedOutOfStockIds.length === outOfStockProducts.length) {
-            setSelectedOutOfStockIds([]);
-        } else {
-            setSelectedOutOfStockIds(outOfStockProducts.map(p => p.id));
-        }
     };
 
     const totalInvestment = inventory.reduce((acc, p) => acc + p.purchasePrice * p.quantity, 0);
@@ -463,10 +445,7 @@ const Dashboard: React.FC = () => {
                             <p>You have {outOfStockProducts.length} item(s) that are currently out of stock.</p>
                         </div>
                         <div className="flex items-center gap-2 self-start sm:self-center">
-                            <Button onClick={() => {
-                                setSelectedOutOfStockIds(outOfStockProducts.map(p => p.id));
-                                setOutOfStockModalOpen(true);
-                            }} variant="secondary" size="sm">View Details</Button>
+                            <Button onClick={() => setOutOfStockModalOpen(true)} variant="secondary" size="sm">View Details</Button>
                             <Button onClick={handleDownloadOutOfStockPdf} variant="secondary" size="sm" className="flex items-center gap-1">
                                 <FileText size={16}/> Download PDF
                             </Button>
@@ -515,10 +494,10 @@ const Dashboard: React.FC = () => {
                             onClick={handleImportToDemand} 
                             variant="secondary" 
                             className="flex items-center gap-2" 
-                            disabled={selectedOutOfStockIds.length === 0}
-                            title="Add selected out of stock items to the demand list"
+                            disabled={outOfStockProducts.length === 0}
+                            title="Add all out of stock items to the demand list"
                         >
-                            <ClipboardList size={18}/> Import Selected to Demand List ({selectedOutOfStockIds.length})
+                            <ClipboardList size={18}/> Import to Demand List
                         </Button>
                         <div className="flex items-center gap-2">
                             <Button variant="secondary" onClick={() => setOutOfStockModalOpen(false)}>Close</Button>
@@ -531,43 +510,21 @@ const Dashboard: React.FC = () => {
             >
                 <div className="max-h-96 overflow-y-auto">
                      {outOfStockProducts.length > 0 ? (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 pb-2 border-bottom">
-                                <input 
-                                    type="checkbox" 
-                                    id="selectAll" 
-                                    checked={selectedOutOfStockIds.length === outOfStockProducts.length}
-                                    onChange={toggleSelectAllOutOfStock}
-                                    className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
-                                />
-                                <label htmlFor="selectAll" className="text-sm font-medium text-gray-700 cursor-pointer">
-                                    Select All ({outOfStockProducts.length})
-                                </label>
-                            </div>
-                            <ul className="divide-y divide-gray-200">
-                                {outOfStockProducts.map(product => (
-                                    <li key={product.id} className="py-3 flex items-center gap-3">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={selectedOutOfStockIds.includes(product.id)}
-                                            onChange={() => toggleSelectOutOfStock(product.id)}
-                                            className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
-                                        />
-                                        <div className="flex-grow flex justify-between items-center">
-                                            <div>
-                                                <p className="font-semibold text-gray-800">{product.name}</p>
-                                                <p className="text-sm text-gray-500">{product.manufacturer}</p>
-                                                <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full inline-block mt-1">
-                                                    {categoryMap.get(product.categoryId) || 'N/A'}
-                                                    {product.subCategoryId && categoryMap.get(product.subCategoryId) ? ` > ${categoryMap.get(product.subCategoryId)}` : ''}
-                                                </p>
-                                            </div>
-                                            <span className="text-sm text-gray-600">Purchase Price: {formatCurrency(product.purchasePrice)}</span>
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+                        <ul className="divide-y divide-gray-200">
+                            {outOfStockProducts.map(product => (
+                                <li key={product.id} className="py-3 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-semibold text-gray-800">{product.name}</p>
+                                        <p className="text-sm text-gray-500">{product.manufacturer}</p>
+                                        <p className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full inline-block mt-1">
+                                            {categoryMap.get(product.categoryId) || 'N/A'}
+                                            {product.subCategoryId && categoryMap.get(product.subCategoryId) ? ` > ${categoryMap.get(product.subCategoryId)}` : ''}
+                                        </p>
+                                    </div>
+                                    <span className="text-sm text-gray-600">Purchase Price: {formatCurrency(product.purchasePrice)}</span>
+                                </li>
+                            ))}
+                        </ul>
                     ) : <p className="text-gray-500 text-center">No items are currently out of stock.</p>}
                 </div>
             </Modal>
