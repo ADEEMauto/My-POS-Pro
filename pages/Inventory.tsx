@@ -18,8 +18,10 @@ import html2canvas from 'html2canvas';
 // Declare XLSX for typescript
 declare const XLSX: any;
 
-const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product, 'id'> | Product) => void; onCancel: () => void }> = ({ product, onSave, onCancel }) => {
+const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product, 'id'> | Product, adjustment?: { change: number, type: 'adjustment' | 'restock', note: string, proofImageUrl?: string }) => void; onCancel: () => void }> = ({ product, onSave, onCancel }) => {
     const { categories, inventory } = useAppContext();
+    const isEditing = !!product?.id && product.id !== 'temp-copy';
+    
     const [formData, setFormData] = useState({
         name: product?.name || '',
         categoryId: product?.categoryId || '',
@@ -32,8 +34,17 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
         barcode: product?.barcode || '',
         imageUrl: product?.imageUrl || ''
     });
+
+    const [adjustmentData, setAdjustmentData] = useState({
+        change: 0,
+        type: 'adjustment' as 'adjustment' | 'restock',
+        note: '',
+        proofImageUrl: ''
+    });
+
     const [isScannerOpenForForm, setScannerOpenForForm] = useState(false);
     const [isCameraOpen, setCameraOpen] = useState(false);
+    const [isProofCameraOpen, setProofCameraOpen] = useState(false);
 
     const mainCategories = useMemo(() => categories.filter(c => c.parentId === null), [categories]);
     const subCategories = useMemo(() => {
@@ -67,15 +78,44 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
         }
     };
 
+    const handleAdjustmentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        setAdjustmentData(prev => ({ ...prev, [name]: name === 'change' ? Number(value) : value }));
+    };
+
+    const handleProofImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const toastId = toast.loading('Compressing proof image...');
+            try {
+                const compressedBase64 = await compressImage(file);
+                setAdjustmentData(prev => ({ ...prev, proofImageUrl: compressedBase64 }));
+                toast.success('Proof image added!', { id: toastId });
+            } catch (error) {
+                toast.error('Failed to process image.', { id: toastId });
+            }
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        
+        if (isEditing && adjustmentData.change !== 0) {
+            if (!adjustmentData.note.trim()) {
+                toast.error("A note is required for stock adjustments.");
+                return;
+            }
+        }
+
         const dataToSave = {
             ...formData,
             quantity: Number(formData.quantity),
             purchasePrice: Number(formData.purchasePrice),
             salePrice: Number(formData.salePrice),
         };
-        onSave(product ? { ...dataToSave, id: product.id } : dataToSave);
+
+        const adjustment = (isEditing && adjustmentData.change !== 0) ? adjustmentData : undefined;
+        onSave(product ? { ...dataToSave, id: product?.id } : dataToSave, adjustment);
     };
 
     const handleBarcodeScanned = (decodedText: string) => {
@@ -153,10 +193,92 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                         </div>
                     </div>
 
-                    <Input label="Quantity" name="quantity" type="number" value={formData.quantity} onChange={handleChange} required min="0"/>
+                    <Input 
+                        label="Quantity" 
+                        name="quantity" 
+                        type="number" 
+                        value={formData.quantity} 
+                        onChange={handleChange} 
+                        required 
+                        min="0"
+                        disabled={isEditing}
+                        helperText={isEditing ? "Directly editing quantity is disabled. Use the Stock Adjustment section below." : ""}
+                    />
                     <Input label="Purchase Price (Rs.)" name="purchasePrice" type="number" value={formData.purchasePrice} onChange={handleChange} required min="0"/>
                     <Input label="Sale Price (Rs.)" name="salePrice" type="number" value={formData.salePrice} onChange={handleChange} required min="0"/>
                     
+                    {isEditing && (
+                        <div className="md:col-span-2 bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
+                            <h3 className="font-bold text-blue-800 flex items-center gap-2">
+                                <PackagePlus size={18} /> Stock Adjustment
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Input 
+                                    label="Adjust Quantity (+ to add, - to subtract)" 
+                                    name="change" 
+                                    type="number" 
+                                    value={adjustmentData.change} 
+                                    onChange={handleAdjustmentChange}
+                                />
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Adjustment Type</label>
+                                    <select 
+                                        name="type" 
+                                        value={adjustmentData.type} 
+                                        onChange={handleAdjustmentChange}
+                                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                                    >
+                                        <option value="adjustment">Manual Adjustment</option>
+                                        <option value="restock">New Stock Arrival (Restock)</option>
+                                    </select>
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Reason / Note <span className="text-red-500">*</span></label>
+                                    <textarea 
+                                        name="note" 
+                                        value={adjustmentData.note} 
+                                        onChange={handleAdjustmentChange}
+                                        placeholder="Explain why this change is being made..."
+                                        className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 min-h-[80px]"
+                                    />
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Proof Image (Optional)</label>
+                                    <div className="flex flex-col sm:flex-row gap-2 items-center">
+                                        <div className="flex-grow w-full">
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={handleProofImageChange}
+                                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 border border-gray-300 rounded-lg cursor-pointer"
+                                            />
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            onClick={() => setProofCameraOpen(true)}
+                                            className="flex w-full sm:w-auto items-center justify-center gap-2"
+                                        >
+                                            <Camera size={18} /> Take Photo
+                                        </Button>
+                                    </div>
+                                    {adjustmentData.proofImageUrl && (
+                                        <div className="mt-2 relative inline-block">
+                                            <img src={adjustmentData.proofImageUrl} alt="Adjustment proof" className="h-20 w-20 object-cover rounded-md border shadow-sm" />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setAdjustmentData(prev => ({ ...prev, proofImageUrl: '' }))}
+                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"
+                                            >
+                                                <XCircle size={14} />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 mb-1">Product Image</label>
                         <div className="flex flex-col sm:flex-row gap-2 items-center">
@@ -192,6 +314,16 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                 <CameraCapture
                     onCapture={handlePhotoCaptured}
                     onClose={() => setCameraOpen(false)}
+                />
+            </Modal>
+            <Modal isOpen={isProofCameraOpen} onClose={() => setProofCameraOpen(false)} title="Take Proof Photo">
+                <CameraCapture
+                    onCapture={(img) => {
+                        setAdjustmentData(prev => ({ ...prev, proofImageUrl: img }));
+                        setProofCameraOpen(false);
+                        toast.success('Proof photo captured!');
+                    }}
+                    onClose={() => setProofCameraOpen(false)}
                 />
             </Modal>
         </>
@@ -335,47 +467,83 @@ const AddStockModal: React.FC<{
 
 
 const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = ({ product, onClose }) => {
-    const { sales } = useAppContext();
+    const { sales, stockLogs } = useAppContext();
     
-    const productSales = useMemo(() => {
-        const logs: { 
-            saleId: string, 
+    const productHistory = useMemo(() => {
+        const history: { 
+            id: string,
             date: string, 
-            customerName: string, 
+            type: 'sale' | 'adjustment' | 'restock',
+            description: string, 
             quantity: number, 
-            price: number,
-            total: number
+            total?: number,
+            note?: string,
+            proofImage?: string,
+            prevQty: number,
+            newQty: number,
+            userName?: string
         }[] = [];
 
+        // Add sales
         sales.forEach(sale => {
             sale.items.forEach(item => {
                 if (item.productId === product.id) {
-                    logs.push({
-                        saleId: sale.id,
+                    history.push({
+                        id: sale.id,
                         date: sale.date,
-                        customerName: sale.customerName,
-                        quantity: item.quantity,
-                        price: item.price,
-                        total: item.price * item.quantity
+                        type: 'sale',
+                        description: `Sale to ${sale.customerName}`,
+                        quantity: -item.quantity,
+                        total: item.price * item.quantity,
+                        prevQty: 0, // Not explicitly tracked in old sales without logs
+                        newQty: 0,
                     });
                 }
             });
         });
 
-        return logs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [sales, product.id]);
+        // Add stock logs
+        stockLogs.forEach(log => {
+            if (log.productId === product.id) {
+                history.push({
+                    id: log.id,
+                    date: log.date,
+                    type: log.type,
+                    description: log.type === 'sale' ? 'Sale' : (log.type === 'adjustment' ? 'Manual Adjustment' : 'Restock'),
+                    quantity: log.change,
+                    note: log.note,
+                    proofImage: log.proofImageUrl,
+                    prevQty: log.previousQuantity,
+                    newQty: log.newQuantity,
+                    userName: log.userName
+                });
+            }
+        });
+
+        // Deduplicate sales appearing in both (prefer log)
+        const saleLogIds = new Set(stockLogs.filter(l => l.type === 'sale').map(l => l.id));
+        // Actually stockLogs.id and sale.id are different. 
+        // Let's filter out manual history items that are duplicates of stock logs if needed.
+        // For now, let's just sort and merge properly.
+        
+        return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [sales, stockLogs, product.id]);
+
+    const [viewingProof, setViewingProof] = useState<string | null>(null);
 
     return (
-        <Modal isOpen={true} onClose={onClose} title={`Sales History: ${product.name}`} size="xl">
+        <Modal isOpen={true} onClose={onClose} title={`Product History: ${product.name}`} size="xl">
             <div className="space-y-4">
                 <div className="bg-gray-50 p-3 rounded-md flex justify-between items-center">
                     <div>
-                        <p className="text-sm text-gray-500">Total Quantity Sold</p>
-                        <p className="text-xl font-bold">{productSales.reduce((sum, log) => sum + log.quantity, 0)}</p>
+                        <p className="text-sm text-gray-500">Current Stock</p>
+                        <p className="text-xl font-bold">{product.quantity}</p>
                     </div>
                     <div className="text-right">
-                        <p className="text-sm text-gray-500">Total Revenue</p>
-                        <p className="text-xl font-bold text-green-600">{formatCurrency(productSales.reduce((sum, log) => sum + log.total, 0))}</p>
+                        <p className="text-sm text-gray-500">Total Sold</p>
+                        <p className="text-xl font-bold text-blue-600">
+                            {Math.abs(productHistory.filter(h => h.quantity < 0 && h.type === 'sale').reduce((sum, h) => sum + h.quantity, 0))}
+                        </p>
                     </div>
                 </div>
 
@@ -384,31 +552,61 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
                         <thead className="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
                             <tr>
                                 <th className="px-4 py-3">Date</th>
-                                <th className="px-4 py-3">Customer</th>
-                                <th className="px-4 py-3 text-right">Qty</th>
-                                <th className="px-4 py-3 text-right">Price</th>
-                                <th className="px-4 py-3 text-right">Total</th>
+                                <th className="px-4 py-3">Type / Description</th>
+                                <th className="px-4 py-3 text-right">Change</th>
+                                <th className="px-4 py-3 text-right">Bal</th>
+                                <th className="px-4 py-3 text-center">Info</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y">
-                            {productSales.length > 0 ? (
-                                productSales.map((log, idx) => (
-                                    <tr key={`${log.saleId}-${idx}`} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
-                                        <td className="px-4 py-2">{log.customerName}</td>
-                                        <td className="px-4 py-2 text-right">{log.quantity}</td>
-                                        <td className="px-4 py-2 text-right">{formatCurrency(log.price)}</td>
-                                        <td className="px-4 py-2 text-right font-semibold">{formatCurrency(log.total)}</td>
+                        <tbody className="divide-y text-xs sm:text-sm">
+                            {productHistory.length > 0 ? (
+                                productHistory.map((entry, idx) => (
+                                    <tr key={`${entry.id}-${idx}`} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(entry.date).toLocaleDateString()} <br/><span className="text-[10px] text-gray-400">{new Date(entry.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
+                                        <td className="px-4 py-2">
+                                            <span className={`font-semibold ${
+                                                entry.type === 'sale' ? 'text-blue-600' : (entry.type === 'restock' ? 'text-green-600' : 'text-orange-600')
+                                            }`}>
+                                                {entry.description}
+                                            </span>
+                                            {entry.userName && <span className="block text-[10px] text-gray-400">by {entry.userName}</span>}
+                                        </td>
+                                        <td className={`px-4 py-2 text-right font-bold ${entry.quantity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                            {entry.quantity > 0 ? '+' : ''}{entry.quantity}
+                                        </td>
+                                        <td className="px-4 py-2 text-right text-gray-400 font-mono">
+                                            {entry.newQty}
+                                        </td>
+                                        <td className="px-4 py-2 text-center">
+                                            {(entry.note || entry.proofImage) && (
+                                                <div className="flex justify-center gap-1">
+                                                    {entry.note && (
+                                                        <span title={entry.note} className="cursor-help text-gray-400"><FileText size={14}/></span>
+                                                    )}
+                                                    {entry.proofImage && (
+                                                        <button onClick={() => setViewingProof(entry.proofImage!)} className="text-primary-600 hover:text-primary-800"><Camera size={14}/></button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No sales recorded for this item.</td>
+                                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">No history recorded for this item.</td>
                                 </tr>
                             )}
                         </tbody>
                     </table>
                 </div>
+
+                {viewingProof && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={() => setViewingProof(null)}>
+                        <img src={viewingProof} alt="Proof" className="max-w-full max-h-full rounded-lg shadow-2xl" />
+                        <button className="absolute top-4 right-4 text-white"><XCircle size={32} /></button>
+                    </div>
+                )}
+
                 <div className="flex justify-end pt-2">
                     <Button variant="secondary" onClick={onClose}>Close</Button>
                 </div>
@@ -418,7 +616,11 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
 };
 
 const Inventory: React.FC = () => {
-    const { inventory, categories, sales, deleteProduct, addProduct, updateProduct, currentUser, addSampleData, importFromExcel, shopInfo } = useAppContext();
+    const { 
+        inventory, categories, sales, deleteProduct, addProduct, 
+        updateProduct, currentUser, addSampleData, importFromExcel, 
+        shopInfo, adjustStock 
+    } = useAppContext();
     const [isModalOpen, setModalOpen] = useState(false);
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined);
@@ -463,9 +665,12 @@ const Inventory: React.FC = () => {
         return map;
     }, [categories]);
 
-    const handleSaveProduct = (productData: Omit<Product, 'id'> | Product) => {
+    const handleSaveProduct = (productData: Omit<Product, 'id'> | Product, adjustment?: { change: number, type: 'adjustment' | 'restock', note: string, proofImageUrl?: string }) => {
         if ('id' in productData && productData.id !== 'temp-copy') {
             updateProduct(productData);
+            if (adjustment && adjustment.change !== 0) {
+                adjustStock(productData.id, adjustment.change, adjustment.type, adjustment.note, adjustment.proofImageUrl);
+            }
         } else {
             // If it was a copy (temp-copy ID) or new product, remove ID if present and add
             const { id, ...rest } = productData as any;

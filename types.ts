@@ -195,3 +195,16 @@ export interface DemandItem {
   category: string;
   manufacturer: string;
 }
+
+export interface StockLog {
+    id: string;
+    productId: string;
+    change: number; 
+    type: 'sale' | 'adjustment' | 'restock';
+    note?: string;
+    proofImageUrl?: string;
+    date: string; // ISO string
+    previousQuantity: number;
+    newQuantity: number;
+    userName?: string;
+}

@@ -5,7 +5,7 @@ import {
     ShopInfo, User, Category, Product, Sale, Customer, 
     LoyaltyTransaction, EarningRule, RedemptionRule, Promotion, 
     LoyaltyExpirySettings, CustomerTier, Expense, Payment, DemandItem,
-    CartItem, SaleItem, OutsideServiceItem
+    CartItem, SaleItem, OutsideServiceItem, StockLog
 } from '../types';
 import { SAMPLE_PRODUCTS, SAMPLE_CATEGORIES } from '../constants';
 import toast from 'react-hot-toast';
@@ -27,6 +27,7 @@ interface AppData {
     expenses: Expense[];
     payments: Payment[];
     demandItems: DemandItem[];
+    stockLogs: StockLog[];
 }
 
 const INITIAL_DATA: AppData = {
@@ -52,7 +53,8 @@ const INITIAL_DATA: AppData = {
     customerTiers: [],
     expenses: [],
     payments: [],
-    demandItems: []
+    demandItems: [],
+    stockLogs: []
 };
 
 interface AppContextType extends AppData {
@@ -76,6 +78,7 @@ interface AppContextType extends AppData {
     addProduct: (product: Omit<Product, 'id'>) => void;
     updateProduct: (product: Product) => void;
     deleteProduct: (id: string) => void;
+    adjustStock: (id: string, quantityChange: number, type: 'adjustment' | 'restock', note: string, proofImageUrl?: string) => void;
     addStock: (id: string, quantity: number, newPrice?: number) => void;
     findProductByBarcode: (barcode: string) => Product | undefined;
     addSampleData: () => void;
@@ -349,8 +352,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Inventory
     const addProduct = (product: Omit<Product, 'id'>) => {
-        const newProduct = { ...product, id: uuidv4() };
-        updateData({ inventory: [...appData.inventory, newProduct] });
+        const newProduct: Product = { ...product, id: uuidv4() };
+        const log: StockLog = {
+            id: uuidv4(),
+            productId: newProduct.id,
+            change: newProduct.quantity,
+            type: 'restock',
+            note: 'Initial inventory entry',
+            date: new Date().toISOString(),
+            previousQuantity: 0,
+            newQuantity: newProduct.quantity,
+            userName: currentUser?.username
+        };
+        
+        updateData({ 
+            inventory: [...appData.inventory, newProduct],
+            stockLogs: [log, ...appData.stockLogs]
+        });
         toast.success("Product added.");
     };
 
@@ -364,18 +382,60 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toast.success("Product deleted.");
     };
 
+    const adjustStock = (id: string, quantityChange: number, type: 'adjustment' | 'restock', note: string, proofImageUrl?: string) => {
+        const product = appData.inventory.find(p => p.id === id);
+        if (!product) return;
+
+        const newQuantity = product.quantity + quantityChange;
+        const log: StockLog = {
+            id: uuidv4(),
+            productId: id,
+            change: quantityChange,
+            type,
+            note,
+            proofImageUrl,
+            date: new Date().toISOString(),
+            previousQuantity: product.quantity,
+            newQuantity,
+            userName: currentUser?.username
+        };
+
+        updateData({
+            inventory: appData.inventory.map(p => p.id === id ? { ...p, quantity: newQuantity } : p),
+            stockLogs: [log, ...appData.stockLogs]
+        });
+        toast.success(`Stock ${quantityChange >= 0 ? 'added' : 'reduced'} successfully.`);
+    };
+
     const addStock = (id: string, quantity: number, newPrice?: number) => {
+        const product = appData.inventory.find(p => p.id === id);
+        if (!product) return;
+
+        const newQuantity = product.quantity + quantity;
+        const log: StockLog = {
+            id: uuidv4(),
+            productId: id,
+            change: quantity,
+            type: 'restock',
+            note: 'Manual restock via Add Stock modal',
+            date: new Date().toISOString(),
+            previousQuantity: product.quantity,
+            newQuantity,
+            userName: currentUser?.username
+        };
+
         updateData({
             inventory: appData.inventory.map(p => {
                 if (p.id === id) {
                     return {
                         ...p,
-                        quantity: p.quantity + quantity,
+                        quantity: newQuantity,
                         salePrice: newPrice !== undefined ? newPrice : p.salePrice
                     };
                 }
                 return p;
-            })
+            }),
+            stockLogs: [log, ...appData.stockLogs]
         });
         toast.success("Stock updated.");
     };
@@ -418,7 +478,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
 
         if (addedCount > 0) {
-             updateData({ inventory: [...appData.inventory, ...newProducts] });
+             updateData({ 
+                inventory: [...appData.inventory, ...newProducts],
+                stockLogs: [
+                    ...newProducts.map(p => ({
+                        id: uuidv4(),
+                        productId: p.id,
+                        change: p.quantity,
+                        type: 'restock' as const,
+                        note: 'Imported from Excel',
+                        date: new Date().toISOString(),
+                        previousQuantity: 0,
+                        newQuantity: p.quantity,
+                        userName: currentUser?.username
+                    })),
+                    ...appData.stockLogs
+                ]
+             });
              toast.success(`${addedCount} products imported.`);
         } else {
             toast.error("No valid products found in Excel.");
@@ -721,7 +797,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             inventory: updatedInventory,
             sales: [newSale, ...appData.sales],
             customers: updatedCustomers,
-            loyaltyTransactions: newTransactions
+            loyaltyTransactions: newTransactions,
+            stockLogs: [
+                ...saleItems.map(item => ({
+                    id: uuidv4(),
+                    productId: item.productId,
+                    change: -item.quantity,
+                    type: 'sale' as const,
+                    date: newSale.date,
+                    previousQuantity: appData.inventory.find(p => p.id === item.productId)?.quantity || 0,
+                    newQuantity: (appData.inventory.find(p => p.id === item.productId)?.quantity || 0) - item.quantity,
+                    userName: currentUser?.username
+                })),
+                ...appData.stockLogs
+            ]
         });
 
         toast.success("Sale completed successfully!");
@@ -924,12 +1013,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             toast.success("Items returned. Please adjust balance/points manually.");
         }
 
+        const returnLogs: StockLog[] = itemsToReturn.filter(item => !item.productId.startsWith('manual-')).map(item => {
+            const product = appData.inventory.find(p => p.id === item.productId);
+            const prevQty = product?.quantity || 0;
+            return {
+                id: uuidv4(),
+                productId: item.productId,
+                change: item.quantity,
+                type: 'restock',
+                note: `Sale Reversal (Sale ID: ${saleId})`,
+                date: new Date().toISOString(),
+                previousQuantity: prevQty,
+                newQuantity: prevQty + item.quantity,
+                userName: currentUser?.username
+            };
+        });
+
         updateData({
             inventory: updatedInventory,
             sales: updatedSales,
             customers: updatedCustomers,
             loyaltyTransactions: updatedTransactions,
-            payments: updatedPayments
+            payments: updatedPayments,
+            stockLogs: [...returnLogs, ...appData.stockLogs]
         });
     };
     
@@ -1095,6 +1201,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             addProduct,
             updateProduct,
             deleteProduct,
+            adjustStock,
             addStock,
             findProductByBarcode,
             addSampleData,

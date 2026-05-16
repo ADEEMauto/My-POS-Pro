@@ -57,7 +57,7 @@ const ProductCard: React.FC<{ product: Product; onSelect: (productId: string) =>
             <img src={product.imageUrl || 'https://picsum.photos/200'} alt={product.name} className="w-full h-32 object-cover rounded-md mb-2" />
             <h3 className="font-semibold text-gray-800 text-sm truncate">{product.name}</h3>
             <p className="text-xs text-gray-500 truncate">
-                {categoryName || 'N/A'} &bull; {product.manufacturer} &bull; {product.location || 'N/A'}
+                {categoryName || 'N/A'} &bull; {product.manufacturer} &bull; {product.location || 'N/A'} &bull; Qty: {product.quantity}
             </p>
             <p className="text-lg font-bold text-primary-600 mt-1">{formatCurrency(product.salePrice)}</p>
         </div>
