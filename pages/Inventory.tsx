@@ -42,6 +42,30 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
         proofImageUrl: ''
     });
 
+    // Reset form when product prop changes
+    React.useEffect(() => {
+        if (product) {
+            setFormData({
+                name: product.name || '',
+                categoryId: product.categoryId || '',
+                subCategoryId: product.subCategoryId || '',
+                manufacturer: product.manufacturer || '',
+                location: product.location || '',
+                quantity: product.quantity || 0,
+                purchasePrice: product.purchasePrice || 0,
+                salePrice: product.salePrice || 0,
+                barcode: product.barcode || '',
+                imageUrl: product.imageUrl || ''
+            });
+            setAdjustmentData({
+                change: 0,
+                type: 'adjustment',
+                note: '',
+                proofImageUrl: ''
+            });
+        }
+    }, [product]);
+
     const [isScannerOpenForForm, setScannerOpenForForm] = useState(false);
     const [isCameraOpen, setCameraOpen] = useState(false);
     const [isProofCameraOpen, setProofCameraOpen] = useState(false);
@@ -209,9 +233,12 @@ const ProductForm: React.FC<{ product?: Product; onSave: (product: Omit<Product,
                     
                     {isEditing && (
                         <div className="md:col-span-2 bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
-                            <h3 className="font-bold text-blue-800 flex items-center gap-2">
-                                <PackagePlus size={18} /> Stock Adjustment
-                            </h3>
+                            <div className="flex justify-between items-center">
+                                <h3 className="font-bold text-blue-800 flex items-center gap-2">
+                                    <PackagePlus size={18} /> Stock Adjustment
+                                </h3>
+                                <span className="text-sm bg-blue-100 px-2 py-1 rounded text-blue-800">Current Stock: <strong>{formData.quantity}</strong></span>
+                            </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Input 
                                     label="Adjust Quantity (+ to add, - to subtract)" 
@@ -484,47 +511,47 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
             userName?: string
         }[] = [];
 
-        // Add sales
+        // Track sale IDs that are already in logs to avoid double-counting
+        const saleIdsInLogs = new Set<string>();
+        
+        // Add stock logs first (they are more detailed)
+        stockLogs.filter(log => log.productId === product.id).forEach(log => {
+            if (log.type === 'sale' && log.referenceId) {
+                saleIdsInLogs.add(log.referenceId);
+            }
+            history.push({
+                id: log.id,
+                date: log.date,
+                type: log.type,
+                description: log.type === 'sale' ? 'Sale' : (log.type === 'adjustment' ? 'Manual Adjustment' : 'Restock'),
+                quantity: log.change,
+                note: log.note,
+                proofImage: log.proofImageUrl,
+                prevQty: log.previousQuantity,
+                newQty: log.newQuantity,
+                userName: log.userName
+            });
+        });
+
+        // Add sales that DON'T have logs (legacy data)
         sales.forEach(sale => {
+            if (saleIdsInLogs.has(sale.id)) return;
+            
             sale.items.forEach(item => {
                 if (item.productId === product.id) {
                     history.push({
                         id: sale.id,
                         date: sale.date,
                         type: 'sale',
-                        description: `Sale to ${sale.customerName}`,
+                        description: `Sale to ${sale.customerName} (Legacy)`,
                         quantity: -item.quantity,
                         total: item.price * item.quantity,
-                        prevQty: 0, // Not explicitly tracked in old sales without logs
+                        prevQty: 0,
                         newQty: 0,
                     });
                 }
             });
         });
-
-        // Add stock logs
-        stockLogs.forEach(log => {
-            if (log.productId === product.id) {
-                history.push({
-                    id: log.id,
-                    date: log.date,
-                    type: log.type,
-                    description: log.type === 'sale' ? 'Sale' : (log.type === 'adjustment' ? 'Manual Adjustment' : 'Restock'),
-                    quantity: log.change,
-                    note: log.note,
-                    proofImage: log.proofImageUrl,
-                    prevQty: log.previousQuantity,
-                    newQty: log.newQuantity,
-                    userName: log.userName
-                });
-            }
-        });
-
-        // Deduplicate sales appearing in both (prefer log)
-        const saleLogIds = new Set(stockLogs.filter(l => l.type === 'sale').map(l => l.id));
-        // Actually stockLogs.id and sale.id are different. 
-        // Let's filter out manual history items that are duplicates of stock logs if needed.
-        // For now, let's just sort and merge properly.
         
         return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [sales, stockLogs, product.id]);
@@ -569,6 +596,7 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
                                             }`}>
                                                 {entry.description}
                                             </span>
+                                            {entry.note && <span className="block text-xs text-gray-600 italic mt-0.5">{entry.note}</span>}
                                             {entry.userName && <span className="block text-[10px] text-gray-400">by {entry.userName}</span>}
                                         </td>
                                         <td className={`px-4 py-2 text-right font-bold ${entry.quantity >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -667,10 +695,7 @@ const Inventory: React.FC = () => {
 
     const handleSaveProduct = (productData: Omit<Product, 'id'> | Product, adjustment?: { change: number, type: 'adjustment' | 'restock', note: string, proofImageUrl?: string }) => {
         if ('id' in productData && productData.id !== 'temp-copy') {
-            updateProduct(productData);
-            if (adjustment && adjustment.change !== 0) {
-                adjustStock(productData.id, adjustment.change, adjustment.type, adjustment.note, adjustment.proofImageUrl);
-            }
+            updateProduct(productData as Product, adjustment);
         } else {
             // If it was a copy (temp-copy ID) or new product, remove ID if present and add
             const { id, ...rest } = productData as any;
@@ -1095,17 +1120,23 @@ const Inventory: React.FC = () => {
                 ))}
             </div>
 
-
-            <Modal isOpen={isModalOpen} onClose={() => { setModalOpen(false); setEditingProduct(undefined); }} title={editingProduct?.id ? (editingProduct.id === 'temp-copy' ? 'Add Copy Product' : 'Edit Product') : 'Add New Product'} size="2xl">
+            <Modal 
+                key={editingProduct?.id || 'new'}
+                isOpen={isModalOpen} 
+                onClose={() => { setModalOpen(false); setEditingProduct(undefined); }} 
+                title={editingProduct?.id ? (editingProduct.id === 'temp-copy' ? 'Add Copy Product' : 'Edit Product') : 'Add New Product'} 
+                size="2xl"
+            >
                 <ProductForm product={editingProduct} onSave={handleSaveProduct} onCancel={() => { setModalOpen(false); setEditingProduct(undefined); }} />
             </Modal>
-            
+             
             <Modal isOpen={isScannerOpen} onClose={() => setScannerOpen(false)} title="Scan Barcode to Add Product">
                 <p className="text-center text-gray-600 mb-4">Scan a product's barcode. It will be added to a new product form.</p>
                 <BarcodeScanner onScanSuccess={handleScanSuccess} />
             </Modal>
 
             <Modal
+                key={productToDelete?.id || 'delete'}
                 isOpen={!!productToDelete}
                 onClose={() => setProductToDelete(null)}
                 title="Confirm Product Deletion"
@@ -1184,7 +1215,7 @@ const Inventory: React.FC = () => {
             <AddStockModal isOpen={isAddStockModalOpen} onClose={() => setAddStockModalOpen(false)} />
 
             {viewingProductSales && (
-                <ProductSalesModal product={viewingProductSales} onClose={() => setViewingProductSales(null)} />
+                <ProductSalesModal key={viewingProductSales.id} product={viewingProductSales} onClose={() => setViewingProductSales(null)} />
             )}
         </div>
     );

@@ -207,4 +207,5 @@ export interface StockLog {
     previousQuantity: number;
     newQuantity: number;
     userName?: string;
+    referenceId?: string;
 }

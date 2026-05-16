@@ -372,8 +372,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toast.success("Product added.");
     };
 
-    const updateProduct = (product: Product) => {
-        updateData({ inventory: appData.inventory.map(p => p.id === product.id ? product : p) });
+    const updateProduct = (product: Product, adjustment?: { change: number, type: 'adjustment' | 'restock', note: string, proofImageUrl?: string }) => {
+        let updatedInventory = appData.inventory.map(p => p.id === product.id ? product : p);
+        let updatedLogs = [...appData.stockLogs];
+
+        if (adjustment && adjustment.change !== 0) {
+            const currentProduct = appData.inventory.find(p => p.id === product.id);
+            if (currentProduct) {
+                const newQuantity = product.quantity + adjustment.change;
+                const log: StockLog = {
+                    id: uuidv4(),
+                    productId: product.id,
+                    change: adjustment.change,
+                    type: adjustment.type,
+                    note: adjustment.note,
+                    proofImageUrl: adjustment.proofImageUrl,
+                    date: new Date().toISOString(),
+                    previousQuantity: product.quantity,
+                    newQuantity: newQuantity,
+                    userName: currentUser?.username
+                };
+                // Ensure the product in updatedInventory also has the new quantity
+                updatedInventory = updatedInventory.map(p => p.id === product.id ? { ...p, ...product, quantity: newQuantity } : p);
+                updatedLogs = [log, ...updatedLogs];
+            }
+        }
+
+        updateData({ 
+            inventory: updatedInventory,
+            stockLogs: updatedLogs
+        });
         toast.success("Product updated.");
     };
 
@@ -807,7 +835,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     date: newSale.date,
                     previousQuantity: appData.inventory.find(p => p.id === item.productId)?.quantity || 0,
                     newQuantity: (appData.inventory.find(p => p.id === item.productId)?.quantity || 0) - item.quantity,
-                    userName: currentUser?.username
+                    userName: currentUser?.username,
+                    referenceId: saleId
                 })),
                 ...appData.stockLogs
             ]
@@ -1025,7 +1054,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 date: new Date().toISOString(),
                 previousQuantity: prevQty,
                 newQuantity: prevQty + item.quantity,
-                userName: currentUser?.username
+                userName: currentUser?.username,
+                referenceId: saleId
             };
         });
 
