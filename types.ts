@@ -177,6 +177,7 @@ export interface Expense {
     amount: number;
     date: string; // ISO string
     category: string;
+    billImageUrl?: string;
 }
 
 export interface Payment {
