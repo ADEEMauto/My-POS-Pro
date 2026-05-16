@@ -7,7 +7,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import toast from 'react-hot-toast';
-import { downloadFile } from '../utils/helpers';
+import { downloadFile, formatDate } from '../utils/helpers';
 
 const LoyaltySettings: React.FC = () => {
     const { 
@@ -464,7 +464,7 @@ const LoyaltySettings: React.FC = () => {
                             <div>
                                 <p className="font-bold">{promo.name}</p>
                                 <p className="text-sm text-gray-500">
-                                    {new Date(promo.startDate).toLocaleDateString()} - {new Date(promo.endDate).toLocaleDateString()}
+                                    {formatDate(promo.startDate)} - {formatDate(promo.endDate)}
                                 </p>
                             </div>
                             <div className="flex items-center justify-between sm:justify-start gap-4">

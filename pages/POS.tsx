@@ -3,7 +3,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Product, CartItem, Sale, Customer, OutsideServiceItem } from '../types';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, formatDate } from '../utils/helpers';
 import { Search, X, ShoppingCart, ScanLine, Printer, ImageDown, Check, PlusCircle, Star, MessageSquare, Trash2, FileSearch, Hammer, Plus, Bike } from 'lucide-react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -106,7 +106,7 @@ const CustomerLookupModal: React.FC<{
                             <p className="font-semibold">{c.name}</p>
                             <p className="text-sm text-gray-500">{c.id}</p>
                         </div>
-                        <span className="text-xs text-gray-400">Last Seen: {new Date(c.lastSeen).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-400">Last Seen: {formatDate(c.lastSeen)}</span>
                     </div>
                 )) : (
                     <p className="text-center text-gray-500 p-4">No customers found.</p>
@@ -296,12 +296,12 @@ const POS: React.FC = () => {
             return;
         }
 
-        const quantityInput = prompt("Enter quantity:", "1");
+        const quantityInput = prompt("Enter Quantity:", "1");
         if (quantityInput === null) return;
         const quantity = parseInt(quantityInput || '1', 10);
 
         if (isNaN(quantity) || quantity <= 0) {
-            toast.error("Invalid quantity entered.");
+            toast.error("Invalid Quantity entered.");
             return;
         }
 

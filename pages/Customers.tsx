@@ -17,7 +17,7 @@ const isServiceDue = (customer: Customer): { due: boolean; message: string } => 
     if (customer.nextServiceDate) {
         const nextService = new Date(customer.nextServiceDate);
         if (nextService <= now) {
-            return { due: true, message: `Service was due on ${nextService.toLocaleDateString()}` };
+            return { due: true, message: `Service was due on ${formatDate(nextService)}` };
         }
     }
 
@@ -39,7 +39,7 @@ const isServiceDue = (customer: Customer): { due: boolean; message: string } => 
         }
 
         if (dueDate <= now) {
-            return { due: true, message: `Service was due around ${dueDate.toLocaleDateString()}` };
+            return { due: true, message: `Service was due around ${formatDate(dueDate)}` };
         }
     }
 
@@ -308,7 +308,7 @@ const CustomerDetailsModal: React.FC<{
                             </div>
                             <div className="bg-gray-100 p-2 rounded-lg">
                                 <p className="text-xs text-gray-500">Last Visit</p>
-                                <p className="font-bold text-primary-600 text-sm">{new Date(customer.lastSeen).toLocaleDateString()}</p>
+                                <p className="font-bold text-primary-600 text-sm">{formatDate(customer.lastSeen)}</p>
                             </div>
                         </div>
                     </div>
@@ -520,7 +520,7 @@ const CustomerDetailsModal: React.FC<{
                                             const sale = item.data as Sale;
                                             return (
                                                 <tr key={`sale-${sale.id}-${index}`}>
-                                                    <td className="px-2 py-2 text-xs">{new Date(sale.date).toLocaleDateString()}</td>
+                                                    <td className="px-2 py-2 text-xs">{formatDate(sale.date)}</td>
                                                     <td className="px-2 py-2">
                                                         Sale{' '}
                                                         <button 
@@ -539,7 +539,7 @@ const CustomerDetailsModal: React.FC<{
                                             const payment = item.data as Payment;
                                             return (
                                                  <tr key={`payment-${payment.id}-${index}`} className="bg-green-50 hover:bg-green-100">
-                                                    <td className="px-2 py-2 text-xs">{new Date(payment.date).toLocaleDateString()}</td>
+                                                    <td className="px-2 py-2 text-xs">{formatDate(payment.date)}</td>
                                                     <td className="px-2 py-2 font-semibold text-green-800">{payment.notes || 'Payment Received'}</td>
                                                     <td className="px-2 py-2 text-right">-</td>
                                                     <td className="px-2 py-2 text-right font-semibold text-green-800">{formatCurrency(payment.amount)}</td>
@@ -583,7 +583,7 @@ const CustomerDetailsModal: React.FC<{
                                     <tbody>
                                     {customerTransactions.map(t => (
                                         <tr key={t.id} className="border-b hover:bg-gray-50">
-                                            <td className="p-2 text-xs text-gray-500 align-top">{new Date(t.date).toLocaleDateString()}</td>
+                                            <td className="p-2 text-xs text-gray-500 align-top">{formatDate(t.date)}</td>
                                             <td className="p-2 align-top">
                                                 <p className="font-semibold capitalize">{t.type.replace(/_/g, ' ')}</p>
                                                 <p className="text-xs text-gray-500">{t.reason || (t.relatedSaleId ? `Sale #${t.relatedSaleId}` : '')}</p>

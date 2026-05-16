@@ -2,6 +2,7 @@
 import React from 'react';
 import { Sale } from '../types';
 import { useAppContext } from '../contexts/AppContext';
+import { formatDate } from '../utils/helpers';
 
 const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref) => {
     const { shopInfo, customers, customerTiers } = useAppContext();
@@ -36,11 +37,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                 break;
         }
         
-        const day = String(nextDate.getDate()).padStart(2, '0');
-        const month = nextDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
-        const year = String(nextDate.getFullYear()).slice(-2);
-        
-        return `${day}-${month}-${year}`;
+        return formatDate(nextDate);
     };
 
     const nextServiceDate = customer ? calculateNextServiceDate(sale.date, customer.serviceFrequencyValue, customer.serviceFrequencyUnit) : null;

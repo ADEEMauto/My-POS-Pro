@@ -4,7 +4,7 @@ import { useAppContext } from '../contexts/AppContext';
 // FIX: Use named imports for react-router-dom components.
 import * as ReactRouterDOM from 'react-router-dom';
 import { ShoppingCart, Archive, Layers, Users, BarChart2, DollarSign, Package, AlertTriangle, FileText, ClipboardList, Bike } from 'lucide-react';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, formatDate } from '../utils/helpers';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
 import { Product, DemandItem, Sale } from '../types';
@@ -171,7 +171,7 @@ const Dashboard: React.FC = () => {
                         ${logoHtml}
                     </div>
                     <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Low Stock Report</h2>
-                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${formatDate(new Date())}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                         <thead>
                             <tr style="background-color: #f2f2f2;">
@@ -274,7 +274,7 @@ const Dashboard: React.FC = () => {
                         ${logoHtml}
                     </div>
                     <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Out of Stock Report</h2>
-                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${formatDate(new Date())}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                         <thead>
                             <tr style="background-color: #f2f2f2;">

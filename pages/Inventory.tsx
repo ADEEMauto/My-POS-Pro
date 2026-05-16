@@ -1,14 +1,15 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-import { Product } from '../types';
-import { formatCurrency, compressImage } from '../utils/helpers';
-import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye, PackagePlus, Copy, TrendingUp } from 'lucide-react';
+import { Product, Sale } from '../types';
+import { formatCurrency, formatDate, compressImage } from '../utils/helpers';
+import { Plus, Edit, Trash2, Search, ScanLine, Upload, Download, Camera, RefreshCw, FileText, XCircle, Eye, PackagePlus, Copy, TrendingUp, Receipt as ReceiptIcon } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import BarcodeScanner from '../components/BarcodeScanner';
 import CameraCapture from '../components/CameraCapture';
+import Receipt from '../components/Receipt';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -495,6 +496,7 @@ const AddStockModal: React.FC<{
 
 const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = ({ product, onClose }) => {
     const { sales, stockLogs } = useAppContext();
+    const [viewingSaleReceipt, setViewingSaleReceipt] = useState<Sale | null>(null);
     
     const productHistory = useMemo(() => {
         const history: { 
@@ -508,7 +510,8 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
             proofImage?: string,
             prevQty: number,
             newQty: number,
-            userName?: string
+            userName?: string,
+            saleId?: string
         }[] = [];
 
         // Track sale IDs that are already in logs to avoid double-counting
@@ -529,7 +532,8 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
                 proofImage: log.proofImageUrl,
                 prevQty: log.previousQuantity,
                 newQty: log.newQuantity,
-                userName: log.userName
+                userName: log.userName,
+                saleId: log.referenceId
             });
         });
 
@@ -548,6 +552,7 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
                         total: item.price * item.quantity,
                         prevQty: 0,
                         newQty: 0,
+                        saleId: sale.id
                     });
                 }
             });
@@ -589,7 +594,7 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
                             {productHistory.length > 0 ? (
                                 productHistory.map((entry, idx) => (
                                     <tr key={`${entry.id}-${idx}`} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(entry.date).toLocaleDateString()} <br/><span className="text-[10px] text-gray-400">{new Date(entry.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
+                                        <td className="px-4 py-2 whitespace-nowrap">{formatDate(entry.date)} <br/><span className="text-[10px] text-gray-400">{new Date(entry.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></td>
                                         <td className="px-4 py-2">
                                             <span className={`font-semibold ${
                                                 entry.type === 'sale' ? 'text-blue-600' : (entry.type === 'restock' ? 'text-green-600' : 'text-orange-600')
@@ -605,17 +610,28 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
                                         <td className="px-4 py-2 text-right text-gray-400 font-mono">
                                             {entry.newQty}
                                         </td>
-                                        <td className="px-4 py-2 text-center">
-                                            {(entry.note || entry.proofImage) && (
-                                                <div className="flex justify-center gap-1">
-                                                    {entry.note && (
-                                                        <span title={entry.note} className="cursor-help text-gray-400"><FileText size={14}/></span>
-                                                    )}
-                                                    {entry.proofImage && (
-                                                        <button onClick={() => setViewingProof(entry.proofImage!)} className="text-primary-600 hover:text-primary-800"><Camera size={14}/></button>
-                                                    )}
-                                                </div>
-                                            )}
+                                        <td className="px-4 py-2 text-center text-xs">
+                                            <div className="flex justify-center gap-1">
+                                                {entry.type === 'sale' && entry.saleId && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            const sale = sales.find(s => s.id === entry.saleId);
+                                                            if (sale) setViewingSaleReceipt(sale);
+                                                            else toast.error("Original sale record not found");
+                                                        }}
+                                                        className="text-blue-600 hover:text-blue-800"
+                                                        title="View Receipt"
+                                                    >
+                                                        <ReceiptIcon size={14}/>
+                                                    </button>
+                                                )}
+                                                {entry.note && (
+                                                    <span title={entry.note} className="cursor-help text-gray-400"><FileText size={14}/></span>
+                                                )}
+                                                {entry.proofImage && (
+                                                    <button onClick={() => setViewingProof(entry.proofImage!)} className="text-primary-600 hover:text-primary-800"><Camera size={14}/></button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -633,6 +649,17 @@ const ProductSalesModal: React.FC<{ product: Product; onClose: () => void }> = (
                         <img src={viewingProof} alt="Proof" className="max-w-full max-h-full rounded-lg shadow-2xl" />
                         <button className="absolute top-4 right-4 text-white"><XCircle size={32} /></button>
                     </div>
+                )}
+
+                {viewingSaleReceipt && (
+                    <Modal isOpen={true} onClose={() => setViewingSaleReceipt(null)} title="Sale Receipt" size="md">
+                        <div className="bg-gray-100 p-2 rounded border">
+                            <Receipt sale={viewingSaleReceipt} />
+                        </div>
+                        <div className="flex justify-end mt-4">
+                            <Button variant="secondary" onClick={() => setViewingSaleReceipt(null)}>Close</Button>
+                        </div>
+                    </Modal>
                 )}
 
                 <div className="flex justify-end pt-2">
@@ -828,7 +855,7 @@ const Inventory: React.FC = () => {
                         ${logoHtml}
                     </div>
                     <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Inventory Report</h2>
-                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${formatDate(new Date())}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                         <thead>
                             <tr style="background-color: #f2f2f2;">

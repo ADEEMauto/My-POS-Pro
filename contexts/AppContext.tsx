@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, ReactNode } from 'react';
 import useIndexedDB from '../hooks/useIndexedDB';
 import { 
     ShopInfo, User, Category, Product, Sale, Customer, 
@@ -149,8 +149,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     
     const [isAuthReady, setIsAuthReady] = useState(false);
 
-    // Ensure data is never null after loading
-    const appData = data || INITIAL_DATA;
+    // Ensure data is never null after loading and merge with defaults to handle missing keys
+    const appData = useMemo(() => ({
+        ...INITIAL_DATA,
+        ...(data || {})
+    }), [data]);
 
     // Helper to update full state
     const updateData = useCallback(async (updates: Partial<AppData>) => {

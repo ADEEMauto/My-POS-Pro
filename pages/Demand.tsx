@@ -2,6 +2,7 @@ import React from 'react';
 import { useAppContext } from '../contexts/AppContext';
 import { DemandItem } from '../types';
 import { Plus, Edit, Trash2, FileText, PackageSearch, XCircle } from 'lucide-react';
+import { formatDate } from '../utils/helpers';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -146,7 +147,7 @@ const Demand: React.FC = () => {
                         ${logoHtml}
                     </div>
                     <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">Required Items Demand List</h2>
-                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${formatDate(new Date())}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                         <thead style="background-color: #f2f2f2;">
                             <tr>

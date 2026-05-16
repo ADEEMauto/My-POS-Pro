@@ -1,13 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../contexts/AppContext';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, formatDate } from '../utils/helpers';
 // @ts-ignore
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Product, Sale, Expense } from '../types';
 import Button from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
-import { FileText, Wrench, Hammer, DollarSign, ShoppingBag, TrendingUp, Bike, Search, X } from 'lucide-react';
+import Receipt from '../components/Receipt';
+import { FileText, Wrench, Hammer, DollarSign, ShoppingBag, TrendingUp, Bike, Search, X, Receipt as ReceiptIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -88,6 +89,8 @@ const calculateNetItemRevenue = (sale: Sale) => {
 };
 
 const ProductSalesDetailModal: React.FC<{ product: Product; sales: Sale[]; onClose: () => void }> = ({ product, sales, onClose }) => {
+    const [viewingReceipt, setViewingReceipt] = useState<Sale | null>(null);
+
     const productSales = useMemo(() => {
         const logs: { 
             saleId: string, 
@@ -139,17 +142,31 @@ const ProductSalesDetailModal: React.FC<{ product: Product; sales: Sale[]; onClo
                                 <th className="px-4 py-3 text-right">Qty</th>
                                 <th className="px-4 py-3 text-right">Price</th>
                                 <th className="px-4 py-3 text-right">Total</th>
+                                <th className="px-4 py-3 text-center">Info</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y">
                             {productSales.length > 0 ? (
                                 productSales.map((log, idx) => (
                                     <tr key={`${log.saleId}-${idx}`} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-2 whitespace-nowrap">{formatDate(log.date)}</td>
                                         <td className="px-4 py-2">{log.customerName}</td>
                                         <td className="px-4 py-2 text-right">{log.quantity}</td>
                                         <td className="px-4 py-2 text-right">{formatCurrency(log.price)}</td>
                                         <td className="px-4 py-2 text-right font-semibold">{formatCurrency(log.total)}</td>
+                                        <td className="px-4 py-2 text-center text-xs">
+                                             <button 
+                                                onClick={() => {
+                                                    const sale = sales.find(s => s.id === log.saleId);
+                                                    if (sale) setViewingReceipt(sale);
+                                                    else toast.error("Sale record not found");
+                                                }}
+                                                className="text-blue-600 hover:text-blue-800"
+                                                title="View Bill"
+                                            >
+                                                <ReceiptIcon size={14}/>
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))
                             ) : (
@@ -164,6 +181,12 @@ const ProductSalesDetailModal: React.FC<{ product: Product; sales: Sale[]; onClo
                     <Button variant="secondary" onClick={onClose}>Close</Button>
                 </div>
             </div>
+            
+            {viewingReceipt && (
+                <Modal isOpen={true} onClose={() => setViewingReceipt(null)} title="View Bill" size="lg">
+                    <Receipt sale={viewingReceipt} onDone={() => setViewingReceipt(null)} />
+                </Modal>
+            )}
         </Modal>
     );
 };
@@ -172,6 +195,7 @@ const Reports: React.FC = () => {
     const { sales, inventory, currentUser, categories, shopInfo, expenses } = useAppContext();
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [viewingReceipt, setViewingReceipt] = useState<Sale | null>(null);
 
     const isMaster = currentUser?.role === 'master';
 
@@ -421,7 +445,7 @@ const Reports: React.FC = () => {
                         ${logoHtml}
                     </div>
                     <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">${reportTitle}</h2>
-                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${formatDate(new Date())}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                         <thead>
                             ${tableHeaderHtml}
@@ -606,7 +630,7 @@ const Reports: React.FC = () => {
                  <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={salesDataForChart} margin={{ top: 50, right: 30, left: 20, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
+                        <XAxis dataKey="date" tickFormatter={(tick) => formatDate(new Date(tick))} />
                         <YAxis tickFormatter={(value) => `Rs.${value / 1000}k`} />
                         <Tooltip formatter={(value: number) => [formatCurrency(value), 'Item Sales']} />
                         <Legend />
@@ -644,7 +668,7 @@ const Reports: React.FC = () => {
                         <ResponsiveContainer width="100%" height={300}>
                             <BarChart data={serviceMetrics.chartData} margin={{ top: 50, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
+                                <XAxis dataKey="date" tickFormatter={(tick) => formatDate(new Date(tick))} />
                                 <YAxis tickFormatter={(value) => `Rs.${value}`} />
                                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
                                 <Legend />
@@ -663,7 +687,7 @@ const Reports: React.FC = () => {
                         <ResponsiveContainer width="100%" height={300}>
                             <BarChart data={bikesVisitedData} margin={{ top: 50, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
+                                <XAxis dataKey="date" tickFormatter={(tick) => formatDate(new Date(tick))} />
                                 <YAxis />
                                 <Tooltip formatter={(value: number) => [value, 'Bikes Visited']} />
                                 <Legend />
@@ -790,6 +814,7 @@ const Reports: React.FC = () => {
                                 <th scope="col" className="px-4 py-3 text-right">Qty</th>
                                 <th scope="col" className="px-4 py-3 text-right">Price</th>
                                 <th scope="col" className="px-4 py-3 text-right">Total</th>
+                                <th scope="col" className="px-4 py-3 text-center">Info</th>
                                 <th scope="col" className="px-4 py-3">Sale ID</th>
                             </tr>
                         </thead>
@@ -797,18 +822,31 @@ const Reports: React.FC = () => {
                             {filteredSoldItemsLog.length > 0 ? (
                                 filteredSoldItemsLog.map((log, idx) => (
                                     <tr key={`${log.saleId}-${idx}`} className="bg-white border-b hover:bg-gray-50">
-                                        <td className="px-4 py-2 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
+                                        <td className="px-4 py-2 whitespace-nowrap">{formatDate(log.date)}</td>
                                         <td className="px-4 py-2 font-medium text-gray-900">{log.itemName}</td>
                                         <td className="px-4 py-2">{log.customerName}</td>
                                         <td className="px-4 py-2 text-right">{log.quantity}</td>
                                         <td className="px-4 py-2 text-right">{formatCurrency(log.price)}</td>
                                         <td className="px-4 py-2 text-right font-semibold">{formatCurrency(log.total)}</td>
+                                        <td className="px-4 py-2 text-center">
+                                            <button 
+                                                onClick={() => {
+                                                    const sale = sales.find(s => s.id === log.saleId);
+                                                    if (sale) setViewingReceipt(sale);
+                                                    else toast.error("Sale record not found");
+                                                }}
+                                                className="text-blue-600 hover:text-blue-800"
+                                                title="View Bill"
+                                            >
+                                                <ReceiptIcon size={14}/>
+                                            </button>
+                                        </td>
                                         <td className="px-4 py-2 font-mono text-xs">{log.saleId.slice(0, 8)}...</td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">No sold items found.</td>
+                                    <td colSpan={8} className="px-4 py-8 text-center text-gray-500">No sold items found.</td>
                                 </tr>
                             )}
                         </tbody>
@@ -858,6 +896,12 @@ const Reports: React.FC = () => {
                     sales={sales} 
                     onClose={() => setSelectedProductForLog(null)} 
                 />
+            )}
+
+            {viewingReceipt && (
+                <Modal isOpen={true} onClose={() => setViewingReceipt(null)} title="View Bill" size="lg">
+                    <Receipt sale={viewingReceipt} onDone={() => setViewingReceipt(null)} />
+                </Modal>
             )}
         </div>
     );

@@ -2,14 +2,17 @@ export const formatCurrency = (amount: number) => {
     return `Rs. ${Math.round(amount).toLocaleString('en-IN')}`;
 };
 
-export const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+export const formatDate = (dateString: string | number | Date) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    
+    const day = date.getDate().toString().padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[date.getMonth()];
+    const year = date.getFullYear().toString().slice(-2);
+    
+    return `${day}-${month}-${year}`;
 };
 
 export const compressImage = (file: File, quality = 0.7, maxWidth = 800): Promise<string> => {

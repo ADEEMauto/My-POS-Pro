@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Expense } from '../types';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, formatDate } from '../utils/helpers';
 import { Plus, Edit, Trash2, FileText, CreditCard, XCircle } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
@@ -194,7 +194,7 @@ const Expenses: React.FC = () => {
 
             const tableRows = filteredExpenses.map(expense => `
                 <tr>
-                    <td style="border: 1px solid #ddd; padding: 6px;">${new Date(expense.date).toLocaleDateString()}</td>
+                    <td style="border: 1px solid #ddd; padding: 6px;">${formatDate(expense.date)}</td>
                     <td style="border: 1px solid #ddd; padding: 6px;">${expense.category}</td>
                     <td style="border: 1px solid #ddd; padding: 6px;">${expense.description}</td>
                     <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${formatCurrency(expense.amount)}</td>
@@ -212,7 +212,7 @@ const Expenses: React.FC = () => {
                         ${logoHtml}
                     </div>
                     <h2 style="font-size: 20px; text-align: center; border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 20px;">${reportTitle}</h2>
-                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${new Date().toLocaleString()}</p>
+                    <p style="font-size: 12px; margin-bottom: 20px; text-align: right;">Generated: ${formatDate(new Date())}</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                         <thead style="background-color: #f2f2f2;">
                             <tr>
@@ -308,7 +308,7 @@ const Expenses: React.FC = () => {
                     <tbody>
                         {filteredExpenses.map(expense => (
                             <tr key={expense.id} className="bg-white border-b hover:bg-gray-50">
-                                <td className="px-6 py-4">{new Date(expense.date).toLocaleDateString()}</td>
+                                <td className="px-6 py-4">{formatDate(expense.date)}</td>
                                 <td className="px-6 py-4"><span className="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-medium">{expense.category}</span></td>
                                 <td className="px-6 py-4 font-medium text-gray-900">{expense.description}</td>
                                 <td className="px-6 py-4 text-right font-semibold">{formatCurrency(expense.amount)}</td>
@@ -331,7 +331,7 @@ const Expenses: React.FC = () => {
                         <div className="flex justify-between items-start">
                             <div>
                                 <h3 className="font-bold text-gray-800">{expense.description}</h3>
-                                <p className="text-sm text-gray-500">{new Date(expense.date).toLocaleDateString()}</p>
+                                <p className="text-sm text-gray-500">{formatDate(expense.date)}</p>
                             </div>
                             <span className="font-bold text-lg text-primary-600">{formatCurrency(expense.amount)}</span>
                         </div>
