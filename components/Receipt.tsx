@@ -87,7 +87,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         {hasItemDiscounts ? (
                             <>
                                 <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
-                                <th className="text-left font-bold w-[20%] pb-1 px-1">Ctg</th>
+                                <th className="text-left font-bold w-[20%] pb-1 px-1">Ctgry</th>
                                 <th className="text-left font-bold w-[25%] pb-1 px-1">Item</th>
                                 <th className="text-right font-bold w-[15%] pb-1 px-1">Price</th>
                                 <th className="text-right font-bold w-[15%] pb-1 px-1">Discount</th>
@@ -96,7 +96,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         ) : (
                             <>
                                 <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
-                                <th className="text-left font-bold w-[25%] pb-1 px-1">Ctg</th>
+                                <th className="text-left font-bold w-[25%] pb-1 px-1">Ctgry</th>
                                 <th className="text-left font-bold w-[40%] pb-1 px-1">Item</th>
                                 <th className="text-right font-bold w-[25%] pb-1 px-1">Total</th>
                             </>

@@ -573,8 +573,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         // Auto-generate Bike Number if Name is present but Bike Number is missing
         if (customerDetails.customerName.trim() && !customerDetails.bikeNumber.trim()) {
             const existingIds = appData.customers.reduce((acc, c) => {
-                if (/^\d+$/.test(c.id)) {
-                    const num = parseInt(c.id, 10);
+                const searchId = c.bikeNumber || c.id;
+                if (/^\d+$/.test(searchId)) {
+                    const num = parseInt(searchId, 10);
                     return num > acc ? num : acc;
                 }
                 return acc;

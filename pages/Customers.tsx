@@ -116,7 +116,7 @@ const CustomerDetailsModal: React.FC<{
 
     // Details Tab State
     const [name, setName] = useState(customer.name);
-    const [bikeNumber, setBikeNumber] = useState(customer.id);
+    const [bikeNumber, setBikeNumber] = useState(customer.bikeNumber || customer.id);
     const [contactNumber, setContactNumber] = useState(customer.contactNumber || '');
     const [servicingNotes, setServicingNotes] = useState(customer.servicingNotes || '');
     const [nextServiceDate, setNextServiceDate] = useState(customer.nextServiceDate ? customer.nextServiceDate.split('T')[0] : '');
@@ -296,7 +296,7 @@ const CustomerDetailsModal: React.FC<{
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
                             <div className="bg-gray-100 p-2 rounded-lg">
                                 <p className="text-xs text-gray-500">Bike Number</p>
-                                <p className="font-bold text-primary-600 text-sm">{customer.id}</p>
+                                <p className="font-bold text-primary-600 text-sm">{customer.bikeNumber || customer.id}</p>
                             </div>
                             <div className="bg-gray-100 p-2 rounded-lg">
                                 <p className="text-xs text-gray-500">Total Visits</p>
@@ -659,7 +659,8 @@ const Customers: React.FC = () => {
         const customersToFilter = searchTerm
             ? customers.filter(c =>
                 c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                c.id.toLowerCase().includes(searchTerm.toLowerCase())
+                c.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (c.bikeNumber && c.bikeNumber.toLowerCase().includes(searchTerm.toLowerCase()))
               )
             : [...customers];
 
@@ -748,7 +749,7 @@ const Customers: React.FC = () => {
         // Replace placeholders
         const message = messageTemplate
             .replace(/{name}/g, customer.name)
-            .replace(/{bikeNumber}/g, customer.id)
+            .replace(/{bikeNumber}/g, customer.bikeNumber || customer.id)
             .replace(/{shopName}/g, shopName);
 
         const encodedMessage = encodeURIComponent(message);
@@ -834,7 +835,7 @@ const Customers: React.FC = () => {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-lg text-gray-800 truncate">{customer.name}</h3>
-                                            <p className="text-sm text-gray-500 font-mono flex items-center gap-1">{customer.id}</p>
+                                            <p className="text-sm text-gray-500 font-mono flex items-center gap-1">{customer.bikeNumber || customer.id}</p>
                                         </div>
                                     </div>
                                     <div className="text-right">

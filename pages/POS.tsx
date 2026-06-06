@@ -77,7 +77,8 @@ const CustomerLookupModal: React.FC<{
         const lowercasedSearch = search.toLowerCase();
         return customers.filter(c => 
             c.name.toLowerCase().includes(lowercasedSearch) ||
-            c.id.toLowerCase().includes(lowercasedSearch)
+            c.id.toLowerCase().includes(lowercasedSearch) ||
+            (c.bikeNumber && c.bikeNumber.toLowerCase().includes(lowercasedSearch))
         );
     }, [customers, search]);
 
@@ -104,7 +105,7 @@ const CustomerLookupModal: React.FC<{
                     >
                         <div>
                             <p className="font-semibold">{c.name}</p>
-                            <p className="text-sm text-gray-500">{c.id}</p>
+                            <p className="text-sm text-gray-500">{c.bikeNumber || c.id}</p>
                         </div>
                         <span className="text-xs text-gray-400">Last Seen: {formatDate(c.lastSeen)}</span>
                     </div>
@@ -622,7 +623,7 @@ const POS: React.FC = () => {
 
     const handleSelectCustomer = (customer: Customer) => {
         updateSessionAndName({
-            bikeNumber: customer.id,
+            bikeNumber: customer.bikeNumber || customer.id,
             customerName: customer.name,
             contactNumber: customer.contactNumber || '',
             serviceFrequencyValue: customer.serviceFrequencyValue || '',
