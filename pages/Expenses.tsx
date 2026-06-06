@@ -3,11 +3,12 @@ import React, { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppContext } from '../contexts/AppContext';
 import { Expense } from '../types';
-import { formatCurrency, formatDate } from '../utils/helpers';
-import { Plus, Edit, Trash2, FileText, CreditCard, XCircle } from 'lucide-react';
+import { formatCurrency, formatDate, compressImage } from '../utils/helpers';
+import { Plus, Edit, Trash2, FileText, CreditCard, XCircle, Camera, Upload, Eye } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
+import CameraCapture from '../components/CameraCapture';
 import toast from 'react-hot-toast';
 // @ts-ignore
 import jsPDF from 'jspdf';
@@ -37,10 +38,33 @@ const ExpenseForm: React.FC<{
         category: expense?.category || '',
         amount: expense?.amount || '',
         date: expense?.date ? new Date(expense.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        billImageUrl: expense?.billImageUrl || '',
     });
+    const [isCameraOpen, setCameraOpen] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+    };
+
+    const handleBillImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const toastId = toast.loading('Compressing bill image...');
+            try {
+                const compressedBase64 = await compressImage(file);
+                setFormData(prev => ({ ...prev, billImageUrl: compressedBase64 }));
+                toast.success('Bill image added!', { id: toastId });
+            } catch (error) {
+                toast.error('Failed to process image.', { id: toastId });
+                console.error(error);
+            }
+        }
+    };
+
+    const handlePhotoCaptured = (imgBase64: string) => {
+        setFormData(prev => ({ ...prev, billImageUrl: imgBase64 }));
+        setCameraOpen(false);
+        toast.success('Bill photo captured!');
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -67,29 +91,74 @@ const ExpenseForm: React.FC<{
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-            <Input label="Description" name="description" value={formData.description} onChange={handleChange} required placeholder="e.g., Electricity Bill" />
-            <div>
-                 <Input 
-                    label="Category" 
-                    name="category" 
-                    value={formData.category} 
-                    onChange={handleChange} 
-                    required 
-                    placeholder="e.g., Utilities"
-                    list="expense-categories"
+        <>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <Input label="Description" name="description" value={formData.description} onChange={handleChange} required placeholder="e.g., Electricity Bill" />
+                <div>
+                     <Input 
+                        label="Category" 
+                        name="category" 
+                        value={formData.category} 
+                        onChange={handleChange} 
+                        required 
+                        placeholder="e.g., Utilities"
+                        list="expense-categories"
+                    />
+                    <datalist id="expense-categories">
+                        {existingCategories.map(cat => <option key={cat} value={cat} />)}
+                    </datalist>
+                </div>
+                <Input label="Amount (Rs.)" name="amount" type="number" value={formData.amount} onChange={handleChange} required min="0.01" step="0.01" />
+                <Input label="Date" name="date" type="date" value={formData.date} onChange={handleChange} required />
+                
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Picture of Bill (Optional)</label>
+                    <div className="flex flex-col sm:flex-row gap-2 items-center">
+                        <div className="flex-grow w-full">
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleBillImageChange}
+                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 border border-gray-300 rounded-lg cursor-pointer"
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setCameraOpen(true)}
+                            className="flex w-full sm:w-auto items-center justify-center gap-2 whitespace-nowrap"
+                        >
+                            <Camera size={18} /> Take Photo
+                        </Button>
+                    </div>
+                    {formData.billImageUrl && (
+                        <div className="mt-3 relative inline-block">
+                            <img src={formData.billImageUrl} alt="Bill preview" className="h-32 w-auto max-h-48 object-contain rounded-lg shadow-md border" />
+                            <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, billImageUrl: '' }))}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition shadow"
+                                title="Remove Bill Image"
+                            >
+                                <XCircle size={16} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                    <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+                    <Button type="submit">Save Expense</Button>
+                </div>
+            </form>
+
+            <Modal isOpen={isCameraOpen} onClose={() => setCameraOpen(false)} title="Capture Bill Photo">
+                <CameraCapture
+                    onCapture={handlePhotoCaptured}
+                    onClose={() => setCameraOpen(false)}
                 />
-                <datalist id="expense-categories">
-                    {existingCategories.map(cat => <option key={cat} value={cat} />)}
-                </datalist>
-            </div>
-            <Input label="Amount (Rs.)" name="amount" type="number" value={formData.amount} onChange={handleChange} required min="0.01" step="0.01" />
-            <Input label="Date" name="date" type="date" value={formData.date} onChange={handleChange} required />
-            <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-                <Button type="submit">Save Expense</Button>
-            </div>
-        </form>
+            </Modal>
+        </>
     );
 };
 
@@ -102,6 +171,7 @@ const Expenses: React.FC = () => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [viewingBillUrl, setViewingBillUrl] = useState<string | null>(null);
 
     const isMaster = currentUser?.role === 'master';
 
@@ -302,6 +372,7 @@ const Expenses: React.FC = () => {
                             <th scope="col" className="px-6 py-3">Category</th>
                             <th scope="col" className="px-6 py-3">Description</th>
                             <th scope="col" className="px-6 py-3 text-right">Amount</th>
+                            <th scope="col" className="px-6 py-3 text-center">Bill</th>
                             <th scope="col" className="px-6 py-3">Actions</th>
                         </tr>
                     </thead>
@@ -312,6 +383,20 @@ const Expenses: React.FC = () => {
                                 <td className="px-6 py-4"><span className="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-medium">{expense.category}</span></td>
                                 <td className="px-6 py-4 font-medium text-gray-900">{expense.description}</td>
                                 <td className="px-6 py-4 text-right font-semibold">{formatCurrency(expense.amount)}</td>
+                                <td className="px-6 py-4 text-center">
+                                    {expense.billImageUrl ? (
+                                        <button 
+                                            type="button"
+                                            onClick={() => setViewingBillUrl(expense.billImageUrl!)}
+                                            className="text-primary-600 hover:text-primary-800 flex items-center justify-center mx-auto"
+                                            title="View Bill"
+                                        >
+                                            <img src={expense.billImageUrl} alt="Bill Thumbnail" className="h-8 w-8 object-cover rounded border hover:scale-110 transition cursor-zoom-in shadow-sm" />
+                                        </button>
+                                    ) : (
+                                        <span className="text-gray-400 text-xs">-</span>
+                                    )}
+                                </td>
                                 <td className="px-6 py-4">
                                     <div className="flex space-x-2">
                                         <button onClick={() => handleEdit(expense)} className="text-blue-600 hover:text-blue-800"><Edit size={18}/></button>
@@ -338,6 +423,9 @@ const Expenses: React.FC = () => {
                          <div className="flex justify-between items-center pt-2 border-t">
                              <span className="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-medium">{expense.category}</span>
                              <div className="flex items-center space-x-3">
+                                {expense.billImageUrl && (
+                                    <button onClick={() => setViewingBillUrl(expense.billImageUrl!)} className="text-primary-600 hover:text-primary-800" title="View Bill"><Eye size={18}/></button>
+                                )}
                                 <button onClick={() => handleEdit(expense)} className="text-blue-600 hover:text-blue-800" title="Edit"><Edit size={18}/></button>
                                 <button onClick={() => handleDelete(expense)} className="text-red-600 hover:text-red-800" title="Delete"><Trash2 size={18}/></button>
                             </div>
@@ -370,6 +458,35 @@ const Expenses: React.FC = () => {
                 <div className="flex justify-center gap-4 mt-6">
                     <Button variant="secondary" onClick={() => setExpenseToDelete(null)}>Cancel</Button>
                     <Button variant="danger" onClick={handleConfirmDelete}>Yes, Delete</Button>
+                </div>
+            </Modal>
+
+            <Modal isOpen={!!viewingBillUrl} onClose={() => setViewingBillUrl(null)} title="Expense Bill Photo" size="lg">
+                <div className="flex flex-col items-center">
+                    {viewingBillUrl ? (
+                        <div className="w-full max-h-[70vh] overflow-auto flex justify-center bg-gray-50 rounded-lg p-2 border">
+                            <img 
+                                src={viewingBillUrl} 
+                                alt="Expense Bill" 
+                                className="max-w-full h-auto object-contain rounded"
+                                referrerPolicy="no-referrer"
+                            />
+                        </div>
+                    ) : (
+                        <p className="text-gray-500">No image available.</p>
+                    )}
+                    <div className="flex gap-2 mt-4 w-full justify-end">
+                        {viewingBillUrl && (
+                            <a 
+                                href={viewingBillUrl} 
+                                download="expense_bill.jpg" 
+                                className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 cursor-pointer"
+                            >
+                                Download Image
+                            </a>
+                        )}
+                        <Button variant="secondary" onClick={() => setViewingBillUrl(null)}>Close</Button>
+                    </div>
                 </div>
             </Modal>
         </div>

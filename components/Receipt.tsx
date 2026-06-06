@@ -5,8 +5,14 @@ import { useAppContext } from '../contexts/AppContext';
 import { formatDate } from '../utils/helpers';
 
 const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref) => {
-    const { shopInfo, customers, customerTiers } = useAppContext();
+    const { shopInfo, customers, customerTiers, inventory, categories } = useAppContext();
     const customer = customers.find(c => c.id === sale.customerId);
+
+    const getCategoryName = (item: any) => {
+        const product = inventory?.find(p => p.id === item.productId);
+        const category = product ? categories?.find(c => c.id === product.categoryId) : null;
+        return category ? category.name : '-';
+    };
     const tier = customer?.tierId ? customerTiers.find(t => t.id === customer.tierId) : null;
 
     const hasItemDiscounts = sale.items.some(item => item.discount > 0);
@@ -75,16 +81,18 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         {hasItemDiscounts ? (
                             <>
                                 <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
-                                <th className="text-center font-bold w-[30%] pb-1 px-1">Item</th>
-                                <th className="text-center font-bold w-[20%] pb-1 px-1">Price</th>
-                                <th className="text-center font-bold w-[20%] pb-1 px-1">Discount</th>
-                                <th className="text-center font-bold w-[20%] pb-1 px-1">Total</th>
+                                <th className="text-left font-bold w-[20%] pb-1 px-1">Category</th>
+                                <th className="text-left font-bold w-[25%] pb-1 px-1">Item</th>
+                                <th className="text-right font-bold w-[15%] pb-1 px-1">Price</th>
+                                <th className="text-right font-bold w-[15%] pb-1 px-1">Discount</th>
+                                <th className="text-right font-bold w-[15%] pb-1 px-1">Total</th>
                             </>
                         ) : (
                             <>
                                 <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
-                                <th className="text-center font-bold w-[60%] pb-1 px-1">Item</th>
-                                <th className="text-center font-bold w-[30%] pb-1 px-1">Total</th>
+                                <th className="text-left font-bold w-[25%] pb-1 px-1">Category</th>
+                                <th className="text-left font-bold w-[40%] pb-1 px-1">Item</th>
+                                <th className="text-right font-bold w-[25%] pb-1 px-1">Total</th>
                             </>
                         )}
                     </tr>
@@ -95,6 +103,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             {hasItemDiscounts ? (
                                 <>
                                     <td className="text-center pt-1 px-1">{item.quantity}</td>
+                                    <td className="text-left pt-1 px-1">{getCategoryName(item)}</td>
                                     <td className="text-left pt-1 px-1">{item.name}</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(item.originalPrice)}</td>
                                     <td className="text-right pt-1 px-1">
@@ -105,6 +114,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             ) : (
                                 <>
                                     <td className="text-center pt-1 px-1">{item.quantity}</td>
+                                    <td className="text-left pt-1 px-1">{getCategoryName(item)}</td>
                                     <td className="text-left pt-1 px-1">{item.name}</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(item.price * item.quantity)}</td>
                                 </>
@@ -116,13 +126,13 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             {hasItemDiscounts ? (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
-                                    <td colSpan={3} className="text-left pt-1 px-1">Tuning</td>
+                                    <td colSpan={4} className="text-left pt-1 px-1">Tuning</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges!)}</td>
                                 </>
                             ) : (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
-                                    <td className="text-left pt-1 px-1">Tuning</td>
+                                    <td colSpan={2} className="text-left pt-1 px-1">Tuning</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.tuningCharges!)}</td>
                                 </>
                             )}
@@ -133,13 +143,13 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                             {hasItemDiscounts ? (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
-                                    <td colSpan={3} className="text-left pt-1 px-1">Labor Charges</td>
+                                    <td colSpan={4} className="text-left pt-1 px-1">Labor Charges</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges!)}</td>
                                 </>
                             ) : (
                                 <>
                                     <td className="text-center pt-1 px-1"></td>
-                                    <td className="text-left pt-1 px-1">Labor Charges</td>
+                                    <td colSpan={2} className="text-left pt-1 px-1">Labor Charges</td>
                                     <td className="text-right pt-1 px-1">{formatNumberForReceipt(sale.laborCharges!)}</td>
                                 </>
                             )}
