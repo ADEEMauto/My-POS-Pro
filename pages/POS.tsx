@@ -239,6 +239,8 @@ const POS: React.FC = () => {
                 case 'name_desc': return b.name.localeCompare(a.name);
                 case 'price_desc': return b.salePrice - a.salePrice;
                 case 'price_asc': return a.salePrice - b.salePrice;
+                case 'qty_desc': return b.quantity - a.quantity;
+                case 'qty_asc': return a.quantity - b.quantity;
                 case 'most_selling': return (productSales.get(b.id) || 0) - (productSales.get(a.id) || 0);
                 case 'least_selling': return (productSales.get(a.id) || 0) - (productSales.get(b.id) || 0);
                 case 'category_asc': {
@@ -498,7 +500,8 @@ const POS: React.FC = () => {
 
         if (!finalCustomerName && !finalBikeNumber) {
             finalCustomerName = 'Walk-in';
-            finalBikeNumber = 'WALKIN';
+            const inputtedBike = prompt("No customer/bike details provided. Billed as Walk-in.\n\nPlease enter the Bike Number of the visiting bike:");
+            finalBikeNumber = inputtedBike ? inputtedBike.trim().toUpperCase() : 'WALKIN';
         } else if (!finalBikeNumber) {
             // Leave empty, let AppContext handle sequential generation
             finalBikeNumber = '';
@@ -662,6 +665,8 @@ const POS: React.FC = () => {
                             <option value="name_desc">Alphabetical (Z-A)</option>
                             <option value="price_desc">Price: High to Low</option>
                             <option value="price_asc">Price: Low to High</option>
+                            <option value="qty_desc">Quantity Left: High to Low</option>
+                            <option value="qty_asc">Quantity Left: Low to High</option>
                             <option value="category_asc">Category</option>
                             <option value="manufacturer_asc">Manufacturer</option>
                             <option value="location_asc">Location</option>

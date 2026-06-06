@@ -937,6 +937,10 @@ const Inventory: React.FC = () => {
                     return b.salePrice - a.salePrice;
                 case 'price_asc':
                     return a.salePrice - b.salePrice;
+                case 'qty_desc':
+                    return b.quantity - a.quantity;
+                case 'qty_asc':
+                    return a.quantity - b.quantity;
                 case 'most_selling':
                     return (productSales.get(b.id) || 0) - (productSales.get(a.id) || 0);
                 case 'least_selling':
@@ -1033,6 +1037,8 @@ const Inventory: React.FC = () => {
                         <option value="name_desc">Alphabetical (Z-A)</option>
                         <option value="price_desc">Sale Price: High to Low</option>
                         <option value="price_asc">Sale Price: Low to High</option>
+                        <option value="qty_desc">Quantity Left: High to Low</option>
+                        <option value="qty_asc">Quantity Left: Low to High</option>
                         <option value="most_selling">Most Selling</option>
                         <option value="least_selling">Least Selling</option>
                         <option value="category_asc">Category</option>

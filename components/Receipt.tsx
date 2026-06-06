@@ -10,7 +10,10 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
 
     const getCategoryName = (item: any) => {
         const product = inventory?.find(p => p.id === item.productId);
-        const category = product ? categories?.find(c => c.id === product.categoryId) : null;
+        if (!product) return '-';
+        const subCategory = product.subCategoryId ? categories?.find(c => c.id === product.subCategoryId) : null;
+        if (subCategory) return subCategory.name;
+        const category = product.categoryId ? categories?.find(c => c.id === product.categoryId) : null;
         return category ? category.name : '-';
     };
     const tier = customer?.tierId ? customerTiers.find(t => t.id === customer.tierId) : null;
@@ -69,8 +72,11 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
             <p className="text-center font-mono my-2">Sale ID: {sale.id}</p>
             
             {/* 4. Customer Info */}
-            <div className="text-left mb-2">
-                Customer: {sale.customerName ? `${sale.customerName}, ${sale.customerId}` : sale.customerId}
+            <div className="text-left mb-2 space-y-0.5">
+                <div>Customer: {sale.customerName || 'Walk-in'}</div>
+                {sale.bikeNumber && (
+                    <div>Bike Number: {sale.bikeNumber}</div>
+                )}
             </div>
 
             {/* 5, 6, 7. Items Table */}
@@ -81,7 +87,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         {hasItemDiscounts ? (
                             <>
                                 <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
-                                <th className="text-left font-bold w-[20%] pb-1 px-1">Category</th>
+                                <th className="text-left font-bold w-[20%] pb-1 px-1">Ctg</th>
                                 <th className="text-left font-bold w-[25%] pb-1 px-1">Item</th>
                                 <th className="text-right font-bold w-[15%] pb-1 px-1">Price</th>
                                 <th className="text-right font-bold w-[15%] pb-1 px-1">Discount</th>
@@ -90,7 +96,7 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                         ) : (
                             <>
                                 <th className="text-center font-bold w-[10%] pb-1 px-1">QTY</th>
-                                <th className="text-left font-bold w-[25%] pb-1 px-1">Category</th>
+                                <th className="text-left font-bold w-[25%] pb-1 px-1">Ctg</th>
                                 <th className="text-left font-bold w-[40%] pb-1 px-1">Item</th>
                                 <th className="text-right font-bold w-[25%] pb-1 px-1">Total</th>
                             </>
