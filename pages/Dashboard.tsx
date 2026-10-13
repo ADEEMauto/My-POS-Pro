@@ -60,7 +60,7 @@ const calculateNetItemRevenue = (sale: Sale) => {
 };
 
 const Dashboard: React.FC = () => {
-    const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems, customers, expenses } = useAppContext();
+    const { currentUser, inventory, sales, shopInfo, categories, addMultipleDemandItems, customers, expenses, payments } = useAppContext();
     const isMaster = currentUser?.role === 'master';
 
     const [isLowStockModalOpen, setLowStockModalOpen] = useState(false);
@@ -76,10 +76,25 @@ const Dashboard: React.FC = () => {
                 const itemRev = calculateNetItemRevenue(sale);
                 const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
                 const totalRev = itemRev + servRev;
-                const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+                const effectiveDue = Math.min(totalRev, Math.max(0, sale.balanceDue));
+                const realizedRatio = totalRev > 0 ? (totalRev - effectiveDue) / totalRev : (sale.balanceDue <= 0 ? 1 : 0);
                 
                 salesTotal += itemRev * realizedRatio;
                 laborCharges += servRev * realizedRatio;
+            }
+        });
+
+        // Add due payments collected TODAY for past sales (or customers without today's sales)
+        payments.forEach(payment => {
+            if (new Date(payment.date).toLocaleDateString('en-CA') === todayStr) {
+                const customerSalesToday = sales.filter(s => 
+                    (s.customerId === payment.customerId || s.bikeNumber === payment.customerId) &&
+                    new Date(s.date).toLocaleDateString('en-CA') === todayStr
+                );
+                // If there are no sales today for this customer, this payment was for past dues collected today
+                if (customerSalesToday.length === 0) {
+                    salesTotal += payment.amount;
+                }
             }
         });
 
@@ -92,7 +107,7 @@ const Dashboard: React.FC = () => {
             todaysSalesTotal: Math.round(salesTotal - todaysExpensesTotal), 
             todaysLaborCharges: Math.round(laborCharges) 
         };
-    }, [sales, expenses]);
+    }, [sales, expenses, payments]);
 
     const soldProductIds = useMemo(() => {
         const ids = new Set<string>();
@@ -365,10 +380,19 @@ const Dashboard: React.FC = () => {
             const itemRev = calculateNetItemRevenue(sale);
             const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
             const totalRev = itemRev + servRev;
-            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+            const effectiveDue = Math.min(totalRev, Math.max(0, sale.balanceDue));
+            const realizedRatio = totalRev > 0 ? (totalRev - effectiveDue) / totalRev : (sale.balanceDue <= 0 ? 1 : 0);
             
             salesTotal += itemRev * realizedRatio;
             laborChargesTotal += servRev * realizedRatio;
+        });
+
+        // Account for any payments from customers who have no sales in sales list
+        const salesCustomerIdSet = new Set(sales.map(s => s.customerId));
+        payments.forEach(p => {
+            if (!salesCustomerIdSet.has(p.customerId)) {
+                salesTotal += p.amount;
+            }
         });
 
         // Subtract all expenses from total item sales
@@ -378,7 +402,7 @@ const Dashboard: React.FC = () => {
             totalSales: Math.round(salesTotal - allExpensesTotal), 
             totalLaborCharges: Math.round(laborChargesTotal) 
         };
-    }, [sales, expenses]);
+    }, [sales, expenses, payments]);
 
     return (
         <div className="space-y-8">

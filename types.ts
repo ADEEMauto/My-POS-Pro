@@ -64,6 +64,7 @@ export interface Sale {
     id: string;
     customerId: string; // UUID for new customers, BikeNumber for legacy
     bikeNumber?: string; // Snapshot of bike number
+    odometerReading?: string; // Bike odometer reading at time of sale
     customerName: string;
     items: SaleItem[];
     subtotal: number; // Sum of original prices before any discounts
@@ -98,6 +99,7 @@ export interface Sale {
 export interface Customer {
     id: string; // UUID or Bike number (legacy)
     bikeNumber?: string; // The actual bike number
+    odometerReading?: string; // Latest bike odometer reading
     name: string;
     saleIds: string[];
     firstSeen: string; // ISO Date string

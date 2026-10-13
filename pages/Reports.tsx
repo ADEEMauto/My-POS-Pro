@@ -233,7 +233,8 @@ const Reports: React.FC = () => {
             const itemRev = calculateNetItemRevenue(sale);
             const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
             const totalRev = itemRev + servRev;
-            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+            const effectiveDue = Math.min(totalRev, Math.max(0, sale.balanceDue));
+            const realizedRatio = totalRev > 0 ? (totalRev - effectiveDue) / totalRev : (sale.balanceDue <= 0 ? 1 : 0);
             
             dailySales[date] = (dailySales[date] || 0) + (itemRev * realizedRatio);
         });
@@ -273,7 +274,8 @@ const Reports: React.FC = () => {
             const itemRev = calculateNetItemRevenue(sale);
             const servRev = t + l;
             const totalRev = itemRev + servRev;
-            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+            const effectiveDue = Math.min(totalRev, Math.max(0, sale.balanceDue));
+            const realizedRatio = totalRev > 0 ? (totalRev - effectiveDue) / totalRev : (sale.balanceDue <= 0 ? 1 : 0);
 
             const realizedTuning = t * realizedRatio;
             const realizedLabor = l * realizedRatio;
@@ -305,7 +307,8 @@ const Reports: React.FC = () => {
             const itemRev = calculateNetItemRevenue(sale);
             const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
             const totalRev = itemRev + servRev;
-            const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+            const effectiveDue = Math.min(totalRev, Math.max(0, sale.balanceDue));
+            const realizedRatio = totalRev > 0 ? (totalRev - effectiveDue) / totalRev : (sale.balanceDue <= 0 ? 1 : 0);
             
             total += itemRev * realizedRatio;
         });
@@ -331,7 +334,8 @@ const Reports: React.FC = () => {
                 const itemRev = calculateNetItemRevenue(sale);
                 const servRev = (sale.laborCharges || 0) + (sale.tuningCharges || 0);
                 const totalRev = itemRev + servRev;
-                const realizedRatio = totalRev > 0 ? (totalRev - sale.balanceDue) / totalRev : 0;
+                const effectiveDue = Math.min(totalRev, Math.max(0, sale.balanceDue));
+                const realizedRatio = totalRev > 0 ? (totalRev - effectiveDue) / totalRev : (sale.balanceDue <= 0 ? 1 : 0);
 
                 const realizedItemRevenue = itemRev * realizedRatio;
                 const cogs = sale.items.reduce((sum, item) => sum + ((item.purchasePrice || 0) * item.quantity), 0);

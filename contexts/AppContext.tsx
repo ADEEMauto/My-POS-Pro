@@ -94,7 +94,7 @@ interface AppContextType extends AppData {
         cartItems: CartItem[], 
         overallDiscount: number, 
         overallDiscountType: 'fixed' | 'percentage',
-        customerDetails: { customerName: string, bikeNumber: string, contactNumber: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' },
+        customerDetails: { customerName: string, bikeNumber: string, contactNumber: string, odometerReading?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' },
         pointsRedeemed: number,
         tuningCharges: number,
         laborCharges: number,
@@ -203,6 +203,61 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         restoreSession();
     }, [dbLoading, appData.users, currentUser]);
+
+    // Data reconciliation effect: ensure past un-synced due payments or customer balances match sales balanceDue
+    const hasReconciledRef = React.useRef(false);
+    useEffect(() => {
+        if (dbLoading || hasReconciledRef.current || !data) return;
+        hasReconciledRef.current = true;
+
+        let needsUpdate = false;
+        const updatedSaleMap = new Map<string, Sale>();
+
+        appData.customers.forEach(customer => {
+            const isCustomerSale = (sale: Sale) => {
+                return sale.customerId === customer.id ||
+                    (customer.saleIds && customer.saleIds.includes(sale.id)) ||
+                    (customer.bikeNumber && sale.bikeNumber === customer.bikeNumber) ||
+                    (customer.id && sale.bikeNumber === customer.id);
+            };
+
+            const customerSales = appData.sales
+                .filter(isCustomerSale)
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            const totalDueOnSales = customerSales.reduce((sum, s) => sum + Math.max(0, s.balanceDue), 0);
+
+            // If sales have more balanceDue than customer's current balance, past payments weren't applied to sales!
+            if (totalDueOnSales > customer.balance + 0.01) {
+                let excessDue = totalDueOnSales - customer.balance;
+                for (const sale of customerSales) {
+                    if (excessDue <= 0) break;
+                    if (sale.balanceDue <= 0) continue;
+
+                    const reduction = Math.min(excessDue, sale.balanceDue);
+                    const newBalanceDue = sale.balanceDue - reduction;
+                    const newAmountPaid = sale.amountPaid + reduction;
+                    const newStatus: 'Paid' | 'Partial' | 'Unpaid' = 
+                        newBalanceDue <= 0 || newAmountPaid >= sale.total ? 'Paid' : 'Partial';
+
+                    updatedSaleMap.set(sale.id, {
+                        ...(updatedSaleMap.get(sale.id) || sale),
+                        amountPaid: newAmountPaid,
+                        balanceDue: newBalanceDue,
+                        paymentStatus: newStatus
+                    });
+
+                    excessDue -= reduction;
+                    needsUpdate = true;
+                }
+            }
+        });
+
+        if (needsUpdate) {
+            const reconciledSales = appData.sales.map(s => updatedSaleMap.get(s.id) || s);
+            updateData({ sales: reconciledSales });
+        }
+    }, [dbLoading, data, appData.customers, appData.sales, updateData]);
 
     // Global loading state: True if DB is loading OR auth check hasn't finished
     // We also check if data is null to be extra safe during the transition
@@ -558,7 +613,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         cartItems: CartItem[], 
         overallDiscount: number, 
         overallDiscountType: 'fixed' | 'percentage',
-        customerDetails: { customerName: string, bikeNumber: string, contactNumber: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' },
+        customerDetails: { customerName: string, bikeNumber: string, contactNumber: string, odometerReading?: string, serviceFrequencyValue?: number, serviceFrequencyUnit?: 'days' | 'months' | 'years' },
         pointsRedeemed: number,
         tuningCharges: number,
         laborCharges: number,
@@ -672,8 +727,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         const finalAmountDue = total + previousBalance;
-        const balanceDue = Math.round(Math.max(0, finalAmountDue - amountPaid));
-        const paymentStatus = balanceDue <= 0 ? 'Paid' : (amountPaid > 0 ? 'Partial' : 'Unpaid');
+        const customerNewBalance = Math.round(Math.max(0, finalAmountDue - amountPaid));
+
+        // This sale's own balance and payment
+        const thisSaleAmountPaid = Math.min(total, amountPaid);
+        const thisSaleBalanceDue = Math.max(0, total - thisSaleAmountPaid);
+        const thisSalePaymentStatus: 'Paid' | 'Partial' | 'Unpaid' = 
+            thisSaleBalanceDue <= 0 ? 'Paid' : (thisSaleAmountPaid > 0 ? 'Partial' : 'Unpaid');
+
+        // If extra payment was made above this sale's total and customer had prior balance,
+        // allocate the extra payment to settle previous unpaid sales
+        let updatedSalesList = [...appData.sales];
+        if (existingCustomer && previousBalance > 0 && amountPaid > total) {
+            let extraPayment = amountPaid - total;
+            const isCustomerSale = (s: Sale) => s.customerId === customerId || (existingCustomer.saleIds && existingCustomer.saleIds.includes(s.id));
+            const prevSales = updatedSalesList
+                .filter(isCustomerSale)
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            for (const prevSale of prevSales) {
+                if (extraPayment <= 0) break;
+                if (prevSale.balanceDue <= 0 && prevSale.amountPaid >= prevSale.total) continue;
+
+                const dueOnSale = prevSale.balanceDue > 0 ? prevSale.balanceDue : Math.max(0, prevSale.total - prevSale.amountPaid);
+                const allocated = Math.min(extraPayment, dueOnSale);
+                const newPaid = prevSale.amountPaid + allocated;
+                const newDue = Math.max(0, prevSale.balanceDue - allocated);
+                const newStatus: 'Paid' | 'Partial' | 'Unpaid' = newDue <= 0 || newPaid >= prevSale.total ? 'Paid' : 'Partial';
+
+                updatedSalesList = updatedSalesList.map(s => s.id === prevSale.id ? {
+                    ...s,
+                    amountPaid: newPaid,
+                    balanceDue: newDue,
+                    paymentStatus: newStatus
+                } : s);
+
+                extraPayment -= allocated;
+            }
+        }
 
         // Loyalty Points Calculation
         let pointsEarned = 0;
@@ -717,6 +808,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             customerId,
             customerName: customerDetails.customerName,
             bikeNumber: customerDetails.bikeNumber,
+            odometerReading: customerDetails.odometerReading?.trim() || undefined,
             items: saleItems,
             subtotal: subtotal,
             totalItemDiscounts,
@@ -728,9 +820,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             outsideServices,
             totalOutsideServices: totalOutsideServicesCost,
             total,
-            amountPaid,
-            paymentStatus,
-            balanceDue,
+            amountPaid: thisSaleAmountPaid,
+            paymentStatus: thisSalePaymentStatus,
+            balanceDue: thisSaleBalanceDue,
             previousBalanceBroughtForward: previousBalance,
             date: new Date().toISOString(),
             pointsEarned,
@@ -787,9 +879,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         ...c,
                         name: customerDetails.customerName, // Update name if changed
                         contactNumber: customerDetails.contactNumber || c.contactNumber,
+                        odometerReading: customerDetails.odometerReading?.trim() || c.odometerReading,
                         saleIds: [saleId, ...c.saleIds],
                         lastSeen: newSale.date,
-                        balance: balanceDue,
+                        balance: customerNewBalance,
                         loyaltyPoints: c.loyaltyPoints - pointsRedeemed + pointsEarned,
                         serviceFrequencyValue: customerDetails.serviceFrequencyValue || c.serviceFrequencyValue,
                         serviceFrequencyUnit: customerDetails.serviceFrequencyUnit || c.serviceFrequencyUnit
@@ -803,11 +896,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 name: customerDetails.customerName,
                 bikeNumber: customerDetails.bikeNumber,
                 contactNumber: customerDetails.contactNumber,
+                odometerReading: customerDetails.odometerReading?.trim() || undefined,
                 saleIds: [saleId],
                 firstSeen: newSale.date,
                 lastSeen: newSale.date,
                 loyaltyPoints: pointsEarned,
-                balance: balanceDue,
+                balance: customerNewBalance,
                 tierId: null,
                 serviceFrequencyValue: customerDetails.serviceFrequencyValue,
                 serviceFrequencyUnit: customerDetails.serviceFrequencyUnit,
@@ -819,7 +913,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (appData.customerTiers.length > 0) {
             updatedCustomers = updatedCustomers.map(c => {
                  if (c.id === customerId) {
-                    const bestTier = evaluateTier(c, appData.customerTiers, [...appData.sales, newSale]);
+                    const bestTier = evaluateTier(c, appData.customerTiers, [...updatedSalesList, newSale]);
                     return { ...c, tierId: bestTier ? bestTier.id : null };
                  }
                  return c;
@@ -828,7 +922,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         updateData({
             inventory: updatedInventory,
-            sales: [newSale, ...appData.sales],
+            sales: [newSale, ...updatedSalesList],
             customers: updatedCustomers,
             loyaltyTransactions: newTransactions,
             stockLogs: [
@@ -1152,9 +1246,78 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         const newBalance = Math.max(0, customer.balance - amount);
 
+        // Find customer's sales and allocate this payment to settle outstanding dues (FIFO: oldest first)
+        const isCustomerSale = (sale: Sale) => {
+            return sale.customerId === customerId || 
+                (customer.saleIds && customer.saleIds.includes(sale.id)) ||
+                (customer.bikeNumber && sale.bikeNumber === customer.bikeNumber) ||
+                (customer.id && sale.bikeNumber === customer.id);
+        };
+
+        const sortedSales = [...appData.sales]
+            .filter(isCustomerSale)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        let remainingToAllocate = amount;
+        const updatedSaleMap = new Map<string, Sale>();
+
+        // Phase 1: Allocate to sales that have an explicit balanceDue > 0
+        for (const sale of sortedSales) {
+            if (remainingToAllocate <= 0) break;
+
+            const dueOnSale = sale.balanceDue > 0
+                ? sale.balanceDue
+                : Math.max(0, sale.total - sale.amountPaid);
+
+            if (dueOnSale <= 0) continue;
+
+            const allocated = Math.min(remainingToAllocate, dueOnSale);
+            const newAmountPaid = sale.amountPaid + allocated;
+            const newBalanceDue = Math.max(0, sale.balanceDue - allocated);
+            const newStatus: 'Paid' | 'Partial' | 'Unpaid' = 
+                newBalanceDue <= 0 || newAmountPaid >= sale.total ? 'Paid' : 'Partial';
+
+            updatedSaleMap.set(sale.id, {
+                ...sale,
+                amountPaid: newAmountPaid,
+                balanceDue: newBalanceDue,
+                paymentStatus: newStatus
+            });
+
+            remainingToAllocate -= allocated;
+        }
+
+        // Phase 2: If remainingToAllocate is still > 0, allocate to any customer sales where amountPaid < total
+        if (remainingToAllocate > 0) {
+            for (const sale of sortedSales) {
+                if (remainingToAllocate <= 0) break;
+                const currentSale = updatedSaleMap.get(sale.id) || sale;
+                const unpaidOnSale = Math.max(0, currentSale.total - currentSale.amountPaid);
+                if (unpaidOnSale <= 0) continue;
+
+                const allocated = Math.min(remainingToAllocate, unpaidOnSale);
+                const newAmountPaid = currentSale.amountPaid + allocated;
+                const newBalanceDue = Math.max(0, currentSale.balanceDue - allocated);
+                const newStatus: 'Paid' | 'Partial' | 'Unpaid' = 
+                    newBalanceDue <= 0 || newAmountPaid >= currentSale.total ? 'Paid' : 'Partial';
+
+                updatedSaleMap.set(sale.id, {
+                    ...currentSale,
+                    amountPaid: newAmountPaid,
+                    balanceDue: newBalanceDue,
+                    paymentStatus: newStatus
+                });
+
+                remainingToAllocate -= allocated;
+            }
+        }
+
+        const newSales = appData.sales.map(s => updatedSaleMap.get(s.id) || s);
+
         updateData({
             customers: appData.customers.map(c => c.id === customerId ? { ...c, balance: newBalance } : c),
-            payments: [...appData.payments, payment]
+            payments: [...appData.payments, payment],
+            sales: newSales
         });
         toast.success("Payment recorded.");
         return true;

@@ -21,6 +21,7 @@ interface POSSession {
     cart: CartItem[];
     customerName: string;
     bikeNumber: string;
+    odometerReading?: string;
     contactNumber: string;
     serviceFrequencyValue: number | string;
     serviceFrequencyUnit: 'days' | 'months' | 'years';
@@ -105,7 +106,10 @@ const CustomerLookupModal: React.FC<{
                     >
                         <div>
                             <p className="font-semibold">{c.name}</p>
-                            <p className="text-sm text-gray-500">{c.bikeNumber || c.id}</p>
+                            <p className="text-sm text-gray-500">
+                                {c.bikeNumber || c.id}
+                                {c.odometerReading ? ` • ${c.odometerReading} km` : ''}
+                            </p>
                         </div>
                         <span className="text-xs text-gray-400">Last Seen: {formatDate(c.lastSeen)}</span>
                     </div>
@@ -133,6 +137,7 @@ const POS: React.FC = () => {
         cart: [],
         customerName: '',
         bikeNumber: '',
+        odometerReading: '',
         contactNumber: '',
         serviceFrequencyValue: '',
         serviceFrequencyUnit: 'months',
@@ -518,6 +523,7 @@ const POS: React.FC = () => {
             { 
                 customerName: finalCustomerName, 
                 bikeNumber: finalBikeNumber, 
+                odometerReading: currentSession.odometerReading?.trim() || undefined,
                 contactNumber: currentSession.contactNumber, 
                 serviceFrequencyValue: Number(currentSession.serviceFrequencyValue) || undefined, 
                 serviceFrequencyUnit: currentSession.serviceFrequencyValue ? currentSession.serviceFrequencyUnit : undefined 
@@ -599,7 +605,7 @@ const POS: React.FC = () => {
         const shopName = shopInfo?.name || "our shop";
         const customerNameForMsg = customerForReceipt?.name || completedSale.customerName;
 
-        const message = `Dear ${customerNameForMsg},\n\nThank you for your purchase from ${shopName}.\n\n*Sale ID:* ${completedSale.id}\n*Total Amount:* ${formatCurrency(completedSale.total)}\n\nWe appreciate your business!`;
+        const message = `Dear ${customerNameForMsg},\n\nThank you for your purchase from ${shopName}.\n\n*Sale ID:* ${completedSale.id}\n*Total Amount:* ${formatCurrency(completedSale.total)}${completedSale.bikeNumber ? `\n*Bike Number:* ${completedSale.bikeNumber}` : ''}${completedSale.odometerReading ? `\n*Odometer:* ${completedSale.odometerReading}` : ''}\n\nWe appreciate your business!`;
         const encodedMessage = encodeURIComponent(message);
         
         try {
@@ -626,6 +632,7 @@ const POS: React.FC = () => {
             bikeNumber: customer.bikeNumber || customer.id,
             customerName: customer.name,
             contactNumber: customer.contactNumber || '',
+            odometerReading: customer.odometerReading || '',
             serviceFrequencyValue: customer.serviceFrequencyValue || '',
             serviceFrequencyUnit: customer.serviceFrequencyUnit || 'months'
         });
@@ -851,6 +858,7 @@ const POS: React.FC = () => {
                         </h3>
                         <Input label="Bike Number (Unique ID)" value={currentSession.bikeNumber} onChange={e => updateSessionAndName({ bikeNumber: e.target.value.toUpperCase() })} placeholder="e.g., KHI1234 (Leave empty to auto-generate)" />
                         <Input label="Customer Name" value={currentSession.customerName} onChange={e => updateSessionAndName({ customerName: e.target.value })} required/>
+                        <Input label="Odometer Reading (km)" value={currentSession.odometerReading || ''} onChange={e => updateCurrentSession({ odometerReading: e.target.value })} placeholder="e.g., 14500" />
                         <Input label="Contact Number" type="tel" value={currentSession.contactNumber} onChange={e => updateCurrentSession({ contactNumber: e.target.value })} />
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Service Frequency</label>

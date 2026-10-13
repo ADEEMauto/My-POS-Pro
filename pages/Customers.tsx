@@ -117,6 +117,7 @@ const CustomerDetailsModal: React.FC<{
     // Details Tab State
     const [name, setName] = useState(customer.name);
     const [bikeNumber, setBikeNumber] = useState(customer.bikeNumber || customer.id);
+    const [odometerReading, setOdometerReading] = useState(customer.odometerReading || '');
     const [contactNumber, setContactNumber] = useState(customer.contactNumber || '');
     const [servicingNotes, setServicingNotes] = useState(customer.servicingNotes || '');
     const [nextServiceDate, setNextServiceDate] = useState(customer.nextServiceDate ? customer.nextServiceDate.split('T')[0] : '');
@@ -157,6 +158,7 @@ const CustomerDetailsModal: React.FC<{
         const success = onSave({
             id: bikeNumber,
             name: name,
+            odometerReading: odometerReading.trim() || undefined,
             contactNumber: contactNumber.trim() || undefined,
             servicingNotes: servicingNotes.trim() || undefined,
             nextServiceDate: nextServiceDate || undefined,
@@ -358,6 +360,7 @@ const CustomerDetailsModal: React.FC<{
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Input label="Customer Name" value={name} onChange={(e) => setName(e.target.value)} required />
                             <Input label="Bike Number (ID)" value={bikeNumber} onChange={(e) => setBikeNumber(e.target.value.replace(/\s+/g, '').toUpperCase())} required />
+                            <Input label="Odometer Reading (km)" value={odometerReading} onChange={(e) => setOdometerReading(e.target.value)} placeholder="e.g., 14500" />
                             <Input label="Contact Number" type="tel" placeholder="e.g., 03001234567" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} />
                              {isMaster && (
                                 <div>
@@ -835,7 +838,10 @@ const Customers: React.FC = () => {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-lg text-gray-800 truncate">{customer.name}</h3>
-                                            <p className="text-sm text-gray-500 font-mono flex items-center gap-1">{customer.bikeNumber || customer.id}</p>
+                                            <p className="text-sm text-gray-500 font-mono flex items-center gap-1">
+                                                {customer.bikeNumber || customer.id}
+                                                {customer.odometerReading ? ` • ${customer.odometerReading} km` : ''}
+                                            </p>
                                         </div>
                                     </div>
                                     <div className="text-right">

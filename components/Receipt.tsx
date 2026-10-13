@@ -54,6 +54,18 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
     const todaysBill = sale.total - (sale.previousBalanceBroughtForward || 0) + (sale.loyaltyDiscount || 0);
     const calculatedOverallDiscount = Math.max(0, todaysBill - (sale.total - (sale.previousBalanceBroughtForward || 0)));
 
+    const formatOdometer = (reading?: string | number) => {
+        if (!reading) return '';
+        const str = String(reading).trim();
+        if (!str) return '';
+        if (/[a-zA-Z]/.test(str)) return str;
+        const num = Number(str.replace(/,/g, ''));
+        if (!isNaN(num)) {
+            return `${num.toLocaleString('en-IN')} km`;
+        }
+        return `${str} km`;
+    };
+
     return (
         <div ref={ref} className="p-4 bg-white text-black font-mono text-sm max-w-sm mx-auto">
             {/* 1 & 2. Shop Info */}
@@ -76,6 +88,9 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                 <div>Customer: {sale.customerName || 'Walk-in'}</div>
                 {sale.bikeNumber && (
                     <div>Bike Number: {sale.bikeNumber}</div>
+                )}
+                {sale.odometerReading && (
+                    <div>Odometer: {formatOdometer(sale.odometerReading)}</div>
                 )}
             </div>
 
@@ -212,27 +227,38 @@ const Receipt = React.forwardRef<HTMLDivElement, { sale: Sale }>(({ sale }, ref)
                     </div>
                 )}
 
-                {sale.paymentStatus === 'Paid' ? (
-                    <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
-                        <span>TOTAL</span>
-                        <span>{formatCurrencyForReceipt(sale.total)}</span>
-                    </div>
-                ) : (
-                    <>
-                        <div className="flex justify-between font-bold text-sm my-1">
-                            <span>TOTAL</span>
-                            <span>{formatCurrencyForReceipt(sale.total)}</span>
-                        </div>
-                        <div className="flex justify-between font-bold text-sm">
-                            <span>AMOUNT PAID</span>
-                            <span>{formatCurrencyForReceipt(sale.amountPaid)}</span>
-                        </div>
-                        <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
-                            <span>BALANCE DUE</span>
-                            <span>{formatCurrencyForReceipt(sale.balanceDue)}</span>
-                        </div>
-                    </>
-                )}
+                {(() => {
+                    const totalCustomerOwed = (sale.previousBalanceBroughtForward || 0) > 0
+                        ? Math.max(0, (sale.total + (sale.previousBalanceBroughtForward || 0)) - sale.amountPaid)
+                        : sale.balanceDue;
+                    const isFullyCleared = totalCustomerOwed <= 0;
+
+                    if (isFullyCleared) {
+                        return (
+                            <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
+                                <span>TOTAL</span>
+                                <span>{formatCurrencyForReceipt(sale.total)}</span>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <>
+                            <div className="flex justify-between font-bold text-sm my-1">
+                                <span>TOTAL</span>
+                                <span>{formatCurrencyForReceipt(sale.total)}</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-sm">
+                                <span>AMOUNT PAID</span>
+                                <span>{formatCurrencyForReceipt(sale.amountPaid)}</span>
+                            </div>
+                            <div className="flex justify-between font-bold text-lg mt-1 pt-1 border-t-2 border-black">
+                                <span>BALANCE DUE</span>
+                                <span>{formatCurrencyForReceipt(totalCustomerOwed)}</span>
+                            </div>
+                        </>
+                    );
+                })()}
             </div>
 
             {/* 11. Loyalty Points */}

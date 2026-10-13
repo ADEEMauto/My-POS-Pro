@@ -46,6 +46,7 @@ const getSaleBreakdown = (sale: Sale) => {
 const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; onSave: (updatedSale: Sale) => void }> = ({ sale, onClose, onSave }) => {
     const [customerName, setCustomerName] = useState(sale.customerName);
     const [bikeNumber, setBikeNumber] = useState(sale.bikeNumber || '');
+    const [odometerReading, setOdometerReading] = useState(sale.odometerReading || '');
     const [items, setItems] = useState<SaleItem[]>(JSON.parse(JSON.stringify(sale.items))); // Deep copy
     const [tuningCharges, setTuningCharges] = useState(sale.tuningCharges || 0);
     const [laborCharges, setLaborCharges] = useState(sale.laborCharges || 0);
@@ -103,6 +104,7 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; onSave: (update
             ...sale,
             customerName,
             bikeNumber,
+            odometerReading: odometerReading.trim() || undefined,
             items,
             tuningCharges,
             laborCharges,
@@ -121,9 +123,10 @@ const EditSaleModal: React.FC<{ sale: Sale; onClose: () => void; onSave: (update
     return (
         <Modal isOpen={true} onClose={onClose} title="Edit Sale" size="2xl">
             <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-md">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
                      <Input label="Customer Name" value={customerName} onChange={e => setCustomerName(e.target.value)} />
                      <Input label="Bike Number" value={bikeNumber} onChange={e => setBikeNumber(e.target.value)} />
+                     <Input label="Odometer Reading (km)" value={odometerReading} onChange={e => setOdometerReading(e.target.value)} placeholder="e.g., 14500" />
                 </div>
 
                 <div className="border rounded-md overflow-hidden">
@@ -433,7 +436,10 @@ const Sales: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="font-semibold text-gray-800">{sale.customerName}</div>
-                                        <div className="text-xs text-gray-500 font-mono">{sale.bikeNumber || 'No Bike Info'}</div>
+                                        <div className="text-xs text-gray-500 font-mono">
+                                            {sale.bikeNumber || 'No Bike Info'}
+                                            {sale.odometerReading ? ` • ${sale.odometerReading} km` : ''}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-right text-gray-700">
                                         {formatCurrency(netItems)}
